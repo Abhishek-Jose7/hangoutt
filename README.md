@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚡ Smart AI Hangout Planner
 
-## Getting Started
+Plan group hangouts in Mumbai with AI-powered itineraries, fair travel time calculations, and real-time multiplayer voting — all while maintaining an exceptional, high-end "warm editorial" UI design.
 
-First, run the development server:
+![Hangout Planner Preview](https://via.placeholder.com/1200x630.png?text=Smart+AI+Hangout+Planner+-+Dark+Mesh+Gradient)
+
+## ✨ Core Features
+
+1. **Smart Location Hub**: Automatically discovers the fairest meeting point across Mumbai's complex local train network using advanced geometric algorithms (Center Point, Most Efficient, Fairest Travel, Cultural Vibe matches).
+2. **AI-Powered Plans**: Integrates beautifully with **Groq** and **Tavily Semantic Search** to generate 4 beautifully curated itineraries tailored to your group's collective budgets and specific moods.
+3. **Multiplayer Voting**: Real-time room state, synchronized voting, and admin-controlled confirmation flows powered continuously by Supabase Postgres Subscriptions and Zustand.
+4. **Transit & Budget Optimization**: Applies specific Haversine distance computations and train interchange penalties internally to ensure fair routing for everyone.
+
+---
+
+## 🛠️ Tech Stack & Architecture
+
+- **Framework:** Next.js 16.2.2 (App Router with API Serverless Functions)
+- **Database / Realtime:** Supabase (PostgreSQL with Realtime broadcasts)
+- **Authentication:** Clerk (with secure Svix Webhook syncing to Supabase)
+- **Styling:** TailwindCSS v4 with custom tokens, animations, and Framer Motion logic.
+- **Search & AI:** Groq (LLaMA-3 for Itineraries) & Tavily API (Geospatial place discovery)
+- **Geocoding:** Rate-limited OpenStreetMap Nominatim.
+- **Caching:** Upstash Redis.
+- **State Management:** Zustand, TanStack Query.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Requirements
+
+- Node.js 18.0.0+ 
+- A Supabase project
+- A Clerk project
+- API Keys for: Groq (supports multiple keys orchestration via `GROQ_API_KEYS`), Tavily, Upstash Redis
+
+### 2. Installation
+
+Clone the repository and install the required dependencies:
+
+```bash
+git clone https://github.com/your-username/hangout.git
+cd hangout
+npm install
+```
+
+### 3. Database Setup
+
+Using your Supabase Dashboard's SQL Editor, run the full database migration located exactly at:
+`src/migrations/001_initial.sql`
+
+*This schema constructs the Users, Rooms, Members, Options, and Voting tables while immediately activating Supabase Realtime Replications.*
+
+### 4. Environments
+
+Copy the `.env.local.example` configuration over to your `.env.local` environment map and fill in your variables securely:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Make sure **Clerk webhook secrets**, **Supabase Service Keys**, and all **AI keys** are never directly exposed to the browser. Everything routing externally executes within `/api/*` handlers locally.
+
+### 5. Running the Application
+
+Launch the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Point your browser to [http://localhost:3000](http://localhost:3000) and start your first room!
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📂 Project Structure Highlights
 
-## Learn More
+- **`src/app/api/`**: All backend logic tightly secured. Endpoints cover room manipulations, safe Supabase admin writes, Clerk Webhooks, API rate-limiting via Upstash, and AI generation.
+- **`src/app/rooms/[id]/`**: Component breakdown mirroring specific multiplayer room states (`lobby`, `planning`, `generating`, `voting`, `confirmed`). 
+- **`src/lib/`**: Heavy computational engines (Transit mapping, Haversine equations, Groq itinerary generation).
+- **`src/hooks/useRoom.ts`**: Unified frontend TanStack hook layers enforcing optimistic UI.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📜 License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[MIT License](LICENSE)
