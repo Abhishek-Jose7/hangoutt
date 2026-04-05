@@ -227,6 +227,22 @@ export default function VotingPage() {
                         className="overflow-hidden"
                       >
                         <div className="px-5 pb-3 space-y-3">
+                          {plan.station_guidance?.length ? (
+                            <div className="p-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
+                              <p className="text-xs uppercase tracking-wider text-[var(--color-text-tertiary)] mb-2">
+                                Reach Station By
+                              </p>
+                              <div className="space-y-1.5">
+                                {plan.station_guidance.map((item, idx) => (
+                                  <div key={`${item.member_name}-${idx}`} className="text-xs text-[var(--color-text-secondary)] flex items-center justify-between gap-2">
+                                    <span className="truncate max-w-[180px]">{item.member_name} • {item.station}</span>
+                                    <span className="text-[var(--color-text-primary)] font-mono">{item.reach_station_by}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
                           {plan.stops.map((stop) => (
                             <div
                               key={stop.stop_number}

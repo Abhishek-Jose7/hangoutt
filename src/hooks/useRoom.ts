@@ -160,9 +160,11 @@ export function useStartPlanning(roomId: string) {
 export function useGenerateItineraries(roomId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (data?: { meetup_start_time?: string }) => {
       const res = await fetch(`/api/rooms/${roomId}/generate`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {}),
       });
       if (!res.ok) {
         const err = await res.json();

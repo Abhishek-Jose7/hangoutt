@@ -228,6 +228,9 @@ function isSpecificVenueName(name: string): boolean {
   const lowered = name.toLowerCase();
   if (name.length < 3) return false;
 
+  if (/[.!?]/.test(name) && name.split(' ').length > 6) return false;
+  if (/\b(get ready|celebrating|happening today|book now|limited seats)\b/i.test(lowered)) return false;
+
   const genericPatterns = [
     'best places',
     'top places',
@@ -417,35 +420,32 @@ async function overpassFallback(
  * Hardcoded fallback when all APIs fail
  */
 function getDefaultPlaces(hubName: string): Place[] {
-  const areaLabel = hubName || 'the area';
+  const key = hubName.toLowerCase();
+  if (key.includes('bandra')) {
+    return [
+      { name: 'Candies, Bandra', type: 'cafe', description: 'Popular all-day cafe for group meetups.', source: 'osm_fallback', relevance_score: 0.94, estimated_cost: 350, inferred_rating: 4.4 },
+      { name: 'The Game Palacio, High Street Phoenix', type: 'activity', description: 'Ticketed bowling and arcade experience.', source: 'osm_fallback', relevance_score: 0.92, estimated_cost: 900, inferred_rating: 4.5 },
+      { name: 'Bastian, Bandra', type: 'restaurant', description: 'High-rated dining option for curated meals.', source: 'osm_fallback', relevance_score: 0.9, estimated_cost: 1200, inferred_rating: 4.4 },
+    ];
+  }
+  if (key.includes('andheri')) {
+    return [
+      { name: 'Mystery Rooms Andheri', type: 'activity', description: 'Ticketed escape room in Andheri West.', source: 'osm_fallback', relevance_score: 0.94, estimated_cost: 950, inferred_rating: 4.5 },
+      { name: 'McDonald\'s Andheri West', type: 'restaurant', description: 'Reliable budget-friendly post-activity meal.', source: 'osm_fallback', relevance_score: 0.84, estimated_cost: 230, inferred_rating: 4.1 },
+      { name: 'Prithvi Cafe', type: 'cafe', description: 'Known cafe with strong ambience and quality.', source: 'osm_fallback', relevance_score: 0.93, estimated_cost: 320, inferred_rating: 4.5 },
+    ];
+  }
+  if (key.includes('kurla')) {
+    return [
+      { name: 'Snow World Mumbai, Phoenix Marketcity Kurla', type: 'activity', description: 'Ticketed indoor snow attraction at Phoenix Marketcity.', source: 'osm_fallback', relevance_score: 0.88, estimated_cost: 1200, inferred_rating: 4.2 },
+      { name: 'PizzaExpress, Phoenix Marketcity Kurla', type: 'restaurant', description: 'Mall-based rated meal stop in Kurla.', source: 'osm_fallback', relevance_score: 0.86, estimated_cost: 650, inferred_rating: 4.2 },
+      { name: 'Starbucks, Phoenix Marketcity Kurla', type: 'cafe', description: 'Popular coffee stop with consistent quality.', source: 'osm_fallback', relevance_score: 0.82, estimated_cost: 350, inferred_rating: 4.2 },
+    ];
+  }
+
   return [
-    {
-      name: `${areaLabel} Coffee Bar`,
-      type: 'cafe',
-      description: `A casual coffee stop near ${areaLabel} for meetups and conversation`,
-      source: 'osm_fallback',
-      relevance_score: 0.4,
-    },
-    {
-      name: `${areaLabel} Food Court`,
-      type: 'restaurant',
-      description: `A reliable food stop near ${areaLabel} station`,
-      source: 'osm_fallback',
-      relevance_score: 0.4,
-    },
-    {
-      name: `${areaLabel} Promenade`,
-      type: 'outdoor',
-      description: `A scenic walking spot near ${areaLabel}`,
-      source: 'osm_fallback',
-      relevance_score: 0.3,
-    },
-    {
-      name: `${areaLabel} Activity Spot`,
-      type: 'activity',
-      description: `A casual hangout activity near ${areaLabel}`,
-      source: 'osm_fallback',
-      relevance_score: 0.3,
-    },
+    { name: 'Leopold Cafe, Colaba', type: 'cafe', description: 'Historic cafe with dependable crowd vibe.', source: 'osm_fallback', relevance_score: 0.86, estimated_cost: 400, inferred_rating: 4.1 },
+    { name: 'SMAAASH Lower Parel (Kamala Mills)', type: 'activity', description: 'Ticketed bowling and arcade zone.', source: 'osm_fallback', relevance_score: 0.93, estimated_cost: 850, inferred_rating: 4.4 },
+    { name: 'Social, Lower Parel', type: 'restaurant', description: 'Popular rated social dining space.', source: 'osm_fallback', relevance_score: 0.86, estimated_cost: 650, inferred_rating: 4.2 },
   ];
 }

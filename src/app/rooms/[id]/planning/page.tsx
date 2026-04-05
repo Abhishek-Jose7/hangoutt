@@ -44,6 +44,7 @@ export default function PlanningPage() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [meetupStartTime, setMeetupStartTime] = useState('12:00');
 
   useRoomRealtime(roomId);
 
@@ -152,7 +153,7 @@ export default function PlanningPage() {
   const handleGenerate = async () => {
     try {
       generate.reset();
-      await generate.mutateAsync();
+      await generate.mutateAsync({ meetup_start_time: meetupStartTime });
     } catch {
       // error shown
     }
@@ -317,18 +318,35 @@ export default function PlanningPage() {
 
               {/* Generate Button (Admin only) */}
               {isAdmin && (
-                <Button
-                  onClick={handleGenerate}
-                  disabled={!allReady || generate.isPending}
-                  loading={generate.isPending}
-                  className="w-full"
-                  id="generate-btn"
-                  icon={!generate.isPending ? <Sparkles className="h-4 w-4" /> : undefined}
-                >
-                  {!allReady
-                    ? `Waiting for ${totalMembers - membersReady} members`
-                    : 'Generate Itineraries'}
-                </Button>
+                <div className="space-y-3">
+                  <Card className="p-4">
+                    <label htmlFor="meetup-start-time" className="block text-xs text-[var(--color-text-secondary)] mb-1">
+                      Group meetup start time
+                    </label>
+                    <Input
+                      id="meetup-start-time"
+                      type="time"
+                      value={meetupStartTime}
+                      onChange={(e) => setMeetupStartTime(e.target.value)}
+                    />
+                    <p className="text-xs text-[var(--color-text-tertiary)] mt-2">
+                      We will use this to tell each member exactly when to reach their station.
+                    </p>
+                  </Card>
+
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={!allReady || generate.isPending || !meetupStartTime}
+                    loading={generate.isPending}
+                    className="w-full"
+                    id="generate-btn"
+                    icon={!generate.isPending ? <Sparkles className="h-4 w-4" /> : undefined}
+                  >
+                    {!allReady
+                      ? `Waiting for ${totalMembers - membersReady} members`
+                      : 'Generate Itineraries'}
+                  </Button>
+                </div>
               )}
 
               {isAdmin && generate.isError ? (

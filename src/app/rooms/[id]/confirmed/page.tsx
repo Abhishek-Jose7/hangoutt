@@ -188,6 +188,27 @@ export default function ConfirmedPage() {
               )}
 
               {/* Timeline */}
+              {plan.station_guidance?.length ? (
+                <motion.div variants={fadeInUp}>
+                  <Card className="p-5">
+                    <h3 className="font-semibold mb-3">When To Reach Your Station</h3>
+                    <div className="space-y-2">
+                      {plan.station_guidance.map((item, idx) => (
+                        <div key={`${item.member_name}-${idx}`} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-[var(--color-text-secondary)] truncate max-w-[70%]">
+                            {item.member_name} • {item.station}
+                          </span>
+                          <span className="font-mono text-[var(--color-text-primary)]">
+                            {item.reach_station_by}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </motion.div>
+              ) : null}
+
+              {/* Timeline */}
               <motion.div variants={fadeInUp} className="relative">
                 <div className="timeline-line" />
 

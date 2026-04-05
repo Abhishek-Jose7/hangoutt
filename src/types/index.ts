@@ -81,6 +81,14 @@ export const AIItineraryResponseSchema = z.object({
   total_cost_per_person: z.number().min(0),
   contingency_buffer: z.number().min(0),
   day_summary: z.string(),
+  meetup_start_time: z.string().optional(),
+  station_guidance: z.array(z.object({
+    member_name: z.string(),
+    station: z.string(),
+    train_travel_mins: z.number().min(0),
+    reach_station_by: z.string(),
+    arrive_hub_by: z.string(),
+  })).optional(),
 });
 export type AIItineraryResponse = z.infer<typeof AIItineraryResponseSchema>;
 

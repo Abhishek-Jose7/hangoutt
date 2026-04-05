@@ -8,6 +8,7 @@ import { generateItineraryForHub } from '@/lib/ai/generate-itinerary';
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
 import type { Mood, LatLng } from '@/types';
+import { z } from 'zod';
 
 interface InsertItineraryRow {
   room_id: string;
@@ -37,7 +38,26 @@ function getJobKey(roomId: string): string {
   return `generation_job:v1:${roomId}`;
 }
 
-async function runGenerationJob(roomId: string): Promise<void> {
+const GenerateRequestSchema = z.object({
+  meetup_start_time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/)
+    .optional(),
+});
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function toHHMM(total: number): string {
+  const normalized = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+async function runGenerationJob(roomId: string, meetupStartTime: string): Promise<void> {
   const supabase = getSupabaseServer();
 
   await cacheSet(getJobKey(roomId), {
@@ -59,7 +79,8 @@ async function runGenerationJob(roomId: string): Promise<void> {
     const { data: members } = await supabase
       .from('room_members')
       .select('*')
-      .eq('room_id', roomId);
+      .eq('room_id', roomId)
+      .order('joined_at', { ascending: true });
 
     if (!members || members.length < 2) {
       throw new Error('Need at least 2 members with locations');
@@ -101,6 +122,28 @@ async function runGenerationJob(roomId: string): Promise<void> {
           perPersonCap
         );
 
+        const firstStopTime = plan.stops?.[0]?.start_time || meetupStartTime;
+        const firstStopMins = toMinutes(firstStopTime);
+        const stationGuidance = membersWithLocations.map((member, memberIndex) => {
+          const travelMins = Math.max(5, Math.round(hub.travelTimes[memberIndex] ?? 45));
+          const bufferMins = 8;
+          const reachStationBy = toHHMM(firstStopMins - travelMins - bufferMins);
+          const arriveHubBy = toHHMM(firstStopMins - 2);
+          return {
+            member_name: member.display_name || member.user_id,
+            station: member.nearest_station || 'Nearest station',
+            train_travel_mins: travelMins,
+            reach_station_by: reachStationBy,
+            arrive_hub_by: arriveHubBy,
+          };
+        });
+
+        const enrichedPlan = {
+          ...plan,
+          meetup_start_time: meetupStartTime,
+          station_guidance: stationGuidance,
+        };
+
         return {
           room_id: roomId,
           option_number: index + 1,
@@ -108,7 +151,7 @@ async function runGenerationJob(roomId: string): Promise<void> {
           hub_lat: hub.lat,
           hub_lng: hub.lng,
           hub_strategy: hub.strategy,
-          plan,
+          plan: enrichedPlan,
           total_cost_estimate: plan.total_cost_per_person,
           max_travel_time_mins: Math.round(hub.maxTravelTime),
           avg_travel_time_mins: Math.round(hub.avgTravelTime),
@@ -159,7 +202,7 @@ async function runGenerationJob(roomId: string): Promise<void> {
 
 // POST /api/rooms/[id]/generate — Generate 4 itineraries
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: RouteContext<'/api/rooms/[id]/generate'>
 ) {
   try {
@@ -172,6 +215,15 @@ export async function POST(
     }
 
     const { id } = await ctx.params;
+    const body = await req.json().catch(() => ({}));
+    const parsedBody = GenerateRequestSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Invalid meetup start time' } },
+        { status: 400 }
+      );
+    }
+    const meetupStartTime = parsedBody.data.meetup_start_time || '12:00';
     const supabase = getSupabaseServer();
 
     // Verify admin + room status
@@ -253,7 +305,7 @@ export async function POST(
       started_at: new Date().toISOString(),
     } satisfies GenerationJobStatus, 3600);
 
-    void runGenerationJob(id);
+    void runGenerationJob(id, meetupStartTime);
 
     return NextResponse.json(
       {
