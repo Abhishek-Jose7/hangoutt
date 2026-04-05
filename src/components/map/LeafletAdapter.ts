@@ -41,7 +41,7 @@ export class LeafletAdapter implements MapAdapter {
     const marker = L.marker([position.lat, position.lng], {
       icon: L.divIcon({
         className: 'custom-dot-marker',
-        html: `<span style="display:block;width:14px;height:14px;border-radius:999px;background:${options.color || '#F5A623'};border:2px solid #0C0C0E"></span>`,
+        html: `<span style="display:block;width:14px;height:14px;border-radius:999px;background:${options.color || '#DC143C'};border:2px solid #0C0C0E"></span>`,
         iconSize: [14, 14],
       }),
       title: options.title,

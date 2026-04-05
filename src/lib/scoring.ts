@@ -1,4 +1,5 @@
 import type { Place } from '@/types';
+import type { Mood } from '@/types';
 import { haversineDistance } from './transit';
 
 /**
@@ -8,7 +9,8 @@ export function scorePlace(
   place: Place,
   perPersonCap: number,
   hubLat: number,
-  hubLng: number
+  hubLng: number,
+  mood: Mood
 ): number {
   // Relevance score from source (0-1)
   const relevance = place.relevance_score;
@@ -35,8 +37,28 @@ export function scorePlace(
     proximityScore = Math.max(0, 1 - distKm / 2);
   }
 
-  // Weighted score
-  return relevance * 0.4 + budgetFit * 0.3 + proximityScore * 0.3;
+  const moodKeywords: Record<Mood, string[]> = {
+    fun: ['arcade', 'music', 'gaming', 'lively', 'party', 'social', 'entertainment'],
+    chill: ['quiet', 'cozy', 'calm', 'board game', 'slow', 'relax', 'peaceful'],
+    romantic: ['date', 'sunset', 'romantic', 'cozy', 'fine dining', 'couple'],
+    adventure: ['escape', 'sports', 'climb', 'adventure', 'thrill', 'interactive'],
+  };
+  const moodTypeBoost: Record<Mood, Record<Place['type'], number>> = {
+    fun: { cafe: 0.75, activity: 1, restaurant: 0.7, outdoor: 0.6 },
+    chill: { cafe: 1, activity: 0.65, restaurant: 0.72, outdoor: 0.85 },
+    romantic: { cafe: 0.8, activity: 0.65, restaurant: 1, outdoor: 0.78 },
+    adventure: { cafe: 0.55, activity: 1, restaurant: 0.65, outdoor: 0.9 },
+  };
+
+  const text = `${place.name} ${place.description}`.toLowerCase();
+  const keywordHits = moodKeywords[mood].filter((k) => text.includes(k)).length;
+  const keywordScore = Math.min(1, keywordHits / 2);
+  const moodScore = Math.min(1, keywordScore * 0.6 + moodTypeBoost[mood][place.type] * 0.4);
+
+  const qualityBoost = relevance >= 0.9 ? 0.06 : 0;
+
+  // Weighted score: prioritize venue quality + vibe first, budget second
+  return relevance * 0.4 + moodScore * 0.28 + proximityScore * 0.17 + budgetFit * 0.15 + qualityBoost;
 }
 
 /**
@@ -47,11 +69,12 @@ export function selectTopCandidates(
   perPersonCap: number,
   hubLat: number,
   hubLng: number,
+  mood: Mood,
   topPerType: number = 2
 ): Place[] {
   const scored = places.map((p) => ({
     ...p,
-    _score: scorePlace(p, perPersonCap, hubLat, hubLng),
+    _score: scorePlace(p, perPersonCap, hubLat, hubLng, mood),
   }));
 
   // Group by type
@@ -64,7 +87,16 @@ export function selectTopCandidates(
   // Sort each group by score and take top N
   const selected: Place[] = [];
   for (const type of Object.keys(groups)) {
-    groups[type].sort((a, b) => b._score - a._score);
+    groups[type].sort((a, b) => {
+      if (type === 'restaurant' || type === 'cafe') {
+        const aCost = a.estimated_cost ?? perPersonCap * 0.3;
+        const bCost = b.estimated_cost ?? perPersonCap * 0.3;
+        const aComposite = a._score - (aCost / perPersonCap) * 0.2;
+        const bComposite = b._score - (bCost / perPersonCap) * 0.2;
+        return bComposite - aComposite;
+      }
+      return b._score - a._score;
+    });
     const topPlaces = groups[type].slice(0, topPerType);
     selected.push(...topPlaces.map(({ _score, ...rest }) => rest));
   }

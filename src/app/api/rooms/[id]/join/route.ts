@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { JoinRoomRequestSchema } from '@/types';
 
 // POST /api/rooms/[id]/join — Join a room
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: RouteContext<'/api/rooms/[id]'>
 ) {
   try {
@@ -62,20 +63,35 @@ export async function POST(
       );
     }
 
-    // Ensure user exists
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (!existingUser) {
-      await supabase.from('users').upsert({
-        id: userId,
-        email: `${userId}@placeholder.com`,
-        name: 'User',
-      });
+    const body = await req.json();
+    const parsed = JoinRoomRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } },
+        { status: 400 }
+      );
     }
+
+    if (parsed.data.lat === 0 && parsed.data.lng === 0) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Invalid coordinates (0, 0)' } },
+        { status: 400 }
+      );
+    }
+
+    const clerkUser = await currentUser();
+    const fallbackEmail = clerkUser?.primaryEmailAddress?.emailAddress || `${userId}@placeholder.com`;
+    const clerkName =
+      [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ').trim() ||
+      clerkUser?.username ||
+      fallbackEmail.split('@')[0];
+
+    await supabase.from('users').upsert({
+      id: userId,
+      email: fallbackEmail,
+      name: parsed.data.display_name || clerkName,
+      avatar_url: clerkUser?.imageUrl || null,
+    });
 
     // Check if already a member (idempotent)
     const { data: existingMember } = await supabase
@@ -86,13 +102,30 @@ export async function POST(
       .single();
 
     if (existingMember) {
-      return NextResponse.json({ message: 'Already a member', room_id: id });
+      await supabase
+        .from('room_members')
+        .update({
+          budget: parsed.data.budget,
+          lat: parsed.data.lat,
+          lng: parsed.data.lng,
+          location_name: parsed.data.location_name,
+          nearest_station: parsed.data.nearest_station,
+        })
+        .eq('room_id', id)
+        .eq('user_id', userId);
+
+      return NextResponse.json({ message: 'Already a member', room_id: id, profile_updated: true });
     }
 
     // Join
     const { error: joinError } = await supabase.from('room_members').insert({
       room_id: id,
       user_id: userId,
+      budget: parsed.data.budget,
+      lat: parsed.data.lat,
+      lng: parsed.data.lng,
+      location_name: parsed.data.location_name,
+      nearest_station: parsed.data.nearest_station,
     });
 
     if (joinError) {

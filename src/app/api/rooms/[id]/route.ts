@@ -66,6 +66,23 @@ export async function GET(
       .eq('room_id', id)
       .order('joined_at', { ascending: true });
 
+    const normalizedMembers = (members || []).map((member) => {
+      const email = member.users?.email || null;
+      const rawName = member.users?.name || null;
+      const normalizedName =
+        rawName && rawName.trim().toLowerCase() !== 'user'
+          ? rawName
+          : email?.split('@')[0] || 'Member';
+
+      return {
+        ...member,
+        users: {
+          ...member.users,
+          name: normalizedName,
+        },
+      };
+    });
+
     // Get confirmed itinerary if exists
     const { data: confirmed } = await supabase
       .from('confirmed_itinerary')
@@ -75,7 +92,7 @@ export async function GET(
 
     return NextResponse.json({
       ...room,
-      members: members || [],
+      members: normalizedMembers,
       confirmed_itinerary: confirmed || null,
       is_admin: room.admin_id === userId,
     });

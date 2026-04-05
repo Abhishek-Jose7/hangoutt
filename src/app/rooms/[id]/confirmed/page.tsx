@@ -84,6 +84,27 @@ export default function ConfirmedPage() {
     ? memberMarkers.map((member: MapMarker) => [member.position, { lat: Number(confirmed.hub_lat), lng: Number(confirmed.hub_lng) }])
     : [];
 
+  const stopMarkers: MapMarker[] =
+    plan?.stops
+      ?.filter((stop) => typeof stop.lat === 'number' && typeof stop.lng === 'number')
+      .map((stop) => ({
+        position: { lat: Number(stop.lat), lng: Number(stop.lng) },
+        title: stop.place_name,
+        color: '#DC143C',
+        popup: `<strong>${stop.place_name}</strong><br/>${stop.start_time} • ₹${stop.estimated_cost_per_person}`,
+      })) || [];
+
+  const stopLines = stopMarkers.length > 1
+    ? stopMarkers.slice(1).map((marker, idx) => [stopMarkers[idx].position, marker.position])
+    : [];
+
+  const hubToFirstStop = confirmed && stopMarkers.length > 0
+    ? [[{ lat: Number(confirmed.hub_lat), lng: Number(confirmed.hub_lng) }, stopMarkers[0].position]]
+    : [];
+
+  const allMarkers = [...mapMarkers, ...stopMarkers];
+  const allPolylines = [...travelLines, ...hubToFirstStop, ...stopLines];
+
   return (
     <div className="min-h-screen">
       <Navbar badge={{ text: 'Confirmed', type: 'success' }} />
@@ -214,7 +235,7 @@ export default function ConfirmedPage() {
                           )}
                           {stop.walk_from_previous_mins > 0 && (
                             <p className="text-xs text-[var(--color-text-tertiary)] mt-2">
-                              🚶 {stop.walk_from_previous_mins}min walk
+                              🚶 {stop.walk_from_previous_mins}min walk • {stop.distance_from_previous_km ?? 0.8}km
                               {i === 0 ? ' from station' : ' from previous stop'}
                             </p>
                           )}
@@ -232,8 +253,8 @@ export default function ConfirmedPage() {
                   <h3 className="font-semibold mb-3">Travel Overview Map</h3>
                   <MapView
                     center={{ lat: Number(confirmed.hub_lat), lng: Number(confirmed.hub_lng) }}
-                    markers={mapMarkers}
-                    polylines={travelLines}
+                    markers={allMarkers}
+                    polylines={allPolylines}
                   />
                   </Card>
                 </motion.div>

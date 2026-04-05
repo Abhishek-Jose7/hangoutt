@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { CreateRoomRequestSchema } from '@/types';
 import { nanoid } from 'nanoid';
@@ -26,21 +26,19 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseServer();
 
-    // Ensure user exists in our DB
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
+    const clerkUser = await currentUser();
+    const fallbackEmail = clerkUser?.primaryEmailAddress?.emailAddress || `${userId}@placeholder.com`;
+    const clerkName =
+      [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ').trim() ||
+      clerkUser?.username ||
+      fallbackEmail.split('@')[0];
 
-    if (!existingUser) {
-      // Auto-create user record from Clerk
-      await supabase.from('users').upsert({
-        id: userId,
-        email: `${userId}@placeholder.com`,
-        name: 'User',
-      });
-    }
+    await supabase.from('users').upsert({
+      id: userId,
+      email: fallbackEmail,
+      name: clerkName,
+      avatar_url: clerkUser?.imageUrl || null,
+    });
 
     const inviteCode = nanoid(8);
 

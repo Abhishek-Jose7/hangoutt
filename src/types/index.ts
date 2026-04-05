@@ -63,11 +63,15 @@ export const ItineraryStopSchema = z.object({
   stop_number: z.number().int().min(1),
   place_name: z.string(),
   place_type: z.enum(['cafe', 'activity', 'restaurant', 'outdoor']),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
   start_time: z.string(),
   duration_mins: z.number().int().positive(),
   estimated_cost_per_person: z.number().min(0),
   walk_from_previous_mins: z.number().min(0),
+  distance_from_previous_km: z.number().min(0).optional(),
   vibe_note: z.string(),
+  source_url: z.string().url().optional(),
 });
 export type ItineraryStop = z.infer<typeof ItineraryStopSchema>;
 
@@ -144,6 +148,16 @@ export const CreateRoomRequestSchema = z.object({
   currency: z.string().optional().default('INR'),
 });
 export type CreateRoomRequest = z.infer<typeof CreateRoomRequestSchema>;
+
+export const JoinRoomRequestSchema = z.object({
+  budget: z.number().positive().max(10000),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  location_name: z.string().min(2).max(200),
+  nearest_station: z.string().min(2).max(120),
+  display_name: z.string().min(2).max(80),
+});
+export type JoinRoomRequest = z.infer<typeof JoinRoomRequestSchema>;
 
 export const UpdateMemberLocationSchema = z.object({
   budget: z.number().positive().optional(),

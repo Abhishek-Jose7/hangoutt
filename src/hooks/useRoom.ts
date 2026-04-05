@@ -81,9 +81,26 @@ export function useCreateRoom() {
 
 export function useJoinRoom() {
   return useMutation({
-    mutationFn: async (roomId: string) => {
-      const res = await fetch(`/api/rooms/${roomId}/join`, {
+    mutationFn: async (data: {
+      roomId: string;
+      budget: number;
+      lat: number;
+      lng: number;
+      location_name: string;
+      nearest_station: string;
+      display_name: string;
+    }) => {
+      const res = await fetch(`/api/rooms/${data.roomId}/join`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          budget: data.budget,
+          lat: data.lat,
+          lng: data.lng,
+          location_name: data.location_name,
+          nearest_station: data.nearest_station,
+          display_name: data.display_name,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();

@@ -257,6 +257,9 @@ export default function VotingPage() {
                                     {stop.vibe_note}
                                   </p>
                                 )}
+                                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+                                  {stop.distance_from_previous_km ?? (stop.walk_from_previous_mins > 0 ? 1.0 : 0)}km • {stop.walk_from_previous_mins}min walk {stop.stop_number === 1 ? 'from station' : 'from previous stop'}
+                                </p>
                               </div>
                             </div>
                           ))}

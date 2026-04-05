@@ -92,7 +92,7 @@ async function runGenerationJob(roomId: string): Promise<void> {
 
     const results = await Promise.allSettled<InsertItineraryRow>(
       hubs.map(async (hub, index) => {
-        const places = await searchPlaces(hub.name, mood, perPersonCap);
+        const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
         const { plan, method, model } = await generateItineraryForHub(
           hub,
           places,

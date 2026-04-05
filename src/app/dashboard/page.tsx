@@ -1,11 +1,19 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Navbar } from '@/components/layout/Navbar';
 import { useUserRooms } from '@/hooks/useRoom';
 import type { Room } from '@/types';
+import { Card } from '@/components/ui/Card';
+
+interface LocalEvent {
+  title: string;
+  venue: string;
+  dateText: string;
+  category: string;
+}
 
 const statusColors: Record<string, string> = {
   lobby: 'badge-info',
@@ -25,131 +33,158 @@ const statusLabels: Record<string, string> = {
   archived: 'Archived',
 };
 
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
 export default function DashboardPage() {
   const router = useRouter();
   const { data: rooms, isLoading } = useUserRooms();
+  const [eventsData, setEventsData] = useState<{ area: string; date: string; events: LocalEvent[] } | null>(null);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/events/local');
+        const data = res.ok ? await res.json() : null;
+        if (isMounted && data) setEventsData(data);
+      } catch {
+        // Silent fallback
+      } finally {
+        if (isMounted) setEventsLoading(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen">
-      <Navbar
-        rightContent={
-          <Link href="/rooms/create" className="btn-primary py-2 px-5 text-sm h-10 shadow-none">
-            + Initialize Room
-          </Link>
-        }
-      />
+    <div className="flex-1 flex flex-col justify-center items-center p-6 relative">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-[800px] z-10 space-y-6"
+      >
+        <div className="text-center mb-8">
+          <h1 className="display-text text-3xl font-bold mb-2">Dashboard</h1>
+          <p className="text-[var(--color-text-secondary)] text-sm">
+            Manage your past and active hangout rooms centrally.
+          </p>
+        </div>
 
-      {/* Content */}
-      <main className="container-base section-base">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
-          className="space-y-6"
-        >
-          <motion.div variants={fadeInUp} className="card p-6">
-            <h1 className="display-text text-3xl mb-2">Your Rooms</h1>
-            <p className="text-[var(--color-text-secondary)]">
-              Manage active and past hangout sessions in one place.
-            </p>
-          </motion.div>
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <div>
+              <h2 className="font-semibold text-lg">Top Events Near You</h2>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                {eventsData?.area || 'Mumbai'} • {eventsData?.date || 'Today'}
+              </p>
+            </div>
+            <span className="badge badge-accent">Today</span>
+          </div>
 
-          {isLoading ? (
-            <div className="grid gap-6 md:grid-cols-2">
+          {eventsLoading ? (
+            <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="card p-6 animate-pulse"
-                >
-                  <div className="h-5 bg-[var(--color-bg-subtle)] rounded w-1/2 mb-3" />
-                  <div className="h-4 bg-[var(--color-bg-subtle)] rounded w-1/3" />
+                <div key={i} className="h-14 bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : !eventsData?.events?.length ? (
+            <div className="py-6 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)]">
+              <p className="text-sm text-[var(--color-text-secondary)]">No event feed available right now.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {eventsData.events.map((event, idx) => (
+                <div key={`${event.title}-${idx}`} className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{event.title}</p>
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">{event.category}</span>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{event.venue}</p>
+                  <p className="text-[11px] text-[var(--color-text-tertiary)] mt-1">{event.dateText}</p>
                 </div>
               ))}
             </div>
-          ) : !rooms || rooms.length === 0 ? (
-            <motion.div
-              variants={fadeInUp}
-              className="card p-12 text-center"
-            >
-              <div className="text-5xl mb-4">🎯</div>
-              <h3 className="text-lg font-semibold mb-2">
-                No rooms yet
-              </h3>
-              <p className="text-sm text-[var(--color-text-secondary)] mb-6">
-                Create a room and invite your friends to start planning
-              </p>
-              <Link href="/rooms/create" className="btn-primary">
-                Create Your First Room
-              </Link>
-            </motion.div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              {(rooms as Room[]).map((room, i) => (
-                <motion.div
-                  key={room.id}
-                  variants={fadeInUp}
-                  custom={i}
-                  className="card p-6 cursor-pointer h-full"
-                  onClick={() => router.push(`/rooms/${room.id}`)}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-semibold text-lg">{room.name}</h3>
-                    <span className={`badge ${statusColors[room.status] || 'badge-info'}`}>
-                      {statusLabels[room.status] || room.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-[var(--color-text-secondary)]">
-                    <span className="capitalize">🎭 {room.mood}</span>
-                    <span>💰 {room.currency}</span>
-                    <span>
-                      🕐 {new Date(room.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
           )}
+        </Card>
 
-          {/* Join via code */}
-          <motion.div
-            variants={fadeInUp}
-            className="card p-6 flex flex-col sm:flex-row items-center gap-4"
+        <Card className="p-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+            <h2 className="font-semibold text-lg">Your Rooms</h2>
+            <Link href="/rooms/create" className="btn-primary py-2 px-4 h-9 text-xs">
+              + New Room
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            {isLoading ? (
+              [1, 2].map((i) => (
+                <div key={i} className="h-16 bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl animate-pulse" />
+              ))
+            ) : !rooms || rooms.length === 0 ? (
+              <div className="py-12 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)]">
+                <span className="text-3xl mb-3 block">🎯</span>
+                <p className="text-sm font-medium text-[var(--color-text-primary)]">No rooms active</p>
+                <p className="text-xs text-[var(--color-text-secondary)] mt-1">Start by creating a new hangout room</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {(rooms as Room[]).map((room) => (
+                  <div
+                    key={room.id}
+                    onClick={() => router.push(`/rooms/${room.id}`)}
+                    className="p-4 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] hover:border-[var(--color-border-strong)] cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-[15px] truncate max-w-[150px]">{room.name}</h3>
+                      <span className={`badge ${statusColors[room.status] || 'badge-info'}`}>
+                        {statusLabels[room.status] || room.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-mono">
+                      <span>{room.mood}</span>
+                      <span>•</span>
+                      <span>{room.currency}</span>
+                      <span>•</span>
+                      <span>{new Date(room.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.target as HTMLFormElement;
+              const code = (form.elements.namedItem('code') as HTMLInputElement).value;
+              if (code.trim()) router.push(`/rooms/join/${code.trim()}`);
+            }}
+            className="flex flex-col sm:flex-row items-center gap-3"
           >
-            <div className="flex-1">
-              <h3 className="font-semibold mb-1">Have an invite code?</h3>
-              <p className="text-sm text-[var(--color-text-secondary)]">
-                Enter the code to join a friend&apos;s room
-              </p>
+            <div className="flex-1 w-full text-center sm:text-left">
+              <h3 className="font-semibold text-sm mb-1">Join a Room</h3>
+              <p className="text-xs text-[var(--color-text-secondary)]">Enter an invite code to join.</p>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.target as HTMLFormElement;
-                const code = (form.elements.namedItem('code') as HTMLInputElement).value;
-                if (code.trim()) router.push(`/rooms/join/${code.trim()}`);
-              }}
-              className="flex gap-2 w-full sm:w-auto"
-            >
+            <div className="flex w-full sm:w-auto gap-2">
               <input
                 name="code"
                 type="text"
-                placeholder="Enter invite code"
-                className="input w-48"
+                placeholder="Code"
+                className="input w-full sm:w-[140px] text-center sm:text-left"
                 maxLength={10}
-                id="invite-code-input"
               />
-              <button type="submit" className="btn-primary py-2.5" id="join-room-btn">
+              <button type="submit" className="btn-secondary px-4">
                 Join
               </button>
-            </form>
-          </motion.div>
-        </motion.div>
-      </main>
+            </div>
+          </form>
+        </Card>
+      </motion.div>
     </div>
   );
 }

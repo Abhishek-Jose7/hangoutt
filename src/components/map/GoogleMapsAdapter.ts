@@ -72,7 +72,7 @@ export class GoogleMapsAdapter implements MapAdapter {
       title: options.title,
       icon: {
         path: googleMaps.SymbolPath.CIRCLE,
-        fillColor: options.color || '#F5A623',
+        fillColor: options.color || '#DC143C',
         fillOpacity: 1,
         strokeColor: '#0C0C0E',
         strokeWeight: 2,

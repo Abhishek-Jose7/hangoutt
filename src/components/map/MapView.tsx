@@ -99,7 +99,7 @@ export function MapView({ center, markers, polylines = [], className }: MapViewP
       }
 
       for (const line of polylines) {
-        adapter.addPolyline(line, '#F5A623');
+        adapter.addPolyline(line, '#DC143C');
       }
 
       const bounds = [center, ...markers.map((m) => m.position)];

@@ -55,6 +55,7 @@ export function buildFallbackItinerary(
       costPerStop
     ),
     walk_from_previous_mins: i === 0 ? 10 : 15,
+    distance_from_previous_km: i === 0 ? 0.8 : 1.1,
     vibe_note: place.description.slice(0, 80),
   }));
 
@@ -64,6 +65,6 @@ export function buildFallbackItinerary(
     stops,
     total_cost_per_person: totalCost,
     contingency_buffer: Math.round(totalCost * 0.15),
-    day_summary: `A ${selected.length}-stop hangout near the station area`,
+    day_summary: `A ${selected.length}-stop hangout built around specific local venues`,
   };
 }
