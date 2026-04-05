@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { findNearestStation } from '@/lib/transit';
 import { JoinRoomRequestSchema } from '@/types';
 
 // POST /api/rooms/[id]/join — Join a room
@@ -79,6 +80,11 @@ export async function POST(
       );
     }
 
+    const computedNearestStation = findNearestStation({
+      lat: parsed.data.lat,
+      lng: parsed.data.lng,
+    }).name;
+
     const clerkUser = await currentUser();
     const fallbackEmail = clerkUser?.primaryEmailAddress?.emailAddress || `${userId}@placeholder.com`;
     const clerkName =
@@ -109,7 +115,7 @@ export async function POST(
           lat: parsed.data.lat,
           lng: parsed.data.lng,
           location_name: parsed.data.location_name,
-          nearest_station: parsed.data.nearest_station,
+          nearest_station: computedNearestStation,
         })
         .eq('room_id', id)
         .eq('user_id', userId);
@@ -125,7 +131,7 @@ export async function POST(
       lat: parsed.data.lat,
       lng: parsed.data.lng,
       location_name: parsed.data.location_name,
-      nearest_station: parsed.data.nearest_station,
+      nearest_station: computedNearestStation,
     });
 
     if (joinError) {

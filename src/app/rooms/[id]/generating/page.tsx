@@ -8,6 +8,7 @@ import { useRoom } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 
 const messages = [
   'Finding the best spots near you...',
@@ -72,6 +73,14 @@ export default function GeneratingPage() {
         <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] mb-6">
           <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" /> AI itinerary generation in progress
         </div>
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => router.refresh()}>
+            Refresh status
+          </Button>
+          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => router.push(`/rooms/${roomId}/planning`)}>
+            Back to planning
+          </Button>
+        </div>
 
         {/* Animated Train Line */}
         <div className="relative mx-auto w-64 h-20 mb-10">
@@ -126,6 +135,9 @@ export default function GeneratingPage() {
 
         <p className="text-sm text-[var(--color-text-tertiary)] inline-flex items-center gap-2">
           <Timer className="h-4 w-4" /> This usually takes about 20 seconds
+        </p>
+        <p className="mt-3 text-xs text-[var(--color-text-tertiary)]">
+          If this stays here for long, refresh status or return to planning to retry once the room is ready.
         </p>
       </Card>
     </div>

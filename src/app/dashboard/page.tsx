@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useUserRooms } from '@/hooks/useRoom';
 import type { Room } from '@/types';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 
 interface LocalEvent {
   title: string;
@@ -38,25 +39,29 @@ export default function DashboardPage() {
   const { data: rooms, isLoading } = useUserRooms();
   const [eventsData, setEventsData] = useState<{ area: string; date: string; events: LocalEvent[] } | null>(null);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState('');
+
+  const refreshEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      setEventsError('');
+      const res = await fetch('/api/events/local');
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error?.message || 'Failed to fetch events');
+      }
+      const data = await res.json();
+      setEventsData(data);
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Failed to fetch events');
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/events/local');
-        const data = res.ok ? await res.json() : null;
-        if (isMounted && data) setEventsData(data);
-      } catch {
-        // Silent fallback
-      } finally {
-        if (isMounted) setEventsLoading(false);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    void refreshEvents();
+  }, [refreshEvents]);
 
   return (
     <div className="flex-1 flex flex-col justify-center items-center p-6 relative">
@@ -80,31 +85,50 @@ export default function DashboardPage() {
                 {eventsData?.area || 'Mumbai'} • {eventsData?.date || 'Today'}
               </p>
             </div>
-            <span className="badge badge-accent">Today</span>
+            <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => void refreshEvents()} loading={eventsLoading}>
+              Refresh
+            </Button>
           </div>
 
-          {eventsLoading ? (
+          {eventsLoading && !eventsData ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-14 bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl animate-pulse" />
               ))}
+            </div>
+          ) : eventsError && !eventsData ? (
+            <div className="py-6 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)] space-y-3">
+              <p className="text-sm text-[var(--color-text-secondary)]">{eventsError}</p>
+              <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => void refreshEvents()}>
+                Try again
+              </Button>
             </div>
           ) : !eventsData?.events?.length ? (
             <div className="py-6 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)]">
               <p className="text-sm text-[var(--color-text-secondary)]">No event feed available right now.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {eventsData.events.map((event, idx) => (
-                <div key={`${event.title}-${idx}`} className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{event.title}</p>
-                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">{event.category}</span>
-                  </div>
-                  <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{event.venue}</p>
-                  <p className="text-[11px] text-[var(--color-text-tertiary)] mt-1">{event.dateText}</p>
+            <div className="space-y-3">
+              {eventsError ? (
+                <div className="rounded-xl border border-[var(--color-warning)]/30 bg-[rgba(245,158,11,0.08)] px-3 py-2 text-xs text-[var(--color-warning)] flex items-center justify-between gap-3">
+                  <span>{eventsError}</span>
+                  <Button variant="secondary" className="h-8 px-3 text-[11px]" onClick={() => void refreshEvents()}>
+                    Retry
+                  </Button>
                 </div>
-              ))}
+              ) : null}
+              <div className="space-y-2">
+                {eventsData.events.map((event, idx) => (
+                  <div key={`${event.title}-${idx}`} className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{event.title}</p>
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">{event.category}</span>
+                    </div>
+                    <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{event.venue}</p>
+                    <p className="text-[11px] text-[var(--color-text-tertiary)] mt-1">{event.dateText}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Card>

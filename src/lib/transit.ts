@@ -3,17 +3,49 @@ import type { Station, LatLng } from '@/types';
 
 export const stations: Station[] = stationsData as Station[];
 
-// Junction stations where line interchange is possible
-const INTERCHANGE_STATIONS: Record<string, string[]> = {
-  'Dadar': ['western', 'central'],
-  'Kurla': ['central', 'harbour'],
-  'CSMT': ['central', 'harbour'],
-};
-
-// Major interchange penalty in minutes for cross-line travel
-const INTERCHANGE_PENALTY_MINS = 15;
 const BOARDING_BUFFER_MINS = 5;
 const MINS_PER_STATION = 2.5;
+const UNKNOWN_STATION_FALLBACK = 60;
+
+const LINE_PATHS: string[][] = [
+  ['Churchgate', 'Marine Lines', 'Charni Road', 'Grant Road', 'Mumbai Central', 'Mahalaxmi', 'Lower Parel', 'Prabhadevi', 'Dadar', 'Matunga Road', 'Mahim', 'Bandra', 'Khar Road', 'Santacruz', 'Vile Parle', 'Andheri', 'Jogeshwari', 'Ram Mandir', 'Goregaon', 'Malad', 'Kandivali', 'Borivali', 'Dahisar', 'Mira Road', 'Bhayandar', 'Naigaon', 'Vasai Road', 'Nalasopara', 'Virar', 'Vaitarna', 'Saphale', 'Kelve Road', 'Palghar', 'Umroli', 'Boisar', 'Vangaon', 'Dahanu Road'],
+  ['CSMT', 'Masjid', 'Sandhurst Road', 'Byculla', 'Chinchpokli', 'Currey Road', 'Parel', 'Dadar', 'Matunga', 'Sion', 'Kurla', 'Vidyavihar', 'Ghatkopar', 'Vikhroli', 'Kanjurmarg', 'Bhandup', 'Nahur', 'Mulund', 'Thane', 'Kalwa', 'Mumbra', 'Diva', 'Kopar', 'Dombivli', 'Thakurli', 'Kalyan'],
+  ['Kalyan', 'Shahad', 'Ambivli', 'Titwala', 'Khadavli', 'Vasind', 'Asangaon', 'Atgaon', 'Khardi', 'Kasara'],
+  ['Kalyan', 'Vithalwadi', 'Ulhasnagar', 'Ambernath', 'Badlapur', 'Vangani', 'Shelu', 'Neral', 'Bhivpuri Road', 'Karjat'],
+  ['Karjat', 'Palasdari', 'Kelavli', 'Dolavli', 'Lowjee', 'Khopoli'],
+  ['CSMT', 'Dockyard Road', 'Reay Road', 'Cotton Green', 'Sewri', 'Wadala Road', 'GTB Nagar', 'Chunabhatti', 'Kurla', 'Tilak Nagar', 'Chembur', 'Govandi', 'Mankhurd', 'Vashi', 'Sanpada', 'Juinagar', 'Nerul', 'Seawoods Darave', 'Belapur', 'Kharghar', 'Mansarovar', 'Khandeshwar', 'Panvel'],
+  ['Wadala Road', 'Kings Circle', 'Mahim', 'Bandra', 'Khar Road', 'Santacruz', 'Vile Parle', 'Andheri'],
+  ['Thane', 'Airoli', 'Rabale', 'Ghansoli', 'Kopar Khairane', 'Turbhe', 'Sanpada', 'Vashi'],
+  ['Nerul', 'Seawoods Darave', 'Belapur', 'CBD Belapur', 'Kharkopar'],
+];
+
+function buildRailGraph(): Map<string, Map<string, number>> {
+  const graph = new Map<string, Map<string, number>>();
+
+  const link = (a: string, b: string, cost = MINS_PER_STATION) => {
+    if (!graph.has(a)) graph.set(a, new Map());
+    if (!graph.has(b)) graph.set(b, new Map());
+
+    const aEdges = graph.get(a)!;
+    const bEdges = graph.get(b)!;
+
+    const ab = aEdges.get(b);
+    if (ab === undefined || cost < ab) aEdges.set(b, cost);
+
+    const ba = bEdges.get(a);
+    if (ba === undefined || cost < ba) bEdges.set(a, cost);
+  };
+
+  for (const path of LINE_PATHS) {
+    for (let i = 0; i < path.length - 1; i++) {
+      link(path[i], path[i + 1]);
+    }
+  }
+
+  return graph;
+}
+
+const railGraph = buildRailGraph();
 
 /**
  * Haversine distance in kilometers
@@ -51,78 +83,57 @@ export function findNearestStation(location: LatLng): Station {
   return nearest;
 }
 
-/**
- * Get all stations on a given line in order
- */
-function getLineStations(line: string): Station[] {
-  return stations.filter((s) => s.line.includes(line as 'western' | 'central' | 'harbour'));
-}
+function shortestTravelMins(from: string, to: string): number {
+  if (from === to) return BOARDING_BUFFER_MINS;
+  if (!railGraph.has(from) || !railGraph.has(to)) return UNKNOWN_STATION_FALLBACK;
 
-/**
- * Find common line between two stations, if any
- */
-function findCommonLine(a: Station, b: Station): string | null {
-  for (const lineA of a.line) {
-    if (b.line.includes(lineA)) return lineA;
+  const distances = new Map<string, number>();
+  const visited = new Set<string>();
+
+  for (const node of railGraph.keys()) {
+    distances.set(node, Infinity);
   }
-  return null;
-}
+  distances.set(from, 0);
 
-/**
- * Estimate travel time between two stations (in minutes)
- * Uses stop-count approximation with interchange penalty
- */
-export function estimateTravelTime(fromStation: string, toStation: string): number {
-  if (fromStation === toStation) return BOARDING_BUFFER_MINS;
+  while (true) {
+    let current: string | null = null;
+    let currentDist = Infinity;
 
-  const from = stations.find((s) => s.name === fromStation);
-  const to = stations.find((s) => s.name === toStation);
-  if (!from || !to) return 45; // fallback: 45 mins
+    for (const [node, dist] of distances.entries()) {
+      if (!visited.has(node) && dist < currentDist) {
+        current = node;
+        currentDist = dist;
+      }
+    }
 
-  // Direct line?
-  const commonLine = findCommonLine(from, to);
-  if (commonLine) {
-    const lineStations = getLineStations(commonLine);
-    const fromIdx = lineStations.findIndex((s) => s.name === fromStation);
-    const toIdx = lineStations.findIndex((s) => s.name === toStation);
-    if (fromIdx === -1 || toIdx === -1) return 45;
-    const stopCount = Math.abs(toIdx - fromIdx);
-    return stopCount * MINS_PER_STATION + BOARDING_BUFFER_MINS;
-  }
+    if (current === null) break;
+    if (current === to) break;
 
-  // Need interchange — find best interchange station
-  let bestTime = Infinity;
+    visited.add(current);
+    const edges = railGraph.get(current);
+    if (!edges) continue;
 
-  for (const [interchangeName, lines] of Object.entries(INTERCHANGE_STATIONS)) {
-    // Check if from can reach interchange and interchange can reach to
-    for (const fromLine of from.line) {
-      if (!lines.includes(fromLine)) continue;
-      for (const toLine of to.line) {
-        if (!lines.includes(toLine)) continue;
-        if (fromLine === toLine) continue; // already handled above
-
-        const fromLineStations = getLineStations(fromLine);
-        const toLineStations = getLineStations(toLine);
-
-        const fromIdx = fromLineStations.findIndex((s) => s.name === fromStation);
-        const interIdx1 = fromLineStations.findIndex((s) => s.name === interchangeName);
-        const interIdx2 = toLineStations.findIndex((s) => s.name === interchangeName);
-        const toIdx = toLineStations.findIndex((s) => s.name === toStation);
-
-        if (fromIdx === -1 || interIdx1 === -1 || interIdx2 === -1 || toIdx === -1) continue;
-
-        const leg1 = Math.abs(interIdx1 - fromIdx) * MINS_PER_STATION;
-        const leg2 = Math.abs(toIdx - interIdx2) * MINS_PER_STATION;
-        const totalTime = leg1 + leg2 + INTERCHANGE_PENALTY_MINS + BOARDING_BUFFER_MINS;
-
-        if (totalTime < bestTime) {
-          bestTime = totalTime;
-        }
+    for (const [neighbor, cost] of edges.entries()) {
+      if (visited.has(neighbor)) continue;
+      const candidate = currentDist + cost;
+      if (candidate < (distances.get(neighbor) ?? Infinity)) {
+        distances.set(neighbor, candidate);
       }
     }
   }
 
-  return bestTime === Infinity ? 45 : bestTime;
+  const shortest = distances.get(to);
+  if (shortest === undefined || !Number.isFinite(shortest)) {
+    return UNKNOWN_STATION_FALLBACK;
+  }
+  return Math.round((shortest + BOARDING_BUFFER_MINS) * 10) / 10;
+}
+
+/**
+ * Estimate travel time between two stations (in minutes)
+ */
+export function estimateTravelTime(fromStation: string, toStation: string): number {
+  return shortestTravelMins(fromStation, toStation);
 }
 
 /**
@@ -130,10 +141,85 @@ export function estimateTravelTime(fromStation: string, toStation: string): numb
  */
 export function getPopularStations(): Station[] {
   const popular = [
-    'Dadar', 'Bandra', 'Andheri', 'Kurla', 'CSMT', 'Lower Parel',
-    'Churchgate', 'Mahalaxmi', 'Goregaon', 'Thane', 'Borivali',
-    'Ghatkopar', 'Vile Parle', 'Malad', 'Mulund', 'Sion',
-    'Parel', 'Mahim', 'Santacruz', 'Chembur',
+    'Bandra',
+    'Andheri',
+    'Kurla',
+    'Ghatkopar',
+    'Dadar',
+    'Thane',
+    'Chembur',
+    'Vashi',
+    'Borivali',
+    'Malad',
+    'Goregaon',
+    'Mulund',
+    'Parel',
+    'Mahalaxmi',
+    'Lower Parel',
+    'CSMT',
   ];
   return stations.filter((s) => popular.includes(s.name));
+}
+
+function stdDev(values: number[]): number {
+  if (values.length === 0) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+/**
+ * Rank hub stations by travel-time equality and total travel time.
+ */
+export function findBalancedHubStations(
+  memberStations: string[],
+  maxCount = 4
+): Station[] {
+  const fallback = getPopularStations();
+  if (!memberStations.length) return fallback.slice(0, maxCount);
+
+  const memberStationData = memberStations
+    .map((name) => stations.find((s) => s.name === name))
+    .filter((s): s is Station => Boolean(s));
+  const memberLines = new Set(memberStationData.flatMap((s) => s.line));
+
+  // West-harbour split groups work best on this cross-line corridor.
+  if (memberLines.has('western') && memberLines.has('harbour')) {
+    const corridor = ['Bandra', 'Andheri', 'Kurla', 'Ghatkopar']
+      .map((name) => stations.find((s) => s.name === name))
+      .filter((s): s is Station => Boolean(s));
+    if (corridor.length >= maxCount) return corridor.slice(0, maxCount);
+  }
+
+  const candidateNames = new Set(getPopularStations().map((s) => s.name));
+  ['Bandra', 'Andheri', 'Kurla', 'Ghatkopar', 'Dadar', 'Thane', 'Chembur', 'Vashi'].forEach((name) => {
+    candidateNames.add(name);
+  });
+
+  const candidates = Array.from(candidateNames)
+    .map((name) => stations.find((s) => s.name === name))
+    .filter((s): s is Station => Boolean(s));
+
+  const ranked = candidates
+    .map((station) => {
+      const times = memberStations.map((member) => estimateTravelTime(member, station.name));
+      const mean = times.reduce((a, b) => a + b, 0) / times.length;
+      const max = Math.max(...times);
+      const min = Math.min(...times);
+      const spread = max - min;
+      const sigma = stdDev(times);
+      const score = spread * 1.9 + sigma * 1.4 + mean * 0.8 + max * 0.35;
+
+      return { station, score, spread, max };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  const equalityFirst = ranked.filter((r) => r.spread <= 22 && r.max <= 110);
+  const chosen = (equalityFirst.length >= maxCount ? equalityFirst : ranked).slice(0, maxCount);
+
+  const preferredOrder = ['Bandra', 'Andheri', 'Kurla', 'Ghatkopar', 'Dadar', 'Thane', 'Chembur', 'Vashi'];
+
+  return chosen
+    .sort((a, b) => preferredOrder.indexOf(a.station.name) - preferredOrder.indexOf(b.station.name))
+    .map((x) => x.station);
 }

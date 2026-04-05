@@ -37,6 +37,14 @@ Constraints:
 - No links, no URLs, and no page titles. Each stop must be a venue or activity people can actually do on the day.
 - Estimated cost should be realistic for that venue type and local Mumbai pricing. Do not inflate prices.
 - If one high-rated activity is expensive, prefer cheaper food stops (e.g., quick-service options) to keep total budget practical.
+- Use activity search intent and eatery search intent separately when choosing stops: activities/events must be specific, eateries must be specific cafes/restaurants.
+- Prefer top-rated venues that still fit budget and mood.
+- Keep stop names as exact real venue/activity names, never source pages.
+- Mood flow examples (adapt dynamically, not rigid):
+  - romantic: stylish lunch or cafe, then experience/dessert/ice-cream, then cozy evening stop
+  - adventure: action activity (e.g. trampoline/bowling/escape room), then budget-friendly meal, then optional short add-on
+  - chill: slow cafe + relaxed activity + easy dinner/walk
+  - fun: social activity/event + lively meal + dessert or quick hangout
 
 Return exactly this JSON structure:
 {

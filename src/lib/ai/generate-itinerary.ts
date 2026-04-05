@@ -92,7 +92,7 @@ export async function generateItineraryForHub(
     }
 
     if (parsed) {
-      parsed = postProcessItinerary(parsed, topCandidates, hub, perPersonCap);
+      parsed = postProcessItinerary(parsed, topCandidates, hub, perPersonCap, mood);
 
       // Post-process: if over budget, adjust
       if (parsed.total_cost_per_person > perPersonCap) {
@@ -104,14 +104,14 @@ export async function generateItineraryForHub(
     // Fallback
     console.warn(`[AI] Both attempts failed for hub ${hub.name}, using fallback`);
     return {
-      plan: buildFallbackItinerary(topCandidates, perPersonCap),
+      plan: buildFallbackItinerary(topCandidates, perPersonCap, mood),
       method: 'rule_based_fallback',
       model: null,
     };
   } catch (err) {
     console.error(`[AI] Error generating for hub ${hub.name}:`, err);
     return {
-      plan: buildFallbackItinerary(topCandidates, perPersonCap),
+      plan: buildFallbackItinerary(topCandidates, perPersonCap, mood),
       method: 'rule_based_fallback',
       model: null,
     };
@@ -131,6 +131,11 @@ function placeNameLooksGeneric(name: string): boolean {
     'things to do',
     'justdial',
     'tripadvisor',
+    'zomato',
+    'bookmyshow',
+    'google maps',
+    'near me',
+    'review',
     'wanderlog',
     'thrillophilia',
     'in mumbai',
@@ -145,6 +150,36 @@ function placeNameLooksGeneric(name: string): boolean {
     'list of',
   ];
   return banned.some((term) => lowered.includes(term));
+}
+
+function moodTypePlan(mood: Mood): Array<AIItineraryResponse['stops'][number]['place_type']> {
+  switch (mood) {
+    case 'romantic':
+      return ['restaurant', 'activity', 'cafe'];
+    case 'adventure':
+      return ['activity', 'restaurant', 'activity'];
+    case 'chill':
+      return ['cafe', 'outdoor', 'restaurant'];
+    case 'fun':
+    default:
+      return ['activity', 'restaurant', 'cafe'];
+  }
+}
+
+function pickByType(
+  preferredType: AIItineraryResponse['stops'][number]['place_type'],
+  candidates: Place[],
+  used: Set<string>
+): Place | null {
+  const exact = candidates.find((c) => c.type === preferredType && !used.has(c.name));
+  if (exact) return exact;
+
+  if (preferredType === 'restaurant' || preferredType === 'cafe') {
+    const eatery = candidates.find((c) => (c.type === 'restaurant' || c.type === 'cafe') && !used.has(c.name));
+    if (eatery) return eatery;
+  }
+
+  return candidates.find((c) => !used.has(c.name)) || null;
 }
 
 function closestCandidateByName(name: string, candidates: Place[], used: Set<string>): Place | null {
@@ -193,16 +228,19 @@ function postProcessItinerary(
   itinerary: AIItineraryResponse,
   candidates: Place[],
   hub: HubCandidate,
-  perPersonCap: number
+  perPersonCap: number,
+  mood: Mood
 ): AIItineraryResponse {
   const used = new Set<string>();
   let previousPoint: { lat: number; lng: number } = { lat: hub.lat, lng: hub.lng };
+  const desiredTypes = moodTypePlan(mood);
 
   const stops = itinerary.stops.map((stop, index) => {
+    const preferredType = desiredTypes[index] || stop.place_type;
     let matched = closestCandidateByName(stop.place_name, candidates, used);
 
     if (!matched || placeNameLooksGeneric(stop.place_name)) {
-      matched = pickFallbackCandidate(candidates, used);
+      matched = pickByType(preferredType, candidates, used) || pickFallbackCandidate(candidates, used);
     }
 
     if (matched) {
@@ -236,12 +274,13 @@ function postProcessItinerary(
     return {
       ...stop,
       place_name: matched?.name || stop.place_name,
-      place_type: matched?.type || stop.place_type,
+      place_type: matched?.type || preferredType,
       estimated_cost_per_person: finalCost,
       walk_from_previous_mins: walk,
       distance_from_previous_km: distanceKm,
       lat: hasCoords ? Number(matched?.lat) : undefined,
       lng: hasCoords ? Number(matched?.lng) : undefined,
+      source_url: undefined,
     };
   });
 

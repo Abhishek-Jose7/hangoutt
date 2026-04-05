@@ -48,7 +48,7 @@ export class GoogleMapsAdapter implements MapAdapter {
   private polylines: GooglePolylineInstance[] = [];
 
   async init(container: HTMLElement, center: LatLng, zoom: number): Promise<void> {
-    if (!window.google?.maps) {
+    if (!window.google?.maps?.Map || typeof window.google.maps.Map !== 'function') {
       throw new Error('Google Maps not available');
     }
 

@@ -3,6 +3,8 @@ import { cacheGet, cacheSet } from './redis';
 import { getBudgetLabel } from './budget';
 import { getCuratedVenues } from './venue-catalog';
 
+type TavilyResult = { title: string; content: string; url: string; score: number };
+
 /**
  * Search for places near a hub using Tavily
  */
@@ -39,35 +41,30 @@ export async function searchPlaces(
 
     const { tavily } = await import('@tavily/core');
     const client = tavily({ apiKey });
-    const moodTerms: Record<Mood, string> = {
-      fun: 'arcade, bowling, social cafe, live events, high-energy activities',
-      chill: 'quiet cafe, scenic walk, board games cafe, peaceful hangout spots',
-      romantic: 'date cafe, sunset point, romantic restaurants, cozy activities',
-      adventure: 'escape room, sports activity, climbing, experiential places',
+    const moodActivityTerms: Record<Mood, string> = {
+      fun: 'arcade, standup comedy, live gig, social games, karaoke, bowling',
+      chill: 'promenade walk, pottery workshop, board games, art gallery, scenic stroll',
+      romantic: 'sunset walk, couple activity, aesthetic experience, art date, live jazz',
+      adventure: 'trampoline park, bowling, escape room, go-karting, climbing, action activity',
     };
-    const query = `specific cafe and activity venues open today for ${mood} hangout near ${hubName} Mumbai, ${moodTerms[mood]}, budget ${budgetLabel}, include real place names and avoid listicles`;
+    const moodEateryTerms: Record<Mood, string> = {
+      fun: 'trending cafes, lively restaurants, social food places',
+      chill: 'calm cafe, brunch, cozy coffee places, quiet restaurants',
+      romantic: 'fancy lunch, date-night restaurant, dessert spots, ice cream parlour',
+      adventure: 'budget meals, quick-service food, post-activity meal spots',
+    };
 
-    const response = await client.search(query, {
-      maxResults: 10,
-      searchDepth: 'basic',
-    });
+    const activityQuery = `top rated activities and events happening today near ${hubName} Mumbai for ${mood} mood, ${moodActivityTerms[mood]}, include only real venue names with timings and avoid listicles`;
+    const eateryQuery = `top rated cafes and restaurants open today near ${hubName} Mumbai for ${mood} mood, ${moodEateryTerms[mood]}, budget ${budgetLabel}, include real venue names and approximate per-person cost`;
 
-    const tavilyPlaces: Place[] = (response.results || [])
-      .map((r: { title: string; content: string; url: string; score: number }, i: number) => {
-        const candidateName = cleanPlaceName(r.title || `Place ${i + 1}`);
-        const costGuess = extractCostEstimate(`${r.title} ${r.content}`);
+    const [activityResponse, eateryResponse] = await Promise.all([
+      client.search(activityQuery, { maxResults: 10, searchDepth: 'basic' }),
+      client.search(eateryQuery, { maxResults: 10, searchDepth: 'basic' }),
+    ]);
 
-        return {
-          name: candidateName,
-          type: inferPlaceType(r.title, r.content),
-          description: (r.content || '').slice(0, 220),
-          source: 'tavily' as const,
-          relevance_score: r.score || 0.5,
-          url: r.url,
-          estimated_cost: costGuess,
-        } satisfies Place;
-      })
-      .filter((p) => isSpecificVenueName(p.name) && !looksLikeSearchResult(p.name, p.description));
+    const activityPlaces = parseTavilyPlaces(activityResponse.results || [], 'activity', avgBudget);
+    const eateryPlaces = parseTavilyPlaces(eateryResponse.results || [], 'eatery', avgBudget);
+    const tavilyPlaces = prioritizeDynamicPlaces([...activityPlaces, ...eateryPlaces], avgBudget, mood);
 
     const osmPlaces = await overpassFallback(hubName, hubLocation.lat, hubLocation.lng);
     const dynamicOnly = dedupePlaces([...tavilyPlaces, ...osmPlaces]);
@@ -95,6 +92,55 @@ export async function searchPlaces(
       estimated_cost: place.estimated_cost || defaultEstimatedCost(place.type, avgBudget),
     }));
   }
+}
+
+function parseTavilyPlaces(results: TavilyResult[], intent: 'activity' | 'eatery', avgBudget: number): Place[] {
+  return results
+    .map((r: TavilyResult, i: number) => {
+      const candidateName = cleanPlaceName(r.title || `Place ${i + 1}`);
+      const normalizedText = `${r.title} ${r.content}`;
+      const costGuess = extractCostEstimate(normalizedText);
+      const ratingBoost = extractRatingBoost(normalizedText);
+      const inferredType = inferPlaceType(r.title, r.content);
+
+      const type = intent === 'eatery'
+        ? (inferredType === 'activity' || inferredType === 'outdoor' ? 'restaurant' : inferredType)
+        : (inferredType === 'cafe' || inferredType === 'restaurant' ? 'activity' : inferredType);
+
+      return {
+        name: candidateName,
+        type,
+        description: (r.content || '').slice(0, 220),
+        source: 'tavily' as const,
+        relevance_score: Math.min(1, (r.score || 0.5) + ratingBoost),
+        url: r.url,
+        estimated_cost: costGuess || defaultEstimatedCost(type, avgBudget),
+      } satisfies Place;
+    })
+    .filter((p) => isSpecificVenueName(p.name) && !looksLikeSearchResult(p.name, p.description, p.url));
+}
+
+function prioritizeDynamicPlaces(places: Place[], avgBudget: number, mood: Mood): Place[] {
+  const eateryMoodBonus: Record<Mood, string[]> = {
+    fun: ['social', 'lively', 'trending', 'music'],
+    chill: ['calm', 'quiet', 'cozy', 'brunch'],
+    romantic: ['romantic', 'date', 'dessert', 'ice cream', 'aesthetic', 'fancy'],
+    adventure: ['quick', 'budget', 'fast', 'post activity'],
+  };
+
+  const ranked = [...places].map((place) => {
+    const text = `${place.name} ${place.description}`.toLowerCase();
+    const isEatery = place.type === 'cafe' || place.type === 'restaurant';
+    const budget = place.estimated_cost ?? defaultEstimatedCost(place.type, avgBudget);
+    const budgetFit = budget <= avgBudget ? 1 : Math.max(0.25, 1 - (budget - avgBudget) / Math.max(avgBudget, 1));
+    const moodHit = eateryMoodBonus[mood].some((k) => text.includes(k)) ? 1 : 0;
+    const eateryBoost = isEatery ? 0.1 : 0;
+    const score = place.relevance_score * 0.62 + budgetFit * 0.28 + moodHit * 0.1 + eateryBoost;
+    return { place, score };
+  });
+
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked.map((r) => r.place);
 }
 
 /**
@@ -161,8 +207,8 @@ function isSpecificVenueName(name: string): boolean {
   return /[a-z]/i.test(name);
 }
 
-function looksLikeSearchResult(name: string, description: string): boolean {
-  const text = `${name} ${description}`.toLowerCase();
+function looksLikeSearchResultWithUrl(text: string, url: string): boolean {
+  const lowerUrl = url.toLowerCase();
   return /\b(best|top|guide|list|ranking|review|reviews|near|visit|places|things)\b/.test(text)
     || text.includes('justdial')
     || text.includes('tripadvisor')
@@ -172,7 +218,30 @@ function looksLikeSearchResult(name: string, description: string): boolean {
     || text.includes('blog')
     || text.includes('permanently closed')
     || text.includes('temporarily closed')
-    || text.includes('closed today');
+    || text.includes('closed today')
+    || lowerUrl.includes('tripadvisor')
+    || lowerUrl.includes('wanderlog')
+    || lowerUrl.includes('thrillophilia')
+    || lowerUrl.includes('justdial')
+    || lowerUrl.includes('zomato')
+    || lowerUrl.includes('bookmyshow/event/venues');
+}
+
+function looksLikeSearchResult(name: string, description: string, url?: string): boolean {
+  const text = `${name} ${description}`.toLowerCase();
+  return looksLikeSearchResultWithUrl(text, url || '');
+}
+
+function extractRatingBoost(text: string): number {
+  const ratingMatch = text.match(/\b([3-5]\.?[0-9]?)\s*\/?\s*5\b|\b([3-5]\.?[0-9]?)\s*stars?\b/i);
+  if (!ratingMatch) return 0;
+  const raw = Number(ratingMatch[1] || ratingMatch[2]);
+  if (!Number.isFinite(raw)) return 0;
+  if (raw >= 4.7) return 0.2;
+  if (raw >= 4.4) return 0.16;
+  if (raw >= 4.1) return 0.12;
+  if (raw >= 3.8) return 0.08;
+  return 0.03;
 }
 
 function extractCostEstimate(text: string): number | undefined {

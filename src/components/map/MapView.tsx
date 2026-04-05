@@ -26,7 +26,7 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
     return Promise.reject(new Error('Window unavailable'));
   }
 
-  if (window.google?.maps) {
+  if (window.google?.maps?.Map && typeof window.google.maps.Map === 'function') {
     return Promise.resolve();
   }
 
@@ -47,7 +47,13 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
     script.async = true;
     script.defer = true;
     script.dataset.googleMaps = 'true';
-    script.onload = () => resolve();
+    script.onload = () => {
+      if (window.google?.maps?.Map && typeof window.google.maps.Map === 'function') {
+        resolve();
+      } else {
+        reject(new Error('Google Maps constructor unavailable'));
+      }
+    };
     script.onerror = () => reject(new Error('Google Maps failed to load'));
     document.head.appendChild(script);
   });
@@ -70,7 +76,7 @@ export function MapView({ center, markers, polylines = [], className }: MapViewP
       const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
       try {
-        if (!key) {
+        if (!key || key === 'placeholder' || key.startsWith('placeholder')) {
           throw new Error('Google Maps key missing');
         }
 

@@ -151,6 +151,7 @@ export default function PlanningPage() {
 
   const handleGenerate = async () => {
     try {
+      generate.reset();
       await generate.mutateAsync();
     } catch {
       // error shown
@@ -331,9 +332,21 @@ export default function PlanningPage() {
               )}
 
               {isAdmin && generate.isError ? (
-                <p className="text-sm text-[var(--color-danger)] mt-2 text-center">
-                  {generate.error.message}
-                </p>
+                <div className="mt-3 rounded-xl border border-[var(--color-danger)]/30 bg-[rgba(220,20,60,0.08)] p-4 text-center space-y-2">
+                  <p className="text-sm text-[var(--color-danger)]">
+                    {generate.error.message}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-9 px-4 text-xs"
+                    onClick={handleGenerate}
+                    loading={generate.isPending}
+                    disabled={!allReady}
+                  >
+                    Try again
+                  </Button>
+                </div>
               ) : null}
             </motion.div>
 

@@ -1,43 +1,34 @@
-import type { AIItineraryResponse, Place } from '@/types';
+import type { AIItineraryResponse, Mood, Place } from '@/types';
 
 /**
  * Rule-based fallback when Claude fails to generate a valid itinerary
  */
 export function buildFallbackItinerary(
   places: Place[],
-  perPersonCap: number
+  perPersonCap: number,
+  mood: Mood
 ): AIItineraryResponse {
-  // Sort places by typical time-of-day: café → activity → restaurant → outdoor
-  const typeOrder: Record<string, number> = {
-    cafe: 0,
-    outdoor: 1,
-    activity: 2,
-    restaurant: 3,
+  const moodPattern: Record<Mood, Array<Place['type']>> = {
+    romantic: ['restaurant', 'activity', 'cafe'],
+    adventure: ['activity', 'restaurant', 'activity'],
+    chill: ['cafe', 'outdoor', 'restaurant'],
+    fun: ['activity', 'restaurant', 'cafe'],
   };
 
-  const sorted = [...places].sort(
-    (a, b) => (typeOrder[a.type] ?? 2) - (typeOrder[b.type] ?? 2)
-  );
-
-  // Pick top 3, one per type if possible
-  const selectedTypes = new Set<string>();
+  const desired = moodPattern[mood];
   const selected: Place[] = [];
+  const used = new Set<string>();
 
-  for (const place of sorted) {
-    if (selected.length >= 3) break;
-    if (!selectedTypes.has(place.type)) {
-      selectedTypes.add(place.type);
-      selected.push(place);
-    }
-  }
+  for (const preferredType of desired) {
+    const pick = places.find((p) => p.type === preferredType && !used.has(p.name))
+      || (preferredType === 'restaurant' || preferredType === 'cafe'
+        ? places.find((p) => (p.type === 'restaurant' || p.type === 'cafe') && !used.has(p.name))
+        : null)
+      || places.find((p) => !used.has(p.name));
 
-  // Fill remaining if less than 3
-  if (selected.length < 3) {
-    for (const place of sorted) {
-      if (selected.length >= 3) break;
-      if (!selected.includes(place)) {
-        selected.push(place);
-      }
+    if (pick) {
+      selected.push(pick);
+      used.add(pick.name);
     }
   }
 
@@ -65,6 +56,6 @@ export function buildFallbackItinerary(
     stops,
     total_cost_per_person: totalCost,
     contingency_buffer: Math.round(totalCost * 0.15),
-    day_summary: `A ${selected.length}-stop hangout built around specific local venues`,
+    day_summary: `A ${mood}-leaning ${selected.length}-stop hangout built around specific local venues`,
   };
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { findNearestStation } from '@/lib/transit';
 import { UpdateMemberLocationSchema } from '@/types';
 
 // PATCH /api/rooms/[id]/members/me — Update own location + budget
@@ -53,9 +54,17 @@ export async function PATCH(
       );
     }
 
+    const updatePayload: Record<string, unknown> = { ...parsed.data };
+    if (typeof parsed.data.lat === 'number' && typeof parsed.data.lng === 'number') {
+      updatePayload.nearest_station = findNearestStation({
+        lat: parsed.data.lat,
+        lng: parsed.data.lng,
+      }).name;
+    }
+
     const { data: updated, error } = await supabase
       .from('room_members')
-      .update(parsed.data)
+      .update(updatePayload)
       .eq('room_id', id)
       .eq('user_id', userId)
       .select()
