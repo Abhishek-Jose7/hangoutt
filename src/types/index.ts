@@ -215,6 +215,7 @@ export interface Place {
   lng?: number;
   description: string;
   estimated_cost?: number;
+  inferred_rating?: number;
   source: 'tavily' | 'osm_fallback';
   relevance_score: number;
   url?: string;

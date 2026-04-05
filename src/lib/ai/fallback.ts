@@ -9,10 +9,10 @@ export function buildFallbackItinerary(
   mood: Mood
 ): AIItineraryResponse {
   const moodPattern: Record<Mood, Array<Place['type']>> = {
-    romantic: ['restaurant', 'activity', 'cafe'],
-    adventure: ['activity', 'restaurant', 'activity'],
-    chill: ['cafe', 'outdoor', 'restaurant'],
-    fun: ['activity', 'restaurant', 'cafe'],
+    romantic: ['restaurant', 'activity', 'outdoor'],
+    adventure: ['activity', 'restaurant', 'outdoor'],
+    chill: ['cafe', 'activity', 'outdoor'],
+    fun: ['activity', 'restaurant', 'outdoor'],
   };
 
   const desired = moodPattern[mood];

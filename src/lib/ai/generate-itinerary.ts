@@ -155,15 +155,24 @@ function placeNameLooksGeneric(name: string): boolean {
 function moodTypePlan(mood: Mood): Array<AIItineraryResponse['stops'][number]['place_type']> {
   switch (mood) {
     case 'romantic':
-      return ['restaurant', 'activity', 'cafe'];
+      return ['restaurant', 'activity', 'outdoor'];
     case 'adventure':
-      return ['activity', 'restaurant', 'activity'];
+      return ['activity', 'restaurant', 'outdoor'];
     case 'chill':
-      return ['cafe', 'outdoor', 'restaurant'];
+      return ['cafe', 'activity', 'outdoor'];
     case 'fun':
     default:
-      return ['activity', 'restaurant', 'cafe'];
+      return ['activity', 'restaurant', 'outdoor'];
   }
+}
+
+function isEatery(placeType: Place['type']): boolean {
+  return placeType === 'restaurant' || placeType === 'cafe';
+}
+
+function isTicketedAdventurePlace(place: Place): boolean {
+  const text = `${place.name} ${place.description}`.toLowerCase();
+  return /(bounce|bowling|escape room|trampoline|ticket|slot|session|go kart|arcade)/i.test(text);
 }
 
 function pickByType(
@@ -235,6 +244,15 @@ function postProcessItinerary(
   let previousPoint: { lat: number; lng: number } = { lat: hub.lat, lng: hub.lng };
   const desiredTypes = moodTypePlan(mood);
 
+  const primaryActivity =
+    mood === 'adventure'
+      ? candidates.find((c) => c.type === 'activity' && isTicketedAdventurePlace(c))
+        || candidates.find((c) => c.type === 'activity')
+      : candidates.find((c) => c.type === 'activity');
+  const primaryEatery =
+    candidates.find((c) => isEatery(c.type) && (c.inferred_rating ?? 0) >= 4.0)
+    || candidates.find((c) => isEatery(c.type));
+
   const stops = itinerary.stops.map((stop, index) => {
     const preferredType = desiredTypes[index] || stop.place_type;
     let matched = closestCandidateByName(stop.place_name, candidates, used);
@@ -283,6 +301,35 @@ function postProcessItinerary(
       source_url: undefined,
     };
   });
+
+  // Enforce exactly one primary activity + one primary eatery anchor per itinerary.
+  if (stops.length >= 2) {
+    const activitySlot = mood === 'romantic' ? 1 : 0;
+    const eaterySlot = mood === 'romantic' ? 0 : 1;
+
+    if (primaryActivity) {
+      const activityCost = Math.min(perPersonCap, Math.round(primaryActivity.estimated_cost ?? perPersonCap * 0.35));
+      stops[activitySlot] = {
+        ...stops[activitySlot],
+        place_name: primaryActivity.name,
+        place_type: 'activity',
+        estimated_cost_per_person: activityCost,
+        vibe_note: stops[activitySlot].vibe_note || `Primary activity anchor for ${mood} mood`,
+      };
+    }
+
+    if (primaryEatery) {
+      const eateryType: Place['type'] = isEatery(primaryEatery.type) ? primaryEatery.type : 'restaurant';
+      const eateryCost = Math.min(perPersonCap, Math.round(primaryEatery.estimated_cost ?? perPersonCap * 0.32));
+      stops[eaterySlot] = {
+        ...stops[eaterySlot],
+        place_name: primaryEatery.name,
+        place_type: eateryType,
+        estimated_cost_per_person: eateryCost,
+        vibe_note: stops[eaterySlot].vibe_note || `Primary eatery anchor for ${mood} mood`,
+      };
+    }
+  }
 
   const total = stops.reduce((sum, s) => sum + s.estimated_cost_per_person, 0);
 

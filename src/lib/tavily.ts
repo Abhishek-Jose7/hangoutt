@@ -101,6 +101,7 @@ function parseTavilyPlaces(results: TavilyResult[], intent: 'activity' | 'eatery
       const normalizedText = `${r.title} ${r.content}`;
       const costGuess = extractCostEstimate(normalizedText);
       const ratingBoost = extractRatingBoost(normalizedText);
+      const inferredRating = extractRatingValue(normalizedText);
       const inferredType = inferPlaceType(r.title, r.content);
 
       const type = intent === 'eatery'
@@ -114,10 +115,25 @@ function parseTavilyPlaces(results: TavilyResult[], intent: 'activity' | 'eatery
         source: 'tavily' as const,
         relevance_score: Math.min(1, (r.score || 0.5) + ratingBoost),
         url: r.url,
+        inferred_rating: inferredRating,
         estimated_cost: costGuess || defaultEstimatedCost(type, avgBudget),
       } satisfies Place;
     })
-    .filter((p) => isSpecificVenueName(p.name) && !looksLikeSearchResult(p.name, p.description, p.url));
+    .filter((p) => isSpecificVenueName(p.name) && !looksLikeSearchResult(p.name, p.description, p.url))
+    .filter((p) => (intent === 'activity' ? !looksLikeGenericTicketedActivityLabel(p.name) : true));
+}
+
+function enforceEateryQualityThreshold(places: Place[]): Place[] {
+  const eateries = places.filter((p) => p.type === 'restaurant' || p.type === 'cafe');
+  const highQuality = eateries.filter((p) => (p.inferred_rating ?? 0) >= 4.0);
+
+  if (highQuality.length === 0) return places;
+
+  const highQualityNames = new Set(highQuality.map((p) => p.name));
+  return places.filter((p) => {
+    if (p.type !== 'restaurant' && p.type !== 'cafe') return true;
+    return highQualityNames.has(p.name);
+  });
 }
 
 function prioritizeDynamicPlaces(places: Place[], avgBudget: number, mood: Mood): Place[] {
@@ -135,12 +151,51 @@ function prioritizeDynamicPlaces(places: Place[], avgBudget: number, mood: Mood)
     const budgetFit = budget <= avgBudget ? 1 : Math.max(0.25, 1 - (budget - avgBudget) / Math.max(avgBudget, 1));
     const moodHit = eateryMoodBonus[mood].some((k) => text.includes(k)) ? 1 : 0;
     const eateryBoost = isEatery ? 0.1 : 0;
-    const score = place.relevance_score * 0.62 + budgetFit * 0.28 + moodHit * 0.1 + eateryBoost;
+    const ratingSignal = Math.min(1, (place.inferred_rating ?? 0) / 5);
+    const adventureTicketedBoost =
+      mood === 'adventure' && isTicketedActivityPlace(place)
+        ? 0.18
+        : 0;
+    const score =
+      place.relevance_score * 0.5 +
+      budgetFit * 0.22 +
+      moodHit * 0.08 +
+      eateryBoost +
+      ratingSignal * 0.1 +
+      adventureTicketedBoost;
     return { place, score };
   });
 
   ranked.sort((a, b) => b.score - a.score);
-  return ranked.map((r) => r.place);
+  return enforceEateryQualityThreshold(ranked.map((r) => r.place));
+}
+
+function looksLikeGenericTicketedActivityLabel(name: string): boolean {
+  const lowered = name.toLowerCase().trim();
+  const genericOnly = [
+    'bowling',
+    'escape room',
+    'trampoline park',
+    'arcade',
+    'gaming zone',
+    'go karting',
+  ];
+
+  if (genericOnly.includes(lowered)) return true;
+
+  // Ticketed labels should generally have a venue token with location or brand.
+  if (/(bowling|escape|trampoline|arcade|go kart)/i.test(lowered)) {
+    const hasVenueHint = /(mall|marketcity|palacio|smaaash|bounce|mumbai|andheri|bandra|kurla|powai|malad|phoenix)/i.test(lowered);
+    return !hasVenueHint;
+  }
+
+  return false;
+}
+
+function isTicketedActivityPlace(place: Place): boolean {
+  if (place.type !== 'activity') return false;
+  const text = `${place.name} ${place.description}`.toLowerCase();
+  return /(ticket|book|slot|session|trampoline|bounce|bowling|escape room|arcade|go kart)/i.test(text);
 }
 
 /**
@@ -233,15 +288,21 @@ function looksLikeSearchResult(name: string, description: string, url?: string):
 }
 
 function extractRatingBoost(text: string): number {
-  const ratingMatch = text.match(/\b([3-5]\.?[0-9]?)\s*\/?\s*5\b|\b([3-5]\.?[0-9]?)\s*stars?\b/i);
-  if (!ratingMatch) return 0;
-  const raw = Number(ratingMatch[1] || ratingMatch[2]);
-  if (!Number.isFinite(raw)) return 0;
+  const raw = extractRatingValue(text);
+  if (raw === undefined || !Number.isFinite(raw)) return 0;
   if (raw >= 4.7) return 0.2;
   if (raw >= 4.4) return 0.16;
   if (raw >= 4.1) return 0.12;
   if (raw >= 3.8) return 0.08;
   return 0.03;
+}
+
+function extractRatingValue(text: string): number | undefined {
+  const ratingMatch = text.match(/\b([3-5](?:\.[0-9])?)\s*\/?\s*5\b|\b([3-5](?:\.[0-9])?)\s*stars?\b/i);
+  if (!ratingMatch) return undefined;
+  const raw = Number(ratingMatch[1] || ratingMatch[2]);
+  if (!Number.isFinite(raw)) return undefined;
+  return Math.min(5, Math.max(0, raw));
 }
 
 function extractCostEstimate(text: string): number | undefined {
