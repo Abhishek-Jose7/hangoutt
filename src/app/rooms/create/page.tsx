@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Compass, Heart, MoonStar, Sparkles } from 'lucide-react';
 import { useCreateRoom } from '@/hooks/useRoom';
 import type { Mood } from '@/types';
+import { WebsiteHero, WebsitePage } from '@/components/site/WebsiteLayout';
 
 const moods: { value: Mood; icon: React.ComponentType<{ className?: string }>; label: string; desc: string }[] = [
   { value: 'fun', icon: Sparkles, label: 'Fun', desc: 'Lively social energy' },
@@ -37,9 +38,8 @@ export default function CreateRoomPage() {
   };
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
+    <WebsitePage>
+      <WebsiteHero>
           <div className="saas-grid-2 relative z-[1]">
             <div className="space-y-4">
               <span className="section-kicker">New Planning Room</span>
@@ -103,8 +103,7 @@ export default function CreateRoomPage() {
               </button>
             </form>
           </div>
-        </section>
-      </div>
-    </div>
+      </WebsiteHero>
+    </WebsitePage>
   );
 }

@@ -1,10 +1,10 @@
 import { SignUp } from '@clerk/nextjs';
+import { WebsiteHero, WebsitePage } from '@/components/site/WebsiteLayout';
 
 export default function SignUpPage() {
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section">
-        <section className="saas-hero">
+    <WebsitePage>
+      <WebsiteHero>
           <div className="saas-grid-2 relative z-[1] items-start">
             <div className="space-y-4">
               <span className="section-kicker">Start Free</span>
@@ -31,8 +31,7 @@ export default function SignUpPage() {
               />
             </div>
           </div>
-        </section>
-      </div>
-    </div>
+      </WebsiteHero>
+    </WebsitePage>
   );
 }

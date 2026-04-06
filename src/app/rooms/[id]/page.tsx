@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useRoom } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
+import { WebsiteHero, WebsitePage } from '@/components/site/WebsiteLayout';
 
 export default function RoomEntryPage() {
   const router = useRouter();
@@ -53,10 +54,9 @@ export default function RoomEntryPage() {
 
   if (isLoading) {
     return (
-      <div className="saas-page">
-        <div className="saas-shell saas-section">
-          <section className="saas-hero text-center">
-            <div className="relative z-[1] max-w-[680px] mx-auto">
+      <WebsitePage>
+          <WebsiteHero className="text-center">
+            <div className="relative z-[1] w-full">
               <span className="section-kicker">Room Handshake</span>
               <h1 className="saas-title mt-4">Routing To The Right Stage</h1>
               <p className="saas-lead mx-auto mt-3">
@@ -66,9 +66,8 @@ export default function RoomEntryPage() {
                 <div className="h-full bg-[var(--color-accent)] animate-pulse" />
               </div>
             </div>
-          </section>
-        </div>
-      </div>
+          </WebsiteHero>
+      </WebsitePage>
     );
   }
 

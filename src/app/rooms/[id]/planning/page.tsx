@@ -14,6 +14,7 @@ import { useRoomStore } from '@/store/useRoomStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import type { RoomMemberWithUser } from '@/types';
+import { WebsiteHero, WebsitePage, WebsiteSection } from '@/components/site/WebsiteLayout';
 
 export default function PlanningPage() {
   const params = useParams();
@@ -152,27 +153,27 @@ export default function PlanningPage() {
   const readinessPercent = totalMembers > 0 ? Math.round((membersReady / totalMembers) * 100) : 0;
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
-          <div className="relative z-[1] space-y-5">
-            <span className="section-kicker">Planning Stage</span>
-            <h1 className="saas-title">{room?.name || 'Planning Workspace'}</h1>
-            <p className="saas-lead">Capture location and budget inputs, then generate options after the full team is ready.</p>
+    <WebsitePage>
+      <WebsiteHero>
+        <div className="relative z-[1] space-y-5">
+          <span className="section-kicker">Planning Stage</span>
+          <h1 className="saas-title">{room?.name || 'Planning Workspace'}</h1>
+          <p className="saas-lead">Capture location and budget inputs, then generate options after the full team is ready.</p>
 
-            <div className="saas-grid-4">
-              <div className="saas-kpi"><p className="saas-kpi-label">Ready</p><p className="saas-kpi-value">{membersReady}</p></div>
-              <div className="saas-kpi"><p className="saas-kpi-label">Waiting</p><p className="saas-kpi-value">{waitingMembers}</p></div>
-              <div className="saas-kpi"><p className="saas-kpi-label">Completion</p><p className="saas-kpi-value">{readinessPercent}%</p></div>
-              <div className="saas-kpi"><p className="saas-kpi-label">Role</p><p className="saas-kpi-value">{isAdmin ? 'Admin' : 'Member'}</p></div>
-            </div>
+          <div className="saas-grid-4">
+            <div className="saas-kpi"><p className="saas-kpi-label">Ready</p><p className="saas-kpi-value">{membersReady}</p></div>
+            <div className="saas-kpi"><p className="saas-kpi-label">Waiting</p><p className="saas-kpi-value">{waitingMembers}</p></div>
+            <div className="saas-kpi"><p className="saas-kpi-label">Completion</p><p className="saas-kpi-value">{readinessPercent}%</p></div>
+            <div className="saas-kpi"><p className="saas-kpi-label">Role</p><p className="saas-kpi-value">{isAdmin ? 'Admin' : 'Member'}</p></div>
           </div>
-        </section>
+        </div>
+      </WebsiteHero>
 
-        <section className="saas-grid-2 items-start">
-          <div className="space-y-5">
+      <WebsiteSection className="saas-grid-2 items-start">
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 1: Location</p>
             <div className="panel p-5 space-y-4">
-              <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 1: Location</p>
               {locationSet ? (
                 <div className="saas-band space-y-2">
                   <p className="text-sm text-[var(--color-text-primary)]">{locationName}</p>
@@ -210,9 +211,11 @@ export default function PlanningPage() {
                 </div>
               )}
             </div>
+          </div>
 
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 2: Budget</p>
             <div className="panel p-5 space-y-4">
-              <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 2: Budget</p>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-[var(--color-text-secondary)] inline-flex items-center gap-1"><Wallet className="h-4 w-4" /> INR</span>
                 <Input
@@ -240,18 +243,20 @@ export default function PlanningPage() {
                 <span>₹3,000</span>
               </div>
             </div>
+          </div>
 
-            {!submitted ? (
-              <Button onClick={handleSubmit} disabled={!locationSet || updateMember.isPending} loading={updateMember.isPending} className="w-full" id="ready-btn">
-                Save My Inputs
-              </Button>
-            ) : (
-              <div className="saas-band text-sm text-[var(--color-success)]">Your inputs are saved. Waiting for remaining members.</div>
-            )}
+          {!submitted ? (
+            <Button onClick={handleSubmit} disabled={!locationSet || updateMember.isPending} loading={updateMember.isPending} className="w-full" id="ready-btn">
+              Save My Inputs
+            </Button>
+          ) : (
+            <div className="saas-band text-sm text-[var(--color-success)]">Your inputs are saved. Waiting for remaining members.</div>
+          )}
 
-            {isAdmin ? (
+          {isAdmin ? (
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 3: Generate</p>
               <div className="panel p-5 space-y-4">
-                <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Step 3: Generate</p>
                 <label htmlFor="meetup-start-time" className="text-sm font-medium block">Group meetup start time</label>
                 <Input
                   id="meetup-start-time"
@@ -274,13 +279,15 @@ export default function PlanningPage() {
                   <p className="text-sm text-[var(--color-danger)]">{generate.error.message}</p>
                 ) : null}
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+        </div>
 
-          <aside className="space-y-4">
+        <aside className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Team readiness ({membersReady}/{totalMembers})</p>
             <div className="panel p-5">
-              <p className="text-sm font-semibold text-[var(--color-text-primary)]">Team readiness ({membersReady}/{totalMembers})</p>
-              <div className="h-2 rounded-full bg-[var(--color-bg-elevated)] overflow-hidden mt-3 mb-3">
+              <div className="h-2 rounded-full bg-[var(--color-bg-elevated)] overflow-hidden mb-3">
                 <div className="h-full bg-[var(--color-accent)]" style={{ width: `${readinessPercent}%` }} />
               </div>
               <div className="space-y-2">
@@ -295,11 +302,11 @@ export default function PlanningPage() {
                 ))}
               </div>
             </div>
+          </div>
 
-            {updateMember.isError ? <p className="text-sm text-[var(--color-danger)]">{updateMember.error.message}</p> : null}
-          </aside>
-        </section>
-      </div>
-    </div>
+          {updateMember.isError ? <p className="text-sm text-[var(--color-danger)]">{updateMember.error.message}</p> : null}
+        </aside>
+      </WebsiteSection>
+    </WebsitePage>
   );
 }

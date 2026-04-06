@@ -153,28 +153,25 @@ body {
 
 .card {
   position: relative;
-  border: 1px solid var(--color-border-default);
-  border-radius: 22px;
-  overflow: hidden;
-  background:
-    linear-gradient(150deg, rgba(16, 16, 23, 0.98), rgba(10, 10, 15, 0.94));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.56);
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .card::before {
-  content: '';
+  content: none;
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(130deg, rgba(255, 255, 255, 0.08), transparent 45%, rgba(220, 20, 60, 0.08));
 }
 
 .card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(220, 20, 60, 0.38);
-  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.64);
+  border-color: rgba(220, 20, 60, 0.44);
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .surface-panel {
@@ -185,35 +182,38 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(220, 20, 60, 0.45);
-  background: rgba(220, 20, 60, 0.1);
-  color: #ff8ba3;
+  border: 1px solid rgba(220, 20, 60, 0.62);
+  background: rgba(220, 20, 60, 0.16);
+  color: #ff9db1;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 11px;
+  padding: 7px 14px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgba(220, 20, 60, 0.2) inset;
 }
 
 .section-title {
   font-family: var(--font-display);
   text-transform: uppercase;
-  font-size: clamp(2.4rem, 5vw, 4.8rem);
-  line-height: 0.94;
+  font-size: clamp(2.8rem, 5.7vw, 5.4rem);
+  line-height: 0.9;
   letter-spacing: 0.015em;
 }
 
 .section-copy {
-  color: var(--color-text-secondary);
-  max-width: 62ch;
+  color: #c9c9d2;
+  font-size: clamp(1.02rem, 1.3vw, 1.2rem);
+  line-height: 1.7;
+  max-width: 66ch;
 }
 
 .panel {
-  border: 1px solid var(--color-border-default);
-  border-radius: 20px;
-  background: linear-gradient(155deg, rgba(16, 16, 22, 0.95), rgba(11, 11, 17, 0.94));
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.01);
+  box-shadow: none;
 }
 
 .panel-soft {
@@ -470,13 +470,13 @@ body {
 
 .saas-shell {
   width: 100%;
-  max-width: 1320px;
+  max-width: none;
   margin: 0 auto;
-  padding: 0 28px;
+  padding: 0 clamp(16px, 2.8vw, 44px);
 }
 
 .saas-section {
-  padding: 40px 0;
+  padding: clamp(20px, 3vw, 44px) 0;
 }
 
 .saas-hero {
@@ -488,7 +488,7 @@ body {
     linear-gradient(125deg, rgba(16, 16, 23, 0.98), rgba(10, 10, 14, 0.98)),
     radial-gradient(circle at 85% 15%, rgba(220, 20, 60, 0.2), transparent 40%);
   box-shadow: 0 34px 80px rgba(0, 0, 0, 0.58);
-  padding: 40px;
+  padding: clamp(22px, 3.8vw, 54px);
 }
 
 .saas-hero::after {
@@ -525,28 +525,33 @@ body {
 .saas-title {
   font-family: var(--font-display);
   text-transform: uppercase;
-  font-size: clamp(2.3rem, 5vw, 5rem);
-  line-height: 0.92;
-  letter-spacing: 0.01em;
+  font-size: clamp(2.9rem, 6.4vw, 6.4rem);
+  line-height: 0.88;
+  letter-spacing: 0.012em;
+  text-wrap: balance;
+  text-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
 .saas-lead {
-  color: var(--color-text-secondary);
-  font-size: clamp(0.95rem, 1.2vw, 1.08rem);
-  max-width: 66ch;
+  color: #d0d0d9;
+  font-size: clamp(1.08rem, 1.55vw, 1.34rem);
+  line-height: 1.72;
+  max-width: 70ch;
 }
 
 .saas-band {
-  border: 1px solid var(--color-border-default);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.02);
+  border: none;
+  border-left: 2px solid rgba(220, 20, 60, 0.5);
+  border-radius: 0;
+  background: transparent;
   padding: 16px;
 }
 
 .saas-kpi {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.025);
+  border: none;
+  border-left: 2px solid rgba(220, 20, 60, 0.42);
+  border-radius: 0;
+  background: transparent;
   padding: 14px;
 }
 
@@ -567,8 +572,19 @@ body {
 .saas-section-title {
   font-family: var(--font-display);
   text-transform: uppercase;
-  font-size: clamp(1.9rem, 4vw, 3.2rem);
-  line-height: 0.96;
+  font-size: clamp(2.3rem, 4.8vw, 4.1rem);
+  line-height: 0.9;
+}
+
+.site-page h2 {
+  font-size: clamp(1.55rem, 2.25vw, 2.45rem);
+  line-height: 1.03;
+  letter-spacing: 0.01em;
+}
+
+.site-page h3 {
+  font-size: clamp(1.18rem, 1.65vw, 1.72rem);
+  line-height: 1.12;
 }
 
 .saas-list {
@@ -577,15 +593,18 @@ body {
 }
 
 .saas-list-item {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
+  border: none;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  background: transparent;
   padding: 12px;
 }
 
 .saas-table {
-  border: 1px solid var(--color-border-default);
-  border-radius: 18px;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -596,7 +615,7 @@ body {
   align-items: center;
   padding: 13px 16px;
   border-bottom: 1px solid var(--color-border-subtle);
-  background: rgba(255, 255, 255, 0.015);
+  background: transparent;
 }
 
 .saas-row:last-child {
@@ -604,7 +623,38 @@ body {
 }
 
 .saas-row:hover {
-  background: rgba(220, 20, 60, 0.07);
+  background: rgba(220, 20, 60, 0.04);
+}
+
+.site-page {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 1.8vw, 26px);
+  padding: clamp(12px, 2vw, 28px);
+}
+
+.site-section {
+  width: 100%;
+}
+
+.site-hero {
+  width: 100%;
+  position: relative;
+  padding: clamp(16px, 3.2vw, 38px) clamp(6px, 0.8vw, 12px);
+  background: transparent;
+}
+
+.site-hero::after {
+  content: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(220, 20, 60, 0.6), transparent);
+  pointer-events: none;
 }
 
 @media (max-width: 768px) {
@@ -614,6 +664,15 @@ body {
 
   .saas-shell {
     padding: 0 14px;
+  }
+
+  .site-hero {
+    padding: 14px 2px 20px;
+  }
+
+  .site-page {
+    padding: 10px;
+    gap: 14px;
   }
 
   .saas-section {

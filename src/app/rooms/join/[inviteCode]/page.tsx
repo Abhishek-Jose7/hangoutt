@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { AlertCircle, CheckCircle2, LocateFixed, MapPinned, Search, UserRound, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { WebsiteHero, WebsitePage } from '@/components/site/WebsiteLayout';
 
 export default function JoinRoomPage() {
   const router = useRouter();
@@ -157,9 +158,8 @@ export default function JoinRoomPage() {
   ];
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section">
-        <section className="saas-hero">
+    <WebsitePage>
+      <WebsiteHero>
           {status === 'loading' ? (
             <div className="relative z-[1] text-center py-12">
               <span className="section-kicker">Join Room</span>
@@ -177,34 +177,36 @@ export default function JoinRoomPage() {
                   Provide your details once so we can generate fair and budget-aware options for the full group.
                 </p>
 
-                <div className="saas-band">
-                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)] mb-3">Onboarding Steps</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {stepItems.map((item, index) => {
-                      const Icon = item.icon;
-                      const active = index === step;
-                      return (
-                        <button
-                          key={item.title}
-                          type="button"
-                          onClick={() => setStep(index)}
-                          className={`rounded-xl border px-2 py-2 text-left ${
-                            active
-                              ? 'border-[var(--color-accent)] bg-[rgba(220,20,60,0.12)]'
-                              : 'border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.02)]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            {item.complete ? (
-                              <CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />
-                            ) : (
-                              <Icon className="h-4 w-4 text-[var(--color-text-tertiary)]" />
-                            )}
-                            <span className="text-xs text-[var(--color-text-primary)]">{item.title}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Onboarding Steps</p>
+                  <div className="saas-band">
+                    <div className="grid grid-cols-3 gap-2">
+                      {stepItems.map((item, index) => {
+                        const Icon = item.icon;
+                        const active = index === step;
+                        return (
+                          <button
+                            key={item.title}
+                            type="button"
+                            onClick={() => setStep(index)}
+                            className={`rounded-xl border px-2 py-2 text-left ${
+                              active
+                                ? 'border-[var(--color-accent)] bg-[rgba(220,20,60,0.12)]'
+                                : 'border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.02)]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {item.complete ? (
+                                <CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />
+                              ) : (
+                                <Icon className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+                              )}
+                              <span className="text-xs text-[var(--color-text-primary)]">{item.title}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -348,7 +350,7 @@ export default function JoinRoomPage() {
           ) : null}
 
           {status === 'error' ? (
-            <div className="relative z-[1] text-center py-12 max-w-[740px] mx-auto">
+            <div className="relative z-[1] text-center py-12 w-full">
               <span className="section-kicker">Join Failed</span>
               <h1 className="saas-title mt-4">Could Not Complete Join</h1>
               <p className="text-sm text-[var(--color-danger)] mt-3">{error}</p>
@@ -357,8 +359,7 @@ export default function JoinRoomPage() {
               </div>
             </div>
           ) : null}
-        </section>
-      </div>
-    </div>
+      </WebsiteHero>
+    </WebsitePage>
   );
 }

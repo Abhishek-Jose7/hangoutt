@@ -9,6 +9,7 @@ import { useRoomStore } from '@/store/useRoomStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import type { ItineraryOption, AIItineraryResponse } from '@/types';
+import { WebsiteHero, WebsitePage, WebsiteSection } from '@/components/site/WebsiteLayout';
 
 interface VotesPayload {
   votes: Array<{ itinerary_option_id: string; count: number }>;
@@ -117,9 +118,8 @@ export default function VotingPage() {
   };
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
+    <WebsitePage>
+        <WebsiteHero>
           <div className="relative z-[1] space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div>
@@ -137,7 +137,7 @@ export default function VotingPage() {
               <div className="saas-kpi"><p className="saas-kpi-label">Options</p><p className="saas-kpi-value">{typedItineraries?.length || 0}</p></div>
             </div>
           </div>
-        </section>
+        </WebsiteHero>
 
         {isAdmin && !allVoted ? (
           <div className="panel p-4 border-[rgba(255,193,7,0.3)] bg-[rgba(255,193,7,0.08)] text-sm text-[var(--color-warning)] inline-flex items-center gap-2">
@@ -153,7 +153,7 @@ export default function VotingPage() {
           </div>
         ) : null}
 
-        <section className="grid md:grid-cols-2 gap-5">
+        <WebsiteSection className="grid md:grid-cols-2 gap-5">
           {typedItineraries?.map((option) => {
             const plan = option.plan as AIItineraryResponse;
             const isVoted = userVote === option.id;
@@ -239,14 +239,13 @@ export default function VotingPage() {
               </Card>
             );
           })}
-        </section>
+        </WebsiteSection>
 
         {(!typedItineraries || typedItineraries.length === 0) ? (
           <div className="panel p-12 text-center">
             <p className="text-sm text-[var(--color-text-secondary)]">Loading itinerary options...</p>
           </div>
         ) : null}
-      </div>
-    </div>
+    </WebsitePage>
   );
 }

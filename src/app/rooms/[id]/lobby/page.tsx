@@ -8,6 +8,7 @@ import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
 import { Button } from '@/components/ui/Button';
 import type { RoomMemberWithUser } from '@/types';
+import { WebsiteHero, WebsitePage, WebsiteSection } from '@/components/site/WebsiteLayout';
 
 export default function LobbyPage() {
   const params = useParams();
@@ -71,9 +72,8 @@ export default function LobbyPage() {
   const canStart = memberCount >= 2;
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
+    <WebsitePage>
+        <WebsiteHero>
           <div className="relative z-[1] space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div>
@@ -96,24 +96,26 @@ export default function LobbyPage() {
               <div className="saas-kpi"><p className="saas-kpi-label">Admin</p><p className="saas-kpi-value">{isAdmin ? 'You' : 'Host'}</p></div>
             </div>
           </div>
-        </section>
+        </WebsiteHero>
 
-        <section className="saas-grid-2 items-start">
+        <WebsiteSection className="saas-grid-2 items-start">
           <aside className="space-y-4">
-            <div className="panel p-5 space-y-4">
+            <div className="space-y-2">
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Invite Link</p>
                 <p className="text-sm text-[var(--color-text-secondary)] mt-1">Share this with your group to join the room.</p>
               </div>
 
-              <div className="saas-band">
-                <code className="text-xs sm:text-sm text-[var(--color-accent-strong)] break-all">{inviteLink || 'Generating link...'}</code>
-              </div>
+              <div className="panel p-5 space-y-4">
+                <div className="saas-band">
+                  <code className="text-xs sm:text-sm text-[var(--color-accent-strong)] break-all">{inviteLink || 'Generating link...'}</code>
+                </div>
 
-              <Button variant="secondary" onClick={handleCopy} id="copy-invite-btn">
-                <Copy className="h-4 w-4" />
-                {copied ? 'Copied' : 'Copy Invite'}
-              </Button>
+                <Button variant="secondary" onClick={handleCopy} id="copy-invite-btn">
+                  <Copy className="h-4 w-4" />
+                  {copied ? 'Copied' : 'Copy Invite'}
+                </Button>
+              </div>
             </div>
 
             <div className="panel p-5 space-y-4">
@@ -142,8 +144,8 @@ export default function LobbyPage() {
             </div>
           </aside>
 
-          <div className="panel p-5">
-            <div className="flex items-end justify-between gap-3 mb-4">
+          <div className="space-y-3">
+            <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Member Directory</p>
                 <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">Roster And Readiness</h2>
@@ -151,60 +153,61 @@ export default function LobbyPage() {
               <span className="text-xs text-[var(--color-text-tertiary)]">{readyCount}/{memberCount} Ready</span>
             </div>
 
-            {!members ? (
-              <div className="space-y-2">
-                <div className="h-12 rounded-xl skeleton" />
-                <div className="h-12 rounded-xl skeleton" />
-                <div className="h-12 rounded-xl skeleton" />
-              </div>
-            ) : typedMembers.length === 0 ? (
-              <div className="saas-band text-sm text-[var(--color-text-secondary)]">No members yet. Share the invite link to get started.</div>
-            ) : (
-              <div className="saas-table">
-                {typedMembers.map((member) => (
-                  <div key={member.user_id} className="saas-row">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
-                        {member.users?.name || member.users?.email || 'Anonymous'}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Joined {new Date(member.joined_at).toLocaleTimeString()}</p>
-                    </div>
+            <div className="panel p-5">
+              {!members ? (
+                <div className="space-y-2">
+                  <div className="h-12 rounded-xl skeleton" />
+                  <div className="h-12 rounded-xl skeleton" />
+                  <div className="h-12 rounded-xl skeleton" />
+                </div>
+              ) : typedMembers.length === 0 ? (
+                <div className="saas-band text-sm text-[var(--color-text-secondary)]">No members yet. Share the invite link to get started.</div>
+              ) : (
+                <div className="saas-table">
+                  {typedMembers.map((member) => (
+                    <div key={member.user_id} className="saas-row">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
+                          {member.users?.name || member.users?.email || 'Anonymous'}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Joined {new Date(member.joined_at).toLocaleTimeString()}</p>
+                      </div>
 
-                    <div>
-                      <span className={`badge ${member.lat !== null && member.lng !== null && member.budget !== null ? 'badge-success' : 'badge-warning'}`}>
-                        {member.lat !== null && member.lng !== null && member.budget !== null ? 'Ready' : 'Pending'}
-                      </span>
-                    </div>
+                      <div>
+                        <span className={`badge ${member.lat !== null && member.lng !== null && member.budget !== null ? 'badge-success' : 'badge-warning'}`}>
+                          {member.lat !== null && member.lng !== null && member.budget !== null ? 'Ready' : 'Pending'}
+                        </span>
+                      </div>
 
-                    <div>
-                      {member.user_id === room?.admin_id ? (
-                        <span className="badge badge-accent inline-flex items-center gap-1"><Crown className="h-3 w-3" /> Admin</span>
-                      ) : (
-                        <span className="text-xs text-[var(--color-text-tertiary)]">Member</span>
-                      )}
-                    </div>
+                      <div>
+                        {member.user_id === room?.admin_id ? (
+                          <span className="badge badge-accent inline-flex items-center gap-1"><Crown className="h-3 w-3" /> Admin</span>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-tertiary)]">Member</span>
+                        )}
+                      </div>
 
-                    <div>
-                      {isAdmin && member.user_id !== room?.admin_id ? (
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleRemoveMember(member.user_id)}
-                          className="h-[34px] px-3 text-xs"
-                          disabled={removeMember.isPending}
-                        >
-                          Remove
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-[var(--color-text-tertiary)] inline-flex items-center gap-1"><Link2 className="h-3 w-3" /> Active</span>
-                      )}
+                      <div>
+                        {isAdmin && member.user_id !== room?.admin_id ? (
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleRemoveMember(member.user_id)}
+                            className="h-[34px] px-3 text-xs"
+                            disabled={removeMember.isPending}
+                          >
+                            Remove
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-tertiary)] inline-flex items-center gap-1"><Link2 className="h-3 w-3" /> Active</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </section>
-      </div>
-    </div>
+        </WebsiteSection>
+    </WebsitePage>
   );
 }

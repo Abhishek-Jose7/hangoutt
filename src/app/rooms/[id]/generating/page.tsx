@@ -7,6 +7,7 @@ import { useRoom } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
 import { Button } from '@/components/ui/Button';
+import { WebsiteHero, WebsitePage } from '@/components/site/WebsiteLayout';
 
 const messages = [
   'Ranking candidate places...',
@@ -63,9 +64,8 @@ export default function GeneratingPage() {
   }, [roomId]);
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
+    <WebsitePage>
+      <WebsiteHero>
           <div className="saas-grid-2 relative z-[1] items-start">
             <div className="space-y-5">
               <span className="section-kicker">Generation In Progress</span>
@@ -92,31 +92,32 @@ export default function GeneratingPage() {
               </p>
             </div>
 
-            <aside className="panel p-5 space-y-4">
+            <aside className="space-y-2">
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Status Controls</p>
-              <p className="text-sm text-[var(--color-text-secondary)]">
-                This usually finishes quickly. If needed, you can refresh the state or go back to planning.
-              </p>
-              <div className="space-y-2">
-                <Button variant="secondary" className="w-full" onClick={() => router.refresh()}>
-                  Refresh Status
-                </Button>
-                <Button variant="secondary" className="w-full" onClick={() => router.push(`/rooms/${roomId}/planning`)}>
-                  Return To Planning
-                </Button>
-              </div>
-
-              <div className="saas-band">
-                <p className="text-sm font-medium text-[var(--color-text-primary)] inline-flex items-center gap-2">
-                  <Timer className="h-4 w-4 text-[var(--color-accent)]" />
-                  Expected Completion
+              <div className="panel p-5 space-y-4">
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  This usually finishes quickly. If needed, you can refresh the state or go back to planning.
                 </p>
-                <p className="text-sm text-[var(--color-text-secondary)] mt-1">Around 20-30 seconds depending on room size.</p>
+                <div className="space-y-2">
+                  <Button variant="secondary" className="w-full" onClick={() => router.refresh()}>
+                    Refresh Status
+                  </Button>
+                  <Button variant="secondary" className="w-full" onClick={() => router.push(`/rooms/${roomId}/planning`)}>
+                    Return To Planning
+                  </Button>
+                </div>
+
+                <div className="saas-band">
+                  <p className="text-sm font-medium text-[var(--color-text-primary)] inline-flex items-center gap-2">
+                    <Timer className="h-4 w-4 text-[var(--color-accent)]" />
+                    Expected Completion
+                  </p>
+                  <p className="text-sm text-[var(--color-text-secondary)] mt-1">Around 20-30 seconds depending on room size.</p>
+                </div>
               </div>
             </aside>
           </div>
-        </section>
-      </div>
-    </div>
+      </WebsiteHero>
+    </WebsitePage>
   );
 }

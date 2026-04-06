@@ -11,6 +11,7 @@ import { MapView } from '@/components/map/MapView';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import type { ItineraryOption, AIItineraryResponse } from '@/types';
+import { WebsiteHero, WebsitePage, WebsiteSection } from '@/components/site/WebsiteLayout';
 
 function getFairnessClass(score: number): string {
   if (score >= 0.85) return 'fairness-high';
@@ -105,9 +106,8 @@ export default function ConfirmedPage() {
   const allPolylines = [...travelLines, ...hubToFirstStop, ...stopLines];
 
   return (
-    <div className="saas-page">
-      <div className="saas-shell saas-section space-y-6">
-        <section className="saas-hero">
+    <WebsitePage>
+        <WebsiteHero>
           <div className="relative z-[1] space-y-4">
             <span className="section-kicker">Confirmed Stage</span>
             <h1 className="saas-title">{room?.name || 'Final Plan Locked'}</h1>
@@ -116,11 +116,11 @@ export default function ConfirmedPage() {
               <span className={`badge ${getFairnessClass(confirmed.travel_fairness_score)}`}>{getFairnessLabel(confirmed.travel_fairness_score)}</span>
             ) : null}
           </div>
-        </section>
+        </WebsiteHero>
 
         {confirmed && plan ? (
           <>
-            <section className="saas-grid-4">
+            <WebsiteSection className="saas-grid-4">
               <div className="saas-kpi">
                 <p className="saas-kpi-label">Cost / Person</p>
                 <p className="saas-kpi-value inline-flex items-center gap-1"><Landmark className="h-4 w-4" /> {renderPrice(confirmed.total_cost_estimate)}</p>
@@ -137,9 +137,9 @@ export default function ConfirmedPage() {
                 <p className="saas-kpi-label">Stops</p>
                 <p className="saas-kpi-value">{plan.stops?.length || 0}</p>
               </div>
-            </section>
+            </WebsiteSection>
 
-            <section className="saas-grid-2 items-start">
+            <WebsiteSection className="saas-grid-2 items-start">
               <div className="space-y-4">
                 <Card className="p-5">
                   <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-3">Itinerary Timeline</h2>
@@ -199,7 +199,7 @@ export default function ConfirmedPage() {
                   </p>
                 </Card>
               </aside>
-            </section>
+            </WebsiteSection>
           </>
         ) : (
           <div className="panel p-10 text-center">
@@ -212,7 +212,6 @@ export default function ConfirmedPage() {
             <Button variant="secondary">Back To Dashboard</Button>
           </Link>
         </div>
-      </div>
-    </div>
+    </WebsitePage>
   );
 }
