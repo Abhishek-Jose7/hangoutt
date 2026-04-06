@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarClock, CircleDot, Compass, RefreshCcw, Users } from 'lucide-react';
@@ -13,6 +13,8 @@ interface LocalEvent {
   title: string;
   subtitle?: string;
   dateText: string;
+  venue?: string;
+  startTime?: string;
   category: string;
   kind?: 'event' | 'movie' | 'activity';
   imageUrl?: string;
@@ -69,6 +71,15 @@ export default function DashboardPage() {
   const typedRooms = useMemo(() => (rooms as Room[] | undefined) || [], [rooms]);
   const activeRooms = useMemo(() => typedRooms.filter((r) => r.status !== 'archived'), [typedRooms]);
   const confirmedRooms = useMemo(() => typedRooms.filter((r) => r.status === 'confirmed'), [typedRooms]);
+  const feedEvents = useMemo(() => eventsData?.events || [], [eventsData]);
+  const shouldRoll = feedEvents.length > 1;
+  const rollingEvents = useMemo(
+    () => (shouldRoll ? [...feedEvents, ...feedEvents] : feedEvents),
+    [feedEvents, shouldRoll]
+  );
+  const rollingStyle: CSSProperties | undefined = shouldRoll
+    ? { animationDuration: `${Math.max(26, feedEvents.length * 6)}s` }
+    : undefined;
 
   return (
     <WebsitePage>
@@ -140,12 +151,14 @@ export default function DashboardPage() {
                 <div className="saas-band">
                   <p className="text-sm text-[var(--color-danger)]">{eventsError}</p>
                 </div>
+              ) : !feedEvents.length ? (
+                <div className="saas-band text-sm text-[var(--color-text-secondary)]">No event feed available right now.</div>
               ) : (
-                <div className="saas-list">
-                  {(eventsData?.events || []).map((event, idx) => (
-                    <article key={event.id || `${event.title}-${idx}`} className="saas-list-item">
-                      <div className="flex gap-3 items-start">
-                        <div className="w-28 h-16 rounded-lg overflow-hidden border border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.03)] shrink-0">
+                <div className="event-rolling-gallery" aria-label="Specific events and latest movies">
+                  <div className={`event-rolling-track ${shouldRoll ? 'is-rolling' : ''}`} style={rollingStyle}>
+                    {rollingEvents.map((event, idx) => (
+                      <article key={`${event.id}-${idx}`} className="event-gallery-card">
+                        <div className="event-gallery-poster">
                           {event.imageUrl ? (
                             <img
                               src={event.imageUrl}
@@ -161,34 +174,36 @@ export default function DashboardPage() {
                           )}
                         </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{event.title}</p>
+                        <div className="p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="badge badge-info">{event.category}</span>
+                            {event.kind ? <span className="badge">{event.kind}</span> : null}
                           </div>
-                          <p className="text-xs text-[var(--color-text-secondary)] mt-1 line-clamp-2">
-                            {event.subtitle || 'Trending now in your area'}
+
+                          <h3 className="text-sm font-semibold text-[var(--color-text-primary)] leading-tight line-clamp-2">{event.title}</h3>
+                          <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed line-clamp-2">
+                            {event.subtitle || 'Specific local update'}
                           </p>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <p className="text-xs text-[var(--color-text-tertiary)]">{event.dateText}</p>
-                            {event.sourceUrl ? (
-                              <a
-                                href={event.sourceUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs text-[var(--color-accent-strong)] hover:text-[var(--color-accent)]"
-                              >
-                                Open
-                              </a>
-                            ) : null}
+
+                          <div className="event-gallery-meta">
+                            <span className="truncate">{event.venue || `${eventsData?.area || 'Mumbai'}, Mumbai`}</span>
+                            <span>{event.startTime || event.dateText}</span>
                           </div>
+
+                          {event.sourceUrl ? (
+                            <a
+                              href={event.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-[var(--color-accent-strong)] hover:text-[var(--color-accent)]"
+                            >
+                              View exact event
+                            </a>
+                          ) : null}
                         </div>
-                      </div>
-                    </article>
-                  ))}
-                  {!eventsData?.events?.length ? (
-                    <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">No event feed available right now.</div>
-                  ) : null}
+                      </article>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

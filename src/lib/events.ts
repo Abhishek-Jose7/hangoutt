@@ -7,6 +7,8 @@ export interface LocalEvent {
   title: string;
   subtitle: string;
   dateText: string;
+  venue?: string;
+  startTime?: string;
   category: string;
   kind: LocalFeedKind;
   imageUrl?: string;
@@ -20,6 +22,8 @@ function fallbackEvents(area: string, dateLabel: string): LocalEvent[] {
       title: `${area} Live Events Tonight`,
       subtitle: `Concerts, stand-up and city events around ${area}`,
       dateText: dateLabel,
+      venue: `${area}, Mumbai`,
+      startTime: 'Tonight',
       category: 'Music',
       kind: 'event',
       imageUrl: `https://picsum.photos/seed/${encodeURIComponent(`${area}-event`)}/640/360`,
@@ -29,6 +33,8 @@ function fallbackEvents(area: string, dateLabel: string): LocalEvent[] {
       title: 'Now Showing: Latest Movies',
       subtitle: 'Trending theatrical releases and top picks this week',
       dateText: dateLabel,
+      venue: 'In theatres',
+      startTime: 'Today',
       category: 'Movie',
       kind: 'movie',
       imageUrl: `https://picsum.photos/seed/${encodeURIComponent(`${area}-movie`)}/640/360`,
@@ -38,6 +44,8 @@ function fallbackEvents(area: string, dateLabel: string): LocalEvent[] {
       title: `Trending Things To Do In ${area}`,
       subtitle: 'Popular activities and social plans nearby',
       dateText: dateLabel,
+      venue: `${area}, Mumbai`,
+      startTime: 'This week',
       category: 'Activity',
       kind: 'activity',
       imageUrl: `https://picsum.photos/seed/${encodeURIComponent(`${area}-activity`)}/640/360`,
@@ -123,6 +131,25 @@ function extractSubtitle(content: string, fallback: string): string {
 function extractDateText(content: string, dateLabel: string): string {
   const match = content.match(/\b(today|tonight|tomorrow|this week|this weekend|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})\b/i);
   return match ? match[0] : dateLabel;
+}
+
+function extractStartTime(content: string): string | undefined {
+  const match = content.match(/\b(\d{1,2}(?::\d{2})?\s?(?:am|pm)|\d{1,2}:\d{2})\b/i);
+  return match?.[0];
+}
+
+function extractVenue(content: string, area: string): string | undefined {
+  const text = content.replace(/\s+/g, ' ');
+  const venueMatch = text.match(/\b(?:venue|at|near|location)\b[:\-\s]+([A-Za-z0-9,&\-\s]{4,80})/i);
+  if (venueMatch?.[1]) {
+    const candidate = venueMatch[1].trim();
+    if (!/^in\s+/i.test(candidate) && candidate.length >= 4) return candidate;
+  }
+
+  const commaChunk = text.match(/\b([A-Za-z][A-Za-z0-9&'\-\s]{3,60}),\s*(Mumbai|Navi Mumbai|Thane)\b/i);
+  if (commaChunk?.[0]) return commaChunk[0].trim();
+
+  return `${area}, Mumbai`;
 }
 
 function inferCategory(text: string, kind: LocalFeedKind): string {
@@ -243,6 +270,8 @@ async function mapTavilyResultsToFeed(
         title: item.title,
         subtitle: extractSubtitle(item.content, `Trending in ${area}`),
         dateText: extractDateText(`${item.title} ${item.content}`, dateLabel),
+        venue: extractVenue(item.content, area),
+        startTime: extractStartTime(item.content),
         category: inferCategory(`${item.title} ${item.content}`, kind),
         kind,
         imageUrl: ogImage,
@@ -285,6 +314,8 @@ async function fetchMovieFeedFromTmdb(dateLabel: string): Promise<LocalEvent[]> 
           title: movie.title || 'Trending Movie',
           subtitle: extractSubtitle(movie.overview || '', 'Now showing and trending this week'),
           dateText: release,
+          venue: 'In theatres',
+          startTime: 'Today',
           category: 'Movie',
           kind: 'movie' as const,
           imageUrl: movie.poster_path ? `https://image.tmdb.org/t/p/w780${movie.poster_path}` : undefined,
@@ -321,7 +352,7 @@ function interleaveFeeds(feeds: LocalEvent[][], totalLimit: number): LocalEvent[
 }
 
 export async function fetchTopEventsForArea(area: string, dateLabel: string): Promise<LocalEvent[]> {
-  const key = `events:v2:${area.toLowerCase().replace(/\s+/g, '_')}:${dateLabel.toLowerCase().replace(/\s+/g, '_')}`;
+  const key = `events:v3:${area.toLowerCase().replace(/\s+/g, '_')}:${dateLabel.toLowerCase().replace(/\s+/g, '_')}`;
   const cached = await cacheGet<LocalEvent[]>(key);
   if (cached) return cached;
 
@@ -333,15 +364,15 @@ export async function fetchTopEventsForArea(area: string, dateLabel: string): Pr
     const client = tavily({ apiKey });
 
     const [eventsResponse, activitiesResponse, moviesResponse, tmdbMovies] = await Promise.all([
-      client.search(`real events happening this week near ${area} Mumbai with event names and poster pages`, {
+      client.search(`specific named events this week near ${area} Mumbai with exact venue and start time from official listing pages`, {
         maxResults: 8,
         searchDepth: 'basic',
       }),
-      client.search(`trending things to do and activities this week near ${area} Mumbai with image pages`, {
+      client.search(`specific trending activities this week near ${area} Mumbai with exact place name and time from official pages`, {
         maxResults: 8,
         searchDepth: 'basic',
       }),
-      client.search('latest movies now showing in India this week with posters and release details', {
+      client.search('latest movies now showing this week in India with exact movie title, release date, and poster page', {
         maxResults: 8,
         searchDepth: 'basic',
       }),
