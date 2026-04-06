@@ -7,10 +7,10 @@ import { Footer } from '@/components/layout/Footer';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Hangout — Smart AI Hangout Planner',
+  title: 'Hangout // Noir Planner',
   description:
-    'Plan group hangouts in Mumbai with AI-powered itineraries, fair travel times, and real-time voting.',
-  keywords: ['hangout', 'planner', 'mumbai', 'AI', 'group', 'itinerary'],
+    'Build fair, budget-aware group plans in a sharp black-and-scarlet workspace.',
+  keywords: ['hangout', 'planner', 'mumbai', 'AI', 'group', 'itinerary', 'noir'],
 };
 
 export default function RootLayout({
@@ -24,9 +24,9 @@ export default function RootLayout({
         baseTheme: dark,
         variables: {
           colorPrimary: '#DC143C',
-          colorBackground: '#0F0F12',
-          colorInputBackground: '#15151A',
-          colorText: '#F6F6F7',
+          colorBackground: '#0A0A0D',
+          colorInputBackground: '#16161D',
+          colorText: '#F4F4F6',
           borderRadius: '12px',
         },
       }}
@@ -35,7 +35,7 @@ export default function RootLayout({
         <body className="min-h-full flex flex-col">
           <QueryProvider>
             <Navbar />
-            <main className="flex-1 flex flex-col basis-full">
+            <main className="flex-1 flex flex-col basis-full noir-page">
               {children}
             </main>
             <Footer />

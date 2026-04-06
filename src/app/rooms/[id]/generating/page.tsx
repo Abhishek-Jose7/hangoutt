@@ -2,20 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Sparkles, Timer, Train } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
 const messages = [
-  'Finding the best spots near you...',
-  'Calculating fair travel times...',
-  'Matching places to your vibe...',
-  'Building your perfect day...',
-  'Almost there...',
+  'Ranking candidate places...',
+  'Calculating fair travel splits...',
+  'Composing itinerary paths...',
+  'Verifying budget fit...',
+  'Finalizing options for voting...',
 ];
 
 export default function GeneratingPage() {
@@ -42,104 +40,83 @@ export default function GeneratingPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       setMessageIndex((i) => (i + 1) % messages.length);
-    }, 3000);
+    }, 2500);
     return () => clearInterval(interval);
   }, []);
 
-  // Poll for itinerary generation status (backup path to Realtime)
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/rooms/${roomId}/itineraries`);
         const data = await res.json();
 
-        if (res.status === 202 && data?.status === 'generating') {
-          return;
-        }
-
+        if (res.status === 202 && data?.status === 'generating') return;
         if (res.ok && Array.isArray(data) && data.length > 0) {
           useRoomStore.getState().setStatus('voting');
         }
       } catch {
-        // silent
+        // no-op
       }
     }, 3000);
+
     return () => clearInterval(interval);
   }, [roomId]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 hero-gradient mesh-gradient">
-      <Card className="w-full max-w-[560px] p-8 sm:p-10 text-center">
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] mb-6">
-          <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" /> AI itinerary generation in progress
-        </div>
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
-          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => router.refresh()}>
-            Refresh status
-          </Button>
-          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => router.push(`/rooms/${roomId}/planning`)}>
-            Back to planning
-          </Button>
-        </div>
+    <div className="saas-page">
+      <div className="saas-shell saas-section space-y-6">
+        <section className="saas-hero">
+          <div className="saas-grid-2 relative z-[1] items-start">
+            <div className="space-y-5">
+              <span className="section-kicker">Generation In Progress</span>
+              <h1 className="saas-title">Building Candidate Itineraries</h1>
+              <p className="saas-lead">
+                The system is balancing commute fairness, budget constraints, and place quality before publishing options for team voting.
+              </p>
 
-        {/* Animated Train Line */}
-        <div className="relative mx-auto w-64 h-20 mb-10">
-          {/* Line */}
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-[var(--color-border-default)] -translate-y-1/2" />
+              <div className="relative h-[80px] rounded-2xl border border-[var(--color-border-default)] bg-[rgba(255,255,255,0.02)] overflow-hidden">
+                <div className="absolute left-4 right-4 top-1/2 h-[2px] bg-[rgba(255,255,255,0.1)] -translate-y-1/2" />
+                {[0, 1, 2, 3, 4].map((dot) => (
+                  <div
+                    key={dot}
+                    className="absolute top-1/2 w-2.5 h-2.5 rounded-full bg-[var(--color-accent)] -translate-y-1/2"
+                    style={{ left: `${12 + dot * 21}%` }}
+                  />
+                ))}
+                <Train className="absolute top-1/2 -translate-y-1/2 text-[var(--color-accent-strong)] h-6 w-6 animate-pulse" style={{ left: `${14 + (messageIndex % 5) * 21}%` }} />
+              </div>
 
-          {/* Station Dots */}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <motion.div
-              key={i}
-              className="absolute top-1/2 w-3 h-3 rounded-full bg-[var(--color-accent)]"
-              style={{
-                left: `${i * 20}%`,
-                transform: 'translate(-50%, -50%)',
-              }}
-              animate={{
-                scale: [0.8, 1.3, 0.8],
-                opacity: [0.3, 1, 0.3],
-              }}
-              transition={{
-                duration: 1.5,
-                delay: i * 0.25,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-          ))}
+              <p className="text-sm text-[var(--color-text-secondary)] inline-flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[var(--color-accent-strong)]" />
+                {messages[messageIndex]}
+              </p>
+            </div>
 
-          {/* Moving Train */}
-          <motion.div
-            className="absolute top-1/2 -translate-y-1/2"
-            animate={{ x: [-10, 240, -10] }}
-            transition={{
-              duration: 4,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          >
-            <Train className="h-6 w-6 text-[var(--color-accent)]" />
-          </motion.div>
-        </div>
+            <aside className="panel p-5 space-y-4">
+              <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Status Controls</p>
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                This usually finishes quickly. If needed, you can refresh the state or go back to planning.
+              </p>
+              <div className="space-y-2">
+                <Button variant="secondary" className="w-full" onClick={() => router.refresh()}>
+                  Refresh Status
+                </Button>
+                <Button variant="secondary" className="w-full" onClick={() => router.push(`/rooms/${roomId}/planning`)}>
+                  Return To Planning
+                </Button>
+              </div>
 
-        <motion.h2
-          className="display-text text-2xl mb-4"
-          key={messageIndex}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-        >
-          {messages[messageIndex]}
-        </motion.h2>
-
-        <p className="text-sm text-[var(--color-text-tertiary)] inline-flex items-center gap-2">
-          <Timer className="h-4 w-4" /> This usually takes about 20 seconds
-        </p>
-        <p className="mt-3 text-xs text-[var(--color-text-tertiary)]">
-          If this stays here for long, refresh status or return to planning to retry once the room is ready.
-        </p>
-      </Card>
+              <div className="saas-band">
+                <p className="text-sm font-medium text-[var(--color-text-primary)] inline-flex items-center gap-2">
+                  <Timer className="h-4 w-4 text-[var(--color-accent)]" />
+                  Expected Completion
+                </p>
+                <p className="text-sm text-[var(--color-text-secondary)] mt-1">Around 20-30 seconds depending on room size.</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

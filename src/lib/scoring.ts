@@ -2,6 +2,20 @@ import type { Place } from '@/types';
 import type { Mood } from '@/types';
 import { haversineDistance } from './transit';
 
+export interface PlaceScoreBreakdown {
+  distance_score: number;
+  budget_match: number;
+  vibe_match: number;
+  rating_score: number;
+  total_score: number;
+}
+
+function clamp01(value: number): number {
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
 /**
  * Score a place based on relevance, budget fit, and distance from hub
  */
@@ -12,29 +26,35 @@ export function scorePlace(
   hubLng: number,
   mood: Mood
 ): number {
-  // Relevance score from source (0-1)
-  const relevance = place.relevance_score;
+  return scorePlaceBreakdown(place, perPersonCap, hubLat, hubLng, mood).total_score;
+}
 
-  // Budget fit (0-1): how well does the estimated cost fit within budget?
-  let budgetFit = 0.5; // default when no cost data
-  if (place.estimated_cost !== undefined && place.estimated_cost > 0) {
-    const ratio = place.estimated_cost / perPersonCap;
-    if (ratio <= 0.5) budgetFit = 1.0;
-    else if (ratio <= 0.8) budgetFit = 0.8;
-    else if (ratio <= 1.0) budgetFit = 0.6;
-    else if (ratio <= 1.3) budgetFit = 0.3;
-    else budgetFit = 0.1;
-  }
-
-  // Distance from hub (0-1): closer is better
-  let proximityScore = 0.5; // default when no coords
+export function scorePlaceBreakdown(
+  place: Place,
+  perPersonCap: number,
+  hubLat: number,
+  hubLng: number,
+  mood: Mood
+): PlaceScoreBreakdown {
+  // Distance score (0-1): closer to hub is better.
+  let distanceScore = 0.6;
   if (place.lat !== undefined && place.lng !== undefined) {
     const distKm = haversineDistance(
       { lat: hubLat, lng: hubLng },
       { lat: place.lat, lng: place.lng }
     );
-    // Normalize: 0km = 1.0, 2km = 0.0
-    proximityScore = Math.max(0, 1 - distKm / 2);
+    distanceScore = clamp01(1 - distKm / 3);
+  }
+
+  // Budget match (0-1): fit against per-person budget.
+  let budgetMatch = 0.5;
+  if (place.estimated_cost !== undefined && place.estimated_cost > 0) {
+    const ratio = place.estimated_cost / perPersonCap;
+    if (ratio <= 0.5) budgetMatch = 0.95;
+    else if (ratio <= 0.8) budgetMatch = 0.85;
+    else if (ratio <= 1.0) budgetMatch = 0.7;
+    else if (ratio <= 1.2) budgetMatch = 0.4;
+    else budgetMatch = 0.15;
   }
 
   const moodKeywords: Record<Mood, string[]> = {
@@ -53,12 +73,27 @@ export function scorePlace(
   const text = `${place.name} ${place.description}`.toLowerCase();
   const keywordHits = moodKeywords[mood].filter((k) => text.includes(k)).length;
   const keywordScore = Math.min(1, keywordHits / 2);
-  const moodScore = Math.min(1, keywordScore * 0.6 + moodTypeBoost[mood][place.type] * 0.4);
+  const moodScore = clamp01(keywordScore * 0.55 + moodTypeBoost[mood][place.type] * 0.45);
 
-  const qualityBoost = relevance >= 0.9 ? 0.06 : 0;
+  // Rating score (0-1): explicit venue quality signal.
+  const ratingRaw = place.inferred_rating;
+  const ratingScore = ratingRaw && ratingRaw > 0
+    ? clamp01((ratingRaw - 3) / 2)
+    : clamp01(place.relevance_score * 0.75);
 
-  // Weighted score: prioritize venue quality + vibe first, budget second
-  return relevance * 0.4 + moodScore * 0.28 + proximityScore * 0.17 + budgetFit * 0.15 + qualityBoost;
+  const totalScore =
+    distanceScore +
+    budgetMatch +
+    moodScore +
+    ratingScore;
+
+  return {
+    distance_score: distanceScore,
+    budget_match: budgetMatch,
+    vibe_match: moodScore,
+    rating_score: ratingScore,
+    total_score: totalScore,
+  };
 }
 
 /**
@@ -74,7 +109,7 @@ export function selectTopCandidates(
 ): Place[] {
   const scored = places.map((p) => ({
     ...p,
-    _score: scorePlace(p, perPersonCap, hubLat, hubLng, mood),
+    _score: scorePlaceBreakdown(p, perPersonCap, hubLat, hubLng, mood).total_score,
   }));
 
   // Group by type

@@ -20,17 +20,18 @@ export function Button({
     <button
       className={`${baseClass} ${className || ''}`.trim()}
       disabled={disabled || loading}
+      aria-busy={loading}
       {...props}
     >
       {loading ? (
         <span className="inline-flex items-center gap-2">
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" />
-          Loading...
+          Working...
         </span>
       ) : (
         <>
-          {icon}
-          {children}
+          {icon ? <span className="btn-icon">{icon}</span> : null}
+          <span className="btn-label">{children}</span>
         </>
       )}
     </button>

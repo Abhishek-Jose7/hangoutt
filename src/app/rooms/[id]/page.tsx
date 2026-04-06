@@ -53,12 +53,20 @@ export default function RoomEntryPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen hero-gradient">
-        <div className="container-base section-base max-w-[760px]">
-          <div className="card max-w-md mx-auto p-10 text-center">
-            <div className="text-4xl animate-pulse-station mb-4">⚡</div>
-            <p className="text-[var(--color-text-secondary)]">Loading room...</p>
-          </div>
+      <div className="saas-page">
+        <div className="saas-shell saas-section">
+          <section className="saas-hero text-center">
+            <div className="relative z-[1] max-w-[680px] mx-auto">
+              <span className="section-kicker">Room Handshake</span>
+              <h1 className="saas-title mt-4">Routing To The Right Stage</h1>
+              <p className="saas-lead mx-auto mt-3">
+                We are checking room status and sending you to the correct workflow state.
+              </p>
+              <div className="mt-8 h-2 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+                <div className="h-full bg-[var(--color-accent)] animate-pulse" />
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     );

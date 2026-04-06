@@ -15,6 +15,14 @@ export type RoomStatus = z.infer<typeof RoomStatusEnum>;
 export const MoodEnum = z.enum(['fun', 'chill', 'romantic', 'adventure']);
 export type Mood = z.infer<typeof MoodEnum>;
 
+export const ItineraryProfileEnum = z.enum([
+  'chill_walk',
+  'activity_food',
+  'premium_dining',
+  'budget_bites',
+]);
+export type ItineraryProfile = z.infer<typeof ItineraryProfileEnum>;
+
 // ── User ────────────────────────────────────────────────────
 export const UserSchema = z.object({
   id: z.string(),
@@ -81,6 +89,21 @@ export const AIItineraryResponseSchema = z.object({
   total_cost_per_person: z.number().min(0),
   contingency_buffer: z.number().min(0),
   day_summary: z.string(),
+  short_title: z.string().optional(),
+  area: z.string().optional(),
+  vibe_tags: z.array(z.string()).max(6).optional(),
+  flow_summary: z.string().optional(),
+  duration_total_mins: z.number().int().min(0).optional(),
+  average_place_rating: z.number().min(0).max(5).optional(),
+  why_this_option: z.string().optional(),
+  profile: ItineraryProfileEnum.optional(),
+  score_breakdown: z.object({
+    distance_score: z.number().min(0).max(1),
+    budget_match: z.number().min(0).max(1),
+    vibe_match: z.number().min(0).max(1),
+    rating_score: z.number().min(0).max(1),
+    total_score: z.number().min(0).max(4),
+  }).optional(),
   meetup_start_time: z.string().optional(),
   station_guidance: z.array(z.object({
     member_name: z.string(),

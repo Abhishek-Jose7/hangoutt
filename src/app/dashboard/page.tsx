@@ -1,13 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { CalendarClock, CircleDot, Compass, RefreshCcw, Users } from 'lucide-react';
 import { useUserRooms } from '@/hooks/useRoom';
 import type { Room } from '@/types';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 
 interface LocalEvent {
   title: string;
@@ -63,152 +61,194 @@ export default function DashboardPage() {
     void refreshEvents();
   }, [refreshEvents]);
 
-  return (
-    <div className="flex-1 flex flex-col justify-center items-center p-6 relative">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[800px] z-10 space-y-6"
-      >
-        <div className="text-center mb-8">
-          <h1 className="display-text text-3xl font-bold mb-2">Dashboard</h1>
-          <p className="text-[var(--color-text-secondary)] text-sm">
-            Manage your past and active hangout rooms centrally.
-          </p>
-        </div>
+  const typedRooms = useMemo(() => (rooms as Room[] | undefined) || [], [rooms]);
+  const activeRooms = useMemo(() => typedRooms.filter((r) => r.status !== 'archived'), [typedRooms]);
+  const confirmedRooms = useMemo(() => typedRooms.filter((r) => r.status === 'confirmed'), [typedRooms]);
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4 gap-3">
-            <div>
-              <h2 className="font-semibold text-lg">Top Events Near You</h2>
-              <p className="text-xs text-[var(--color-text-secondary)]">
-                {eventsData?.area || 'Mumbai'} • {eventsData?.date || 'Today'}
+  return (
+    <div className="saas-page">
+      <div className="saas-shell saas-section space-y-6">
+        <section className="saas-hero">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 relative z-[1]">
+            <div className="space-y-3">
+              <span className="section-kicker">Operations Dashboard</span>
+              <h1 className="saas-title">Rooms, Events, And Decisions</h1>
+              <p className="saas-lead">
+                Manage your active planning rooms, monitor readiness, and jump into any flow from a single control surface.
               </p>
             </div>
-            <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => void refreshEvents()} loading={eventsLoading}>
-              Refresh
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+              <Link href="/rooms/create" className="btn-primary sm:min-w-[190px] text-center">Create Room</Link>
+              <button
+                type="button"
+                onClick={() => void refreshEvents()}
+                className="btn-secondary sm:min-w-[190px]"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Refresh Feed
+              </button>
+            </div>
           </div>
+        </section>
 
-          {eventsLoading && !eventsData ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-14 bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : eventsError && !eventsData ? (
-            <div className="py-6 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)] space-y-3">
-              <p className="text-sm text-[var(--color-text-secondary)]">{eventsError}</p>
-              <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => void refreshEvents()}>
-                Try again
-              </Button>
-            </div>
-          ) : !eventsData?.events?.length ? (
-            <div className="py-6 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)]">
-              <p className="text-sm text-[var(--color-text-secondary)]">No event feed available right now.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {eventsError ? (
-                <div className="rounded-xl border border-[var(--color-warning)]/30 bg-[rgba(245,158,11,0.08)] px-3 py-2 text-xs text-[var(--color-warning)] flex items-center justify-between gap-3">
-                  <span>{eventsError}</span>
-                  <Button variant="secondary" className="h-8 px-3 text-[11px]" onClick={() => void refreshEvents()}>
-                    Retry
-                  </Button>
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                {eventsData.events.map((event, idx) => (
-                  <div key={`${event.title}-${idx}`} className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{event.title}</p>
-                      <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">{event.category}</span>
-                    </div>
-                    <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{event.venue}</p>
-                    <p className="text-[11px] text-[var(--color-text-tertiary)] mt-1">{event.dateText}</p>
-                  </div>
-                ))}
+        <section className="saas-grid-4">
+          <div className="saas-kpi">
+            <p className="saas-kpi-label">Total Rooms</p>
+            <p className="saas-kpi-value">{typedRooms.length}</p>
+          </div>
+          <div className="saas-kpi">
+            <p className="saas-kpi-label">Active Rooms</p>
+            <p className="saas-kpi-value">{activeRooms.length}</p>
+          </div>
+          <div className="saas-kpi">
+            <p className="saas-kpi-label">Confirmed Plans</p>
+            <p className="saas-kpi-value">{confirmedRooms.length}</p>
+          </div>
+          <div className="saas-kpi">
+            <p className="saas-kpi-label">Event Signals</p>
+            <p className="saas-kpi-value">{eventsData?.events?.length || 0}</p>
+          </div>
+        </section>
+
+        <section className="saas-grid-2">
+          <div className="panel p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">Local Event Feed</p>
+                <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">
+                  {eventsData?.area || 'Mumbai'} <span className="text-sm font-normal text-[var(--color-text-tertiary)]">{eventsData?.date || 'Today'}</span>
+                </h2>
               </div>
+              <button type="button" className="btn-secondary h-[40px] px-4" onClick={() => void refreshEvents()}>
+                <RefreshCcw className="h-4 w-4" />
+                Reload
+              </button>
             </div>
-          )}
-        </Card>
 
-        <Card className="p-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-            <h2 className="font-semibold text-lg">Your Rooms</h2>
-            <Link href="/rooms/create" className="btn-primary py-2 px-4 h-9 text-xs">
-              + New Room
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {isLoading ? (
-              [1, 2].map((i) => (
-                <div key={i} className="h-16 bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl animate-pulse" />
-              ))
-            ) : !rooms || rooms.length === 0 ? (
-              <div className="py-12 border border-dashed border-[var(--color-border-strong)] rounded-xl text-center bg-[var(--color-bg-base)]">
-                <span className="text-3xl mb-3 block">🎯</span>
-                <p className="text-sm font-medium text-[var(--color-text-primary)]">No rooms active</p>
-                <p className="text-xs text-[var(--color-text-secondary)] mt-1">Start by creating a new hangout room</p>
+            {eventsLoading && !eventsData ? (
+              <div className="space-y-2">
+                <div className="h-14 rounded-xl skeleton" />
+                <div className="h-14 rounded-xl skeleton" />
+                <div className="h-14 rounded-xl skeleton" />
+              </div>
+            ) : eventsError && !eventsData ? (
+              <div className="saas-band">
+                <p className="text-sm text-[var(--color-danger)]">{eventsError}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {(rooms as Room[]).map((room) => (
-                  <div
-                    key={room.id}
-                    onClick={() => router.push(`/rooms/${room.id}`)}
-                    className="p-4 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] hover:border-[var(--color-border-strong)] cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-medium text-[15px] truncate max-w-[150px]">{room.name}</h3>
-                      <span className={`badge ${statusColors[room.status] || 'badge-info'}`}>
-                        {statusLabels[room.status] || room.status}
-                      </span>
+              <div className="saas-list">
+                {(eventsData?.events || []).map((event, idx) => (
+                  <article key={`${event.title}-${idx}`} className="saas-list-item">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{event.title}</p>
+                      <span className="badge badge-info">{event.category}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-mono">
-                      <span>{room.mood}</span>
-                      <span>•</span>
-                      <span>{room.currency}</span>
-                      <span>•</span>
-                      <span>{new Date(room.created_at).toLocaleDateString()}</span>
-                    </div>
-                  </div>
+                    <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{event.venue}</p>
+                    <p className="text-xs text-[var(--color-text-tertiary)] mt-1">{event.dateText}</p>
+                  </article>
                 ))}
+                {!eventsData?.events?.length ? (
+                  <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">No event feed available right now.</div>
+                ) : null}
               </div>
             )}
           </div>
-        </Card>
 
-        <Card className="p-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const form = e.target as HTMLFormElement;
-              const code = (form.elements.namedItem('code') as HTMLInputElement).value;
-              if (code.trim()) router.push(`/rooms/join/${code.trim()}`);
-            }}
-            className="flex flex-col sm:flex-row items-center gap-3"
-          >
-            <div className="flex-1 w-full text-center sm:text-left">
-              <h3 className="font-semibold text-sm mb-1">Join a Room</h3>
-              <p className="text-xs text-[var(--color-text-secondary)]">Enter an invite code to join.</p>
+          <aside className="panel p-5 space-y-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">Quick Join</p>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">Enter an invite code to jump directly into a room.</p>
             </div>
-            <div className="flex w-full sm:w-auto gap-2">
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.target as HTMLFormElement;
+                const code = (form.elements.namedItem('code') as HTMLInputElement).value;
+                if (code.trim()) router.push(`/rooms/join/${code.trim()}`);
+              }}
+              className="space-y-3"
+            >
               <input
                 name="code"
                 type="text"
-                placeholder="Code"
-                className="input w-full sm:w-[140px] text-center sm:text-left"
+                placeholder="Invite code"
+                className="input"
                 maxLength={10}
               />
-              <button type="submit" className="btn-secondary px-4">
-                Join
-              </button>
+              <button type="submit" className="btn-primary w-full">Join Room</button>
+            </form>
+
+            <div className="saas-band">
+              <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)] mb-3">Status Legend</p>
+              <div className="flex flex-wrap gap-2">
+                <span className="badge badge-info">Waiting</span>
+                <span className="badge badge-warning">Planning</span>
+                <span className="badge badge-accent">Voting</span>
+                <span className="badge badge-success">Confirmed</span>
+              </div>
             </div>
-          </form>
-        </Card>
-      </motion.div>
+          </aside>
+        </section>
+
+        <section className="panel p-5">
+          <div className="flex items-end justify-between gap-3 mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">Workspace Rooms</p>
+              <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">Room Directory</h2>
+            </div>
+            <div className="text-xs text-[var(--color-text-tertiary)] inline-flex items-center gap-2">
+              <Users className="h-3.5 w-3.5" />
+              Live Status Tracking
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              <div className="h-12 rounded-xl skeleton" />
+              <div className="h-12 rounded-xl skeleton" />
+              <div className="h-12 rounded-xl skeleton" />
+            </div>
+          ) : typedRooms.length === 0 ? (
+            <div className="saas-band text-center py-10">
+              <p className="text-lg font-semibold text-[var(--color-text-primary)]">No rooms yet</p>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">Create your first room to start collaborative planning.</p>
+            </div>
+          ) : (
+            <div className="saas-table">
+              {typedRooms.map((room) => (
+                <button
+                  type="button"
+                  key={room.id}
+                  onClick={() => router.push(`/rooms/${room.id}`)}
+                  className="saas-row text-left w-full"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{room.name}</p>
+                    <p className="text-xs text-[var(--color-text-tertiary)] mt-1 inline-flex items-center gap-1">
+                      <CalendarClock className="h-3.5 w-3.5" />
+                      {new Date(room.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-xs text-[var(--color-text-secondary)] uppercase tracking-[0.12em] inline-flex items-center gap-1">
+                    <Compass className="h-3.5 w-3.5" />
+                    {room.mood}
+                  </div>
+                  <div>
+                    <span className={`badge ${statusColors[room.status] || 'badge-info'}`}>
+                      {statusLabels[room.status] || room.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-[var(--color-text-tertiary)] inline-flex items-center gap-1">
+                    <CircleDot className="h-3 w-3" />
+                    {room.currency}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

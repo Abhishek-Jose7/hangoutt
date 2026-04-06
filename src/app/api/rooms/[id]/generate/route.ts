@@ -7,7 +7,7 @@ import { searchPlaces } from '@/lib/tavily';
 import { generateItineraryForHub } from '@/lib/ai/generate-itinerary';
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
-import type { Mood, LatLng } from '@/types';
+import type { Mood, LatLng, ItineraryProfile, Place, AIItineraryResponse } from '@/types';
 import { z } from 'zod';
 
 interface InsertItineraryRow {
@@ -55,6 +55,96 @@ function toHHMM(total: number): string {
   const h = Math.floor(normalized / 60);
   const m = normalized % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+const OPTION_PROFILES: ItineraryProfile[] = [
+  'chill_walk',
+  'activity_food',
+  'premium_dining',
+  'budget_bites',
+];
+
+function clamp01(value: number): number {
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function calcDurationMins(plan: AIItineraryResponse): number {
+  return plan.stops.reduce((sum, stop) => sum + stop.duration_mins + stop.walk_from_previous_mins, 0);
+}
+
+function buildFlowSummary(plan: AIItineraryResponse): string {
+  if (!plan.stops.length) return '';
+  const first = plan.stops[0].place_name;
+  const tail = plan.stops.slice(1).map((stop) => {
+    const mode = stop.walk_from_previous_mins > 16 ? 'auto' : 'walk';
+    return `${mode} -> ${stop.place_name}`;
+  });
+  return [first, ...tail].join(' -> ');
+}
+
+function calcAveragePlaceRating(plan: AIItineraryResponse, places: Place[]): number {
+  const byName = new Map(places.map((p) => [p.name.toLowerCase(), p]));
+  const ratings = plan.stops
+    .map((s) => byName.get(s.place_name.toLowerCase())?.inferred_rating)
+    .filter((r): r is number => typeof r === 'number' && Number.isFinite(r));
+  if (!ratings.length) return 0;
+  const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+  return Math.round(avg * 10) / 10;
+}
+
+function calcVibeMatch(plan: AIItineraryResponse, mood: Mood, profile: ItineraryProfile): number {
+  const text = `${plan.day_summary} ${plan.stops.map((s) => `${s.place_name} ${s.vibe_note}`).join(' ')}`.toLowerCase();
+  const moodTokens: Record<Mood, string[]> = {
+    fun: ['social', 'lively', 'music', 'arcade', 'energy'],
+    chill: ['cozy', 'calm', 'slow', 'walk', 'relax'],
+    romantic: ['romantic', 'date', 'sunset', 'dessert', 'aesthetic'],
+    adventure: ['action', 'escape', 'thrill', 'bowling', 'trampoline'],
+  };
+  const profileTypeExpect: Record<ItineraryProfile, string[]> = {
+    chill_walk: ['cafe', 'outdoor'],
+    activity_food: ['activity', 'restaurant'],
+    premium_dining: ['restaurant', 'cafe'],
+    budget_bites: ['restaurant', 'outdoor'],
+  };
+  const keywordHits = moodTokens[mood].filter((token) => text.includes(token)).length;
+  const typeSet = new Set(plan.stops.map((s) => s.place_type));
+  const profileHits = profileTypeExpect[profile].filter((t) => typeSet.has(t as 'cafe' | 'activity' | 'restaurant' | 'outdoor')).length;
+  return clamp01(keywordHits / 4 * 0.65 + profileHits / profileTypeExpect[profile].length * 0.35);
+}
+
+function calcBudgetMatch(totalCost: number, perPersonCap: number): number {
+  if (totalCost <= 0) return 0.45;
+  const ratio = totalCost / perPersonCap;
+  if (ratio <= 0.6) return 0.95;
+  if (ratio <= 0.85) return 0.9;
+  if (ratio <= 1.0) return 0.78;
+  if (ratio <= 1.15) return 0.45;
+  return 0.2;
+}
+
+function calcDistanceScore(avgTravelMins: number): number {
+  if (avgTravelMins <= 20) return 1;
+  if (avgTravelMins <= 30) return 0.82;
+  if (avgTravelMins <= 40) return 0.62;
+  if (avgTravelMins <= 55) return 0.4;
+  return 0.25;
+}
+
+function whyThisOption(profile: ItineraryProfile, budgetMatch: number, distanceScore: number): string {
+  const profileReasons: Record<ItineraryProfile, string> = {
+    chill_walk: 'Relaxed pace with easy transitions and low stress movement.',
+    activity_food: 'Strong activity anchor followed by a practical food stop.',
+    premium_dining: 'Higher-end social experience built around dining quality.',
+    budget_bites: 'Value-first pick that keeps costs controlled and simple.',
+  };
+
+  if (budgetMatch >= 0.85 && distanceScore >= 0.8) {
+    return 'Best overall balance of cost and commute fairness for the group.';
+  }
+
+  return profileReasons[profile];
 }
 
 async function runGenerationJob(roomId: string, meetupStartTime: string): Promise<void> {
@@ -113,13 +203,15 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
     const results = await Promise.allSettled<InsertItineraryRow>(
       hubs.map(async (hub, index) => {
+        const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
         const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
         const { plan, method, model } = await generateItineraryForHub(
           hub,
           places,
           members.length,
           mood,
-          perPersonCap
+          perPersonCap,
+          profile
         );
 
         const firstStopTime = plan.stops?.[0]?.start_time || meetupStartTime;
@@ -138,10 +230,31 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           };
         });
 
+        const durationTotalMins = calcDurationMins(plan);
+        const averagePlaceRating = calcAveragePlaceRating(plan, places);
+        const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
+        const budgetMatch = calcBudgetMatch(plan.total_cost_per_person, perPersonCap);
+        const vibeMatch = calcVibeMatch(plan, mood, profile);
+        const ratingScore = averagePlaceRating > 0 ? clamp01((averagePlaceRating - 3) / 2) : 0.45;
+        const totalScore = distanceScore + budgetMatch + vibeMatch + ratingScore;
+
         const enrichedPlan = {
           ...plan,
           meetup_start_time: meetupStartTime,
           station_guidance: stationGuidance,
+          area: plan.area || hub.name,
+          profile,
+          flow_summary: plan.flow_summary || buildFlowSummary(plan),
+          duration_total_mins: durationTotalMins,
+          average_place_rating: averagePlaceRating,
+          score_breakdown: {
+            distance_score: Math.round(distanceScore * 100) / 100,
+            budget_match: Math.round(budgetMatch * 100) / 100,
+            vibe_match: Math.round(vibeMatch * 100) / 100,
+            rating_score: Math.round(ratingScore * 100) / 100,
+            total_score: Math.round(totalScore * 100) / 100,
+          },
+          why_this_option: plan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
         };
 
         return {

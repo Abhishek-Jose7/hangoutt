@@ -2,20 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Navbar } from '@/components/layout/Navbar';
-import { motion } from 'framer-motion';
 import { AlertCircle, Copy, Crown, Link2, Users } from 'lucide-react';
 import { useRemoveMember, useRoom, useRoomMembers, useStartPlanning } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
 import { useRoomStore } from '@/store/useRoomStore';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import type { RoomMemberWithUser } from '@/types';
-
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
 
 export default function LobbyPage() {
   const params = useParams();
@@ -39,7 +31,6 @@ export default function LobbyPage() {
     }
   }, [room, setRoom, setIsAdmin]);
 
-  // Redirect on status change
   useEffect(() => {
     if (status === 'planning') router.push(`/rooms/${roomId}/planning`);
     if (status === 'voting') router.push(`/rooms/${roomId}/voting`);
@@ -53,14 +44,14 @@ export default function LobbyPage() {
   const handleCopy = async () => {
     await navigator.clipboard.writeText(inviteLink);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1800);
   };
 
   const handleStartPlanning = async () => {
     try {
       await startPlanning.mutateAsync();
     } catch {
-      // error is shown from mutation
+      // handled by mutation state
     }
   };
 
@@ -68,90 +59,70 @@ export default function LobbyPage() {
     try {
       await removeMember.mutateAsync(memberUserId);
     } catch {
-      // error shown by mutation state on button title fallback
+      // handled by mutation state
     }
   };
 
   const isAdmin = room?.is_admin;
-  const memberCount = (members as RoomMemberWithUser[])?.length || 0;
-  const readyCount =
-    (members as RoomMemberWithUser[])?.filter(
-      (member) => member.lat !== null && member.lng !== null && member.budget !== null
-    ).length || 0;
-  const canStart = memberCount >= 2;
   const typedMembers = (members as RoomMemberWithUser[]) || [];
-  const isLoadingMembers = !members;
+  const memberCount = typedMembers.length;
+  const readyCount = typedMembers.filter((m) => m.lat !== null && m.lng !== null && m.budget !== null).length;
+  const readinessPercent = memberCount > 0 ? Math.round((readyCount / memberCount) * 100) : 0;
+  const canStart = memberCount >= 2;
 
   return (
-    <div className="min-h-screen">
-      <Navbar badge={{ text: 'Lobby', type: 'info' }} />
-
-      <main className="container-base max-w-[1100px] section-base">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
-          className="space-y-6"
-        >
-          <motion.div variants={fadeInUp}>
-            <Card className="p-5 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h1 className="display-text text-[28px] sm:text-[34px] mb-1">
-                    {room?.name || 'Loading Room...'}
-                  </h1>
-                  <p className="text-[14px] text-[var(--color-text-secondary)]">
-                    Room status and members update in real-time.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`badge ${readyCount === memberCount && memberCount > 1 ? 'badge-success' : 'badge-warning'}`}>
-                    {readyCount === memberCount && memberCount > 1 ? 'Live' : 'Waiting'}
-                  </span>
-                  <span className="badge badge-info inline-flex items-center gap-1">
-                    <Users className="h-3 w-3" /> {memberCount} members
-                  </span>
-                </div>
+    <div className="saas-page">
+      <div className="saas-shell saas-section space-y-6">
+        <section className="saas-hero">
+          <div className="relative z-[1] space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div>
+                <span className="section-kicker">Lobby Stage</span>
+                <h1 className="saas-title mt-3">{room?.name || 'Room Lobby'}</h1>
+                <p className="saas-lead mt-3">Invite everyone, confirm readiness, and launch planning once enough members are in.</p>
               </div>
-            </Card>
-          </motion.div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`badge ${readyCount === memberCount && memberCount > 1 ? 'badge-success' : 'badge-warning'}`}>
+                  {readyCount}/{memberCount} Ready
+                </span>
+                <span className="badge badge-info inline-flex items-center gap-1"><Users className="h-3 w-3" /> Members: {memberCount}</span>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.25fr] gap-6 items-start">
-            <motion.div variants={fadeInUp} className="space-y-6">
-              <Card className="p-5 sm:p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Link2 className="h-4 w-4 text-[var(--color-accent)]" />
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">Invite Link</p>
-                </div>
-                <div className="relative">
-                  <code className="block w-full h-[46px] leading-[46px] pr-[116px] pl-3 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] text-sm font-mono text-[var(--color-accent)] truncate">
-                    {inviteLink || 'Generating invite link...'}
-                  </code>
-                  <Button
-                    variant="secondary"
-                    onClick={handleCopy}
-                    className="absolute right-1 top-1 h-[38px]"
-                    id="copy-invite-btn"
-                    icon={<Copy className="h-3.5 w-3.5" />}
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </Button>
-                </div>
-              </Card>
+            <div className="saas-grid-4">
+              <div className="saas-kpi"><p className="saas-kpi-label">Ready Members</p><p className="saas-kpi-value">{readyCount}</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Pending Members</p><p className="saas-kpi-value">{Math.max(memberCount - readyCount, 0)}</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Readiness</p><p className="saas-kpi-value">{readinessPercent}%</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Admin</p><p className="saas-kpi-value">{isAdmin ? 'You' : 'Host'}</p></div>
+            </div>
+          </div>
+        </section>
 
-              <Card className="p-5 sm:p-6 border-[var(--color-warning)]/35 bg-[rgba(245,158,11,0.08)]">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-[var(--color-warning)] mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">Planning Status</p>
-                    <p className="text-sm text-[var(--color-text-secondary)]">
-                      {isAdmin
-                        ? `Waiting for all members to share location and budget (${readyCount}/${memberCount} ready).`
-                        : 'Waiting for admin to start planning once everyone is ready.'}
-                    </p>
-                  </div>
-                </div>
-              </Card>
+        <section className="saas-grid-2 items-start">
+          <aside className="space-y-4">
+            <div className="panel p-5 space-y-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Invite Link</p>
+                <p className="text-sm text-[var(--color-text-secondary)] mt-1">Share this with your group to join the room.</p>
+              </div>
+
+              <div className="saas-band">
+                <code className="text-xs sm:text-sm text-[var(--color-accent-strong)] break-all">{inviteLink || 'Generating link...'}</code>
+              </div>
+
+              <Button variant="secondary" onClick={handleCopy} id="copy-invite-btn">
+                <Copy className="h-4 w-4" />
+                {copied ? 'Copied' : 'Copy Invite'}
+              </Button>
+            </div>
+
+            <div className="panel p-5 space-y-4">
+              <p className="text-sm text-[var(--color-text-secondary)] inline-flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-[var(--color-warning)] mt-0.5" />
+                {isAdmin
+                  ? `Waiting for complete member inputs (${readyCount}/${memberCount} ready).`
+                  : 'Waiting for host to start planning once everyone is ready.'}
+              </p>
 
               {isAdmin ? (
                 <Button
@@ -161,97 +132,79 @@ export default function LobbyPage() {
                   className="w-full"
                   id="start-planning-btn"
                 >
-                  {!canStart
-                    ? `Need at least 2 members (${memberCount}/2)`
-                    : `Everyone's here — Start Planning`}
+                  {!canStart ? `Need at least 2 members (${memberCount}/2)` : 'Start Planning'}
                 </Button>
-              ) : (
-                <Card className="p-6 text-center">
-                  <div className="text-2xl mb-2">⏳</div>
-                  <p className="text-sm text-[var(--color-text-secondary)]">
-                    Waiting for the admin to start planning...
-                  </p>
-                </Card>
-              )}
+              ) : null}
 
               {isAdmin && startPlanning.isError ? (
-                <p className="text-sm text-[var(--color-danger)] text-center">
-                  {startPlanning.error.message}
-                </p>
+                <p className="text-sm text-[var(--color-danger)]">{startPlanning.error.message}</p>
               ) : null}
-            </motion.div>
+            </div>
+          </aside>
 
-            <motion.div variants={fadeInUp}>
-              <Card className="p-5 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">Members</p>
-                  <span className="text-xs text-[var(--color-text-secondary)]">{readyCount} ready</span>
-                </div>
+          <div className="panel p-5">
+            <div className="flex items-end justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">Member Directory</p>
+                <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">Roster And Readiness</h2>
+              </div>
+              <span className="text-xs text-[var(--color-text-tertiary)]">{readyCount}/{memberCount} Ready</span>
+            </div>
 
-                {isLoadingMembers ? (
-                  <div className="space-y-3">
-                    <div className="h-[54px] rounded-xl skeleton" />
-                    <div className="h-[54px] rounded-xl skeleton" />
-                    <div className="h-[54px] rounded-xl skeleton" />
+            {!members ? (
+              <div className="space-y-2">
+                <div className="h-12 rounded-xl skeleton" />
+                <div className="h-12 rounded-xl skeleton" />
+                <div className="h-12 rounded-xl skeleton" />
+              </div>
+            ) : typedMembers.length === 0 ? (
+              <div className="saas-band text-sm text-[var(--color-text-secondary)]">No members yet. Share the invite link to get started.</div>
+            ) : (
+              <div className="saas-table">
+                {typedMembers.map((member) => (
+                  <div key={member.user_id} className="saas-row">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
+                        {member.users?.name || member.users?.email || 'Anonymous'}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Joined {new Date(member.joined_at).toLocaleTimeString()}</p>
+                    </div>
+
+                    <div>
+                      <span className={`badge ${member.lat !== null && member.lng !== null && member.budget !== null ? 'badge-success' : 'badge-warning'}`}>
+                        {member.lat !== null && member.lng !== null && member.budget !== null ? 'Ready' : 'Pending'}
+                      </span>
+                    </div>
+
+                    <div>
+                      {member.user_id === room?.admin_id ? (
+                        <span className="badge badge-accent inline-flex items-center gap-1"><Crown className="h-3 w-3" /> Admin</span>
+                      ) : (
+                        <span className="text-xs text-[var(--color-text-tertiary)]">Member</span>
+                      )}
+                    </div>
+
+                    <div>
+                      {isAdmin && member.user_id !== room?.admin_id ? (
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleRemoveMember(member.user_id)}
+                          className="h-[34px] px-3 text-xs"
+                          disabled={removeMember.isPending}
+                        >
+                          Remove
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-[var(--color-text-tertiary)] inline-flex items-center gap-1"><Link2 className="h-3 w-3" /> Active</span>
+                      )}
+                    </div>
                   </div>
-                ) : typedMembers.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[var(--color-border-default)] p-8 text-center">
-                    <p className="text-sm text-[var(--color-text-secondary)]">No members yet. Share the invite link to get started.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-[var(--color-border-subtle)] rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]">
-                    {typedMembers.map((member, i) => (
-                      <motion.div
-                        key={member.user_id}
-                        variants={fadeInUp}
-                        custom={i}
-                        className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-[var(--color-accent-muted)] flex items-center justify-center text-sm font-semibold text-[var(--color-accent)]">
-                          {(member.users?.name || member.users?.email || '?')[0].toUpperCase()}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                            {member.users?.name || member.users?.email || 'Anonymous'}
-                          </p>
-                          <p className="text-xs text-[var(--color-text-tertiary)]">
-                            Joined {new Date(member.joined_at).toLocaleTimeString()}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`badge ${member.lat !== null && member.lng !== null && member.budget !== null ? 'badge-success' : 'badge-warning'}`}>
-                            {member.lat !== null && member.lng !== null && member.budget !== null ? 'Ready' : 'Pending'}
-                          </span>
-
-                          {member.user_id === room?.admin_id ? (
-                            <span className="badge badge-accent inline-flex items-center gap-1">
-                              <Crown className="h-3 w-3" /> Admin
-                            </span>
-                          ) : null}
-
-                          {isAdmin && member.user_id !== room?.admin_id ? (
-                            <Button
-                              variant="secondary"
-                              onClick={() => handleRemoveMember(member.user_id)}
-                              className="h-[34px] px-3 text-xs"
-                              disabled={removeMember.isPending}
-                              title="Remove member"
-                            >
-                              Remove
-                            </Button>
-                          ) : null}
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </motion.div>
+                ))}
+              </div>
+            )}
           </div>
-        </motion.div>
-      </main>
+        </section>
+      </div>
     </div>
   );
 }

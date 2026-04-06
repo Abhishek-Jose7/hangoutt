@@ -2,17 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { Compass, Heart, MoonStar, Sparkles } from 'lucide-react';
 import { useCreateRoom } from '@/hooks/useRoom';
-import { Sparkles, MoonStar, Heart, Compass, Plus } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
 import type { Mood } from '@/types';
 
 const moods: { value: Mood; icon: React.ComponentType<{ className?: string }>; label: string; desc: string }[] = [
-  { value: 'fun', icon: Sparkles, label: 'Fun', desc: 'Lively & social' },
-  { value: 'chill', icon: MoonStar, label: 'Chill', desc: 'Relaxed pace' },
-  { value: 'romantic', icon: Heart, label: 'Romantic', desc: 'Intimate' },
-  { value: 'adventure', icon: Compass, label: 'Adventure', desc: 'Explore' },
+  { value: 'fun', icon: Sparkles, label: 'Fun', desc: 'Lively social energy' },
+  { value: 'chill', icon: MoonStar, label: 'Chill', desc: 'Slow and relaxed pace' },
+  { value: 'romantic', icon: Heart, label: 'Romantic', desc: 'Intimate and cozy' },
+  { value: 'adventure', icon: Compass, label: 'Adventure', desc: 'Explore new places' },
 ];
 
 export default function CreateRoomPage() {
@@ -25,9 +23,10 @@ export default function CreateRoomPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Give your hangout a name');
+      setError('Give your room a clear name.');
       return;
     }
+
     setError('');
     try {
       const room = await createRoom.mutateAsync({ name: name.trim(), mood });
@@ -38,83 +37,74 @@ export default function CreateRoomPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-center items-center p-6 relative">
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[640px] z-10"
-      >
-        <div className="text-center mb-6">
-          <h1 className="display-text text-3xl font-bold mb-2">Create Room</h1>
-          <p className="text-[var(--color-text-secondary)] text-sm">
-            Configure your space and invite the group.
-          </p>
-        </div>
+    <div className="saas-page">
+      <div className="saas-shell saas-section space-y-6">
+        <section className="saas-hero">
+          <div className="saas-grid-2 relative z-[1]">
+            <div className="space-y-4">
+              <span className="section-kicker">New Planning Room</span>
+              <h1 className="saas-title">Create A Structured Planning Space</h1>
+              <p className="saas-lead">
+                Name the room, set the mood, and generate a share link for your group. Everything else flows through the same controlled process.
+              </p>
 
-        <Card className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="room-name" className="block text-[13px] font-semibold mb-2 text-center">
-                Room Name
-              </label>
-              <input
-                id="room-name"
-                type="text"
-                placeholder="Saturday Brunch Squad"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={40}
-                className="input text-center text-lg h-12 w-full bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-xl"
-                autoFocus
-              />
-            </div>
-
-            <div>
-              <label className="block text-[13px] font-semibold mb-3 text-center">Select Mood</label>
-              <div className="grid grid-cols-2 gap-3">
-                {moods.map((m) => {
-                  const Icon = m.icon;
-                  const isSelected = mood === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setMood(m.value)}
-                      className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${
-                        isSelected
-                          ? 'bg-[var(--color-accent-glow)] border-[var(--color-accent)] shadow-[0_0_0_2px_var(--color-accent-muted)]'
-                          : 'bg-[var(--color-bg-base)] border-[var(--color-border-subtle)] hover:bg-[var(--color-bg-elevated)]'
-                      }`}
-                    >
-                      <Icon className={`h-6 w-6 mb-2 ${isSelected ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)]'}`} />
-                      <span className="font-semibold text-sm mb-1">{m.label}</span>
-                      <span className="text-[11px] text-[var(--color-text-tertiary)]">{m.desc}</span>
-                    </button>
-                  );
-                })}
+              <div className="saas-list">
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">Step 1: Define room identity.</div>
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">Step 2: Set mood profile.</div>
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">Step 3: Invite and collect member constraints.</div>
               </div>
             </div>
 
-            {error && (
-              <div className="p-3 text-center rounded-xl bg-[rgba(248,113,113,0.1)] border border-[rgba(248,113,113,0.2)] text-[#f87171] text-[13px]">
-                {error}
+            <form onSubmit={handleSubmit} className="panel p-6 space-y-6">
+              <div>
+                <label htmlFor="room-name" className="block text-sm font-semibold mb-2">Room Name</label>
+                <input
+                  id="room-name"
+                  type="text"
+                  placeholder="Saturday City Crew"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={40}
+                  className="input"
+                  autoFocus
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={createRoom.isPending}
-              className="btn-primary w-full h-12 text-base font-bold shadow-lg"
-            >
-              {createRoom.isPending ? 'Creating...' : (
-                <>
-                  <Plus className="h-5 w-5 mr-1" /> Create Hangout Room
-                </>
-              )}
-            </button>
-          </form>
-        </Card>
-      </motion.div>
+              <div>
+                <p className="block text-sm font-semibold mb-2">Mood Profile</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {moods.map((entry) => {
+                    const Icon = entry.icon;
+                    const active = mood === entry.value;
+                    return (
+                      <button
+                        key={entry.value}
+                        type="button"
+                        onClick={() => setMood(entry.value)}
+                        className={`rounded-xl border p-4 text-left transition-all ${
+                          active
+                            ? 'border-[var(--color-accent)] bg-[rgba(220,20,60,0.16)]'
+                            : 'border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.02)] hover:border-[var(--color-border-default)]'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5 mb-2 text-[var(--color-accent-strong)]" />
+                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{entry.label}</p>
+                        <p className="text-xs text-[var(--color-text-tertiary)] mt-1">{entry.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
+
+              <button type="submit" className="btn-primary w-full" disabled={createRoom.isPending}>
+                {createRoom.isPending ? 'Creating room...' : 'Create Room'}
+              </button>
+            </form>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

@@ -32,7 +32,6 @@ export function buildFallbackItinerary(
     }
   }
 
-  const costPerStop = Math.round(perPersonCap / Math.max(selected.length, 1));
   const timeSlots = ['11:00', '13:30', '16:00'];
 
   const stops = selected.map((place, i) => ({
@@ -43,7 +42,7 @@ export function buildFallbackItinerary(
     duration_mins: i === selected.length - 1 ? 120 : 90,
     estimated_cost_per_person:
       place.estimated_cost !== undefined
-        ? Math.min(place.estimated_cost, costPerStop)
+        ? Math.max(0, Math.round(place.estimated_cost))
         : 0,
     walk_from_previous_mins: i === 0 ? 10 : 15,
     distance_from_previous_km: i === 0 ? 0.8 : 1.1,

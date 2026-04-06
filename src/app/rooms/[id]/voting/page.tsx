@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Navbar } from '@/components/layout/Navbar';
-import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Clock3, Landmark, Sparkles, Vote } from 'lucide-react';
 import { useRoom, useItineraries, useVotes, useCastVote, useConfirmItinerary } from '@/hooks/useRoom';
 import { useRoomRealtime } from '@/lib/realtime';
@@ -28,16 +26,11 @@ interface VotesPayload {
   confirm_warning: string | null;
 }
 
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
 const strategyLabels: Record<string, string> = {
-  geometric: '📐 Center Point',
-  minimax_transit: '⚖️ Fairest Travel',
-  min_total_transit: '⚡ Most Efficient',
-  cultural_hub: '🎭 Vibe Match',
+  geometric: 'Center Point',
+  minimax_transit: 'Fairest Travel',
+  min_total_transit: 'Most Efficient',
+  cultural_hub: 'Vibe Match',
 };
 
 function getFairnessClass(score: number): string {
@@ -54,6 +47,11 @@ function getFairnessLabel(score: number): string {
 
 function renderPrice(value: number): string {
   return value > 0 ? `₹${value}` : 'Price unavailable';
+}
+
+function renderMinutes(value?: number): string {
+  if (!value || value <= 0) return 'N/A';
+  return `${value} min`;
 }
 
 export default function VotingPage() {
@@ -94,12 +92,15 @@ export default function VotingPage() {
   const topOptionIds = votesData?.top_option_ids || [];
   const isTie = votesData?.is_tie || false;
   const typedItineraries = itineraries as ItineraryOption[] | undefined;
+  const voteProgress = votesData && votesData.total_members > 0
+    ? Math.round((votesData.total_votes / votesData.total_members) * 100)
+    : 0;
 
   const handleVote = async (optionId: string) => {
     try {
       await castVote.mutateAsync(optionId);
     } catch {
-      // error
+      // no-op
     }
   };
 
@@ -107,241 +108,145 @@ export default function VotingPage() {
     try {
       await confirmItinerary.mutateAsync(optionId);
     } catch {
-      // error
+      // no-op
     }
   };
 
   const getVoteCount = (optionId: string) => {
-    return votesData?.votes?.find(
-      (v: { itinerary_option_id: string; count: number }) => v.itinerary_option_id === optionId
-    )?.count || 0;
+    return votesData?.votes?.find((v) => v.itinerary_option_id === optionId)?.count || 0;
   };
 
   return (
-    <div className="min-h-screen">
-      <Navbar badge={{ text: 'Voting', type: 'accent' }} />
-
-      <main className="container-base max-w-[1120px] section-base">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
-          className="space-y-6"
-        >
-          <motion.div variants={fadeInUp}>
-            <Card className="p-5 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h1 className="display-text text-[28px] sm:text-[34px] mb-1">Pick your plan</h1>
-                  <p className="text-sm text-[var(--color-text-secondary)]">
-                    {votesData
-                      ? `${votesData.total_votes}/${votesData.total_members} voted`
-                      : 'Vote for your favourite itinerary'}
-                  </p>
-                </div>
-                <span className="badge badge-info inline-flex items-center gap-1">
-                  <Vote className="h-3 w-3" /> Live voting
-                </span>
+    <div className="saas-page">
+      <div className="saas-shell saas-section space-y-6">
+        <section className="saas-hero">
+          <div className="relative z-[1] space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+              <div>
+                <span className="section-kicker">Voting Stage</span>
+                <h1 className="saas-title mt-3">Pick The Final Plan</h1>
+                <p className="saas-lead mt-3">Compare each itinerary on fairness, travel time, and cost before confirming the final outcome.</p>
               </div>
-            </Card>
-          </motion.div>
+              <span className="badge badge-info inline-flex items-center gap-1"><Vote className="h-3 w-3" /> Live voting</span>
+            </div>
 
-          {isAdmin && !allVoted ? (
-            <motion.div variants={fadeInUp}>
-              <Card className="p-4 border-[var(--color-warning)]/40 bg-[rgba(245,158,11,0.08)]">
-                <p className="text-sm text-[var(--color-warning)] inline-flex items-center gap-2">
-                  <Clock3 className="h-4 w-4" /> {missingVotes} members haven&apos;t voted yet. You can still confirm if needed.
-                </p>
-              </Card>
-            </motion.div>
-          ) : null}
-
-          {isAdmin && isTie ? (
-            <motion.div variants={fadeInUp}>
-              <Card className="p-4 border-[var(--color-info)]/40 bg-[rgba(59,130,246,0.08)]">
-                <p className="text-sm text-[var(--color-info)] inline-flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" /> Tie detected. Confirm one of the tied top options.
-                </p>
-              </Card>
-            </motion.div>
-          ) : null}
-
-          <div className="grid md:grid-cols-2 gap-6">
-            {typedItineraries?.map((option, i) => {
-              const plan = option.plan as AIItineraryResponse;
-              const isVoted = userVote === option.id;
-              const voteCount = getVoteCount(option.id);
-              const isExpanded = expandedId === option.id;
-              const canConfirmThisOption = canConfirmNow && topOptionIds.includes(option.id);
-
-              return (
-                <motion.div
-                  key={option.id}
-                  variants={fadeInUp}
-                  custom={i}
-                  className={`overflow-hidden transition-all h-full ${
-                    isVoted ? 'border-[var(--color-accent)] glow-accent' : ''
-                  }`}
-                >
-                  <Card className="p-0 h-full flex flex-col">
-                  {/* Card Header */}
-                  <div className="p-5 border-b border-[var(--color-border-subtle)]">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="text-xs text-[var(--color-text-tertiary)] mb-1">
-                          {strategyLabels[option.hub_strategy] || option.hub_strategy}
-                        </div>
-                        <h3 className="font-bold text-xl">{option.hub_name}</h3>
-                      </div>
-                      <div className="text-right">
-                        <span className={`badge ${getFairnessClass(option.travel_fairness_score)}`}>
-                          {getFairnessLabel(option.travel_fairness_score)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 text-sm text-[var(--color-text-secondary)]">
-                      <span className="inline-flex items-center gap-1"><Landmark className="h-3.5 w-3.5" /> ₹{option.total_cost_estimate}/person</span>
-                      <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> ~{option.max_travel_time_mins}min max travel</span>
-                      <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" /> {plan.stops?.length || 0} stops</span>
-                    </div>
-
-                    {plan.day_summary && (
-                      <p className="mt-3 text-sm text-[var(--color-text-secondary)] italic">
-                        &ldquo;{plan.day_summary}&rdquo;
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Expand/Collapse */}
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : option.id)}
-                    className="w-full px-5 py-2 text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors text-center"
-                  >
-                    {isExpanded ? '▲ Hide details' : '▼ Show itinerary'}
-                  </button>
-
-                  <AnimatePresence>
-                    {isExpanded && plan.stops && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="px-5 pb-3 space-y-3">
-                          {plan.station_guidance?.length ? (
-                            <div className="p-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
-                              <p className="text-xs uppercase tracking-wider text-[var(--color-text-tertiary)] mb-2">
-                                Reach Station By
-                              </p>
-                              <div className="space-y-1.5">
-                                {plan.station_guidance.map((item, idx) => (
-                                  <div key={`${item.member_name}-${idx}`} className="text-xs text-[var(--color-text-secondary)] flex items-center justify-between gap-2">
-                                    <span className="truncate max-w-[180px]">{item.member_name} • {item.station}</span>
-                                    <span className="text-[var(--color-text-primary)] font-mono">{item.reach_station_by}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {plan.stops.map((stop) => (
-                            <div
-                              key={stop.stop_number}
-                              className="flex gap-3 p-3 rounded-lg bg-[var(--color-bg-elevated)]"
-                            >
-                              <div className="text-center flex-shrink-0">
-                                <div className="font-mono text-xs text-[var(--color-accent)]">
-                                  {stop.start_time}
-                                </div>
-                                <div className="text-xs text-[var(--color-text-tertiary)]">
-                                  {stop.duration_mins}min
-                                </div>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm">
-                                  {stop.place_name}
-                                </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="badge badge-info text-[10px]">
-                                    {stop.place_type}
-                                  </span>
-                                  <span className="text-xs text-[var(--color-text-tertiary)]">
-                                    {renderPrice(stop.estimated_cost_per_person)}
-                                  </span>
-                                </div>
-                                {stop.vibe_note && (
-                                  <p className="text-xs text-[var(--color-text-tertiary)] mt-1 italic">
-                                    {stop.vibe_note}
-                                  </p>
-                                )}
-                                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-                                  {stop.distance_from_previous_km ?? (stop.walk_from_previous_mins > 0 ? 1.0 : 0)}km • {stop.walk_from_previous_mins}min walk {stop.stop_number === 1 ? 'from station' : 'from previous stop'}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Vote */}
-                  <div className="p-5 border-t border-[var(--color-border-subtle)] mt-auto">
-                    <div className="flex items-center gap-3">
-                      <Button
-                        onClick={() => handleVote(option.id)}
-                        disabled={castVote.isPending}
-                        variant={isVoted ? 'primary' : 'secondary'}
-                        className="flex-1"
-                        id={`vote-btn-${option.id}`}
-                        icon={isVoted ? <CheckCircle2 className="h-4 w-4" /> : undefined}
-                      >
-                        {isVoted ? '✓ Your vote' : 'Vote for this'}
-                      </Button>
-                      {showCounts && (
-                        <span className="text-sm text-[var(--color-text-secondary)] font-mono">
-                          {voteCount} vote{voteCount !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-
-                    {isAdmin && (
-                      canConfirmThisOption ? (
-                        <Button
-                          onClick={() => handleConfirm(option.id)}
-                          disabled={confirmItinerary.isPending}
-                          variant="secondary"
-                          className="mt-2 w-full"
-                          id={`confirm-btn-${option.id}`}
-                          title={isTie ? 'Tie detected: pick one of the tied options' : 'Top-voted option'}
-                          loading={confirmItinerary.isPending}
-                        >
-                          Confirm This Plan
-                        </Button>
-                      ) : null
-                    )}
-                  </div>
-                  </Card>
-                </motion.div>
-              );
-            })}
+            <div className="saas-grid-4">
+              <div className="saas-kpi"><p className="saas-kpi-label">Votes</p><p className="saas-kpi-value">{votesData?.total_votes || 0}</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Members</p><p className="saas-kpi-value">{votesData?.total_members || 0}</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Progress</p><p className="saas-kpi-value">{voteProgress}%</p></div>
+              <div className="saas-kpi"><p className="saas-kpi-label">Options</p><p className="saas-kpi-value">{typedItineraries?.length || 0}</p></div>
+            </div>
           </div>
+        </section>
 
-          {(!typedItineraries || typedItineraries.length === 0) && (
-            <motion.div variants={fadeInUp}>
-              <Card className="p-12 text-center">
-              <div className="text-4xl mb-4 animate-pulse-station">🗳️</div>
-              <p className="text-[var(--color-text-secondary)]">
-                Loading itinerary options...
-              </p>
+        {isAdmin && !allVoted ? (
+          <div className="panel p-4 border-[rgba(255,193,7,0.3)] bg-[rgba(255,193,7,0.08)] text-sm text-[var(--color-warning)] inline-flex items-center gap-2">
+            <Clock3 className="h-4 w-4" />
+            {missingVotes} members have not voted yet. You can still confirm if needed.
+          </div>
+        ) : null}
+
+        {isAdmin && isTie ? (
+          <div className="panel p-4 border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] text-sm text-[var(--color-info)] inline-flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Tie detected. Confirm one of the top-tied options.
+          </div>
+        ) : null}
+
+        <section className="grid md:grid-cols-2 gap-5">
+          {typedItineraries?.map((option) => {
+            const plan = option.plan as AIItineraryResponse;
+            const isVoted = userVote === option.id;
+            const voteCount = getVoteCount(option.id);
+            const isExpanded = expandedId === option.id;
+            const canConfirmThisOption = canConfirmNow && topOptionIds.includes(option.id);
+
+            return (
+              <Card key={option.id} className={`p-0 overflow-hidden ${isVoted ? 'border-[var(--color-accent)] glow-accent' : ''}`}>
+                <div className="p-5 border-b border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.015)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">{strategyLabels[option.hub_strategy] || option.hub_strategy}</p>
+                      <h3 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">{plan.short_title || option.hub_name}</h3>
+                    </div>
+                    <span className={`badge ${getFairnessClass(option.travel_fairness_score)}`}>{getFairnessLabel(option.travel_fairness_score)}</span>
+                  </div>
+
+                  {plan.flow_summary ? <p className="text-sm text-[var(--color-text-secondary)] mt-3">{plan.flow_summary}</p> : null}
+
+                  <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5" /> {renderPrice(option.total_cost_estimate)}/person</div>
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {renderMinutes(plan.duration_total_mins)} total</div>
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {option.avg_travel_time_mins} min avg</div>
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> {plan.stops?.length || 0} stops</div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : option.id)}
+                  className="w-full px-5 py-2 text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                >
+                  {isExpanded ? 'Hide details' : 'Show details'}
+                </button>
+
+                {isExpanded && plan.stops ? (
+                  <div className="px-5 pb-4 space-y-2">
+                    {plan.stops.map((stop) => (
+                      <div key={stop.stop_number} className="saas-list-item">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{stop.place_name}</p>
+                          <span className="text-xs text-[var(--color-text-tertiary)]">{stop.start_time}</span>
+                        </div>
+                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                          {stop.place_type} • {renderPrice(stop.estimated_cost_per_person)} • {stop.duration_mins} min
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="p-5 border-t border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.015)] space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={() => handleVote(option.id)}
+                      disabled={castVote.isPending}
+                      variant={isVoted ? 'primary' : 'secondary'}
+                      className="flex-1"
+                      id={`vote-btn-${option.id}`}
+                      icon={isVoted ? <CheckCircle2 className="h-4 w-4" /> : undefined}
+                    >
+                      {isVoted ? 'Your Vote' : 'Vote For This'}
+                    </Button>
+                    {showCounts ? (
+                      <span className="text-sm text-[var(--color-text-secondary)] font-mono">{voteCount} vote{voteCount !== 1 ? 's' : ''}</span>
+                    ) : null}
+                  </div>
+
+                  {isAdmin && canConfirmThisOption ? (
+                    <Button
+                      onClick={() => handleConfirm(option.id)}
+                      disabled={confirmItinerary.isPending}
+                      variant="secondary"
+                      className="w-full"
+                      id={`confirm-btn-${option.id}`}
+                      loading={confirmItinerary.isPending}
+                    >
+                      Confirm This Plan
+                    </Button>
+                  ) : null}
+                </div>
               </Card>
-            </motion.div>
-          )}
-        </motion.div>
-      </main>
+            );
+          })}
+        </section>
+
+        {(!typedItineraries || typedItineraries.length === 0) ? (
+          <div className="panel p-12 text-center">
+            <p className="text-sm text-[var(--color-text-secondary)]">Loading itinerary options...</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

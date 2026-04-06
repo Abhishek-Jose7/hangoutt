@@ -2,17 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { AlertCircle, CheckCircle2, LocateFixed, MapPinned, Search, UserRound, Wallet } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
 
 export default function JoinRoomPage() {
   const router = useRouter();
@@ -56,7 +49,7 @@ export default function JoinRoomPage() {
         setStatus('error');
       }
     }
-    lookupRoom();
+    void lookupRoom();
   }, [inviteCode]);
 
   const handleJoin = async () => {
@@ -69,7 +62,6 @@ export default function JoinRoomPage() {
       setError('Please set your location before joining.');
       return;
     }
-
     if (!validBudget) {
       setError('Please enter a valid budget.');
       return;
@@ -89,36 +81,20 @@ export default function JoinRoomPage() {
           nearest_station: nearestStation,
         }),
       });
+
       if (!res.ok) {
         const err = await res.json();
         setError(err.error?.message || 'Failed to join');
         setStatus('error');
         return;
       }
+
       router.push(`/rooms/${roomPreview.id}`);
     } catch {
       setError('Failed to join room');
       setStatus('error');
     }
   };
-
-  const stepItems = [
-    {
-      title: 'Your details',
-      icon: UserRound,
-      complete: canContinueIdentity,
-    },
-    {
-      title: 'Start location',
-      icon: MapPinned,
-      complete: canContinueLocation,
-    },
-    {
-      title: 'Budget review',
-      icon: Wallet,
-      complete: validBudget,
-    },
-  ];
 
   const handleGeolocation = () => {
     if (!navigator.geolocation) {
@@ -174,82 +150,77 @@ export default function JoinRoomPage() {
     }
   };
 
+  const stepItems = [
+    { title: 'Identity', icon: UserRound, complete: canContinueIdentity },
+    { title: 'Location', icon: MapPinned, complete: canContinueLocation },
+    { title: 'Budget', icon: Wallet, complete: validBudget },
+  ];
+
   return (
-    <div className="min-h-screen hero-gradient">
-      <motion.div
-        className="container-base section-base max-w-[760px]"
-        initial="hidden"
-        animate="visible"
-        variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
-      >
-        <Card className="p-10 w-full max-w-md text-center mx-auto">
-          {status === 'loading' && (
-            <motion.div variants={fadeInUp}>
-              <div className="text-4xl mb-4 animate-pulse-station">🔍</div>
-              <p className="text-[var(--color-text-secondary)]">Looking up room...</p>
-            </motion.div>
-          )}
+    <div className="saas-page">
+      <div className="saas-shell saas-section">
+        <section className="saas-hero">
+          {status === 'loading' ? (
+            <div className="relative z-[1] text-center py-12">
+              <span className="section-kicker">Join Room</span>
+              <h1 className="saas-title mt-4">Resolving Invite Code</h1>
+              <p className="saas-lead mx-auto mt-3">We are verifying room details before onboarding you.</p>
+            </div>
+          ) : null}
 
-          {status === 'preview' && roomPreview && (
-            <>
-              <motion.div variants={fadeInUp} className="text-4xl mb-4">🎉</motion.div>
-              <motion.h2 variants={fadeInUp} className="display-text text-2xl mb-2">
-                {roomPreview.name}
-              </motion.h2>
-              <motion.p variants={fadeInUp} className="text-[var(--color-text-secondary)] mb-6">
-                <span className="capitalize">{roomPreview.mood}</span> hangout
-              </motion.p>
-              <motion.div variants={fadeInUp} className="mb-5 space-y-4 text-left">
-                <div className="grid grid-cols-3 gap-2">
-                  {stepItems.map((item, index) => {
-                    const Icon = item.icon;
-                    const active = index === step;
-                    return (
-                      <button
-                        key={item.title}
-                        type="button"
-                        onClick={() => setStep(index)}
-                        className={`rounded-xl border px-3 py-2 text-left transition-colors ${
-                          active
-                            ? 'border-[var(--color-accent)] bg-[rgba(220,20,60,0.08)]'
-                            : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          {item.complete ? (
-                            <CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />
-                          ) : (
-                            <Icon className="h-4 w-4 text-[var(--color-text-tertiary)]" />
-                          )}
-                          <div>
-                            <p className="text-[11px] uppercase tracking-wider text-[var(--color-text-tertiary)]">Step {index + 1}</p>
-                            <p className="text-xs font-medium text-[var(--color-text-primary)]">{item.title}</p>
+          {status === 'preview' && roomPreview ? (
+            <div className="saas-grid-2 relative z-[1] items-start">
+              <div className="space-y-4">
+                <span className="section-kicker">Invite Accepted</span>
+                <h1 className="saas-title">Join {roomPreview.name}</h1>
+                <p className="saas-lead">
+                  Provide your details once so we can generate fair and budget-aware options for the full group.
+                </p>
+
+                <div className="saas-band">
+                  <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)] mb-3">Onboarding Steps</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {stepItems.map((item, index) => {
+                      const Icon = item.icon;
+                      const active = index === step;
+                      return (
+                        <button
+                          key={item.title}
+                          type="button"
+                          onClick={() => setStep(index)}
+                          className={`rounded-xl border px-2 py-2 text-left ${
+                            active
+                              ? 'border-[var(--color-accent)] bg-[rgba(220,20,60,0.12)]'
+                              : 'border-[var(--color-border-subtle)] bg-[rgba(255,255,255,0.02)]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {item.complete ? (
+                              <CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />
+                            ) : (
+                              <Icon className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+                            )}
+                            <span className="text-xs text-[var(--color-text-primary)]">{item.title}</span>
                           </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              </div>
 
+              <div className="panel p-6 space-y-4">
                 {step === 0 ? (
                   <div className="space-y-3">
-                    <div>
-                      <label htmlFor="display-name" className="block text-xs text-[var(--color-text-secondary)] mb-1">
-                        Your name
-                      </label>
-                      <Input
-                        id="display-name"
-                        placeholder="How your friends should see you"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                      />
-                    </div>
-                    <p className="text-xs text-[var(--color-text-tertiary)]">
-                      This is what the rest of the room will see.
-                    </p>
+                    <label htmlFor="display-name" className="text-sm font-medium block">Display name</label>
+                    <Input
+                      id="display-name"
+                      placeholder="How your friends should see you"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
                     <div className="flex justify-end">
                       <Button
-                        type="button"
                         onClick={() => {
                           if (!canContinueIdentity) {
                             setError('Please enter a display name to continue.');
@@ -267,64 +238,59 @@ export default function JoinRoomPage() {
 
                 {step === 1 ? (
                   <div className="space-y-3">
-                    <div>
-                      <p className="block text-xs text-[var(--color-text-secondary)] mb-1">Location</p>
-                      {locationSet ? (
-                        <div className="space-y-2">
-                          <div className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-3 py-2 text-sm">
-                            {locationName}
-                          </div>
-                          <p className="text-xs text-[var(--color-text-secondary)]">Nearest station: {nearestStation}</p>
-                          {geoWarning ? (
-                            <p className="text-xs text-[var(--color-warning)] inline-flex items-center gap-1">
-                              <AlertCircle className="h-3.5 w-3.5" /> {geoWarning}
-                            </p>
-                          ) : null}
-                          <Button
-                            variant="secondary"
-                            className="h-[36px] px-3 text-xs"
-                            onClick={() => {
-                              setLocationSet(false);
-                              setLatLng(null);
-                              setLocationName('');
-                              setNearestStation('');
-                              setGeoWarning('');
-                              setSearchQuery('');
-                            }}
-                          >
-                            Change location
+                    {locationSet ? (
+                      <div className="saas-band space-y-2">
+                        <p className="text-sm text-[var(--color-text-primary)]">{locationName}</p>
+                        <p className="text-xs text-[var(--color-text-secondary)]">Nearest station: {nearestStation}</p>
+                        {geoWarning ? (
+                          <p className="text-xs text-[var(--color-warning)] inline-flex items-center gap-1">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            {geoWarning}
+                          </p>
+                        ) : null}
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setLocationSet(false);
+                            setLatLng(null);
+                            setLocationName('');
+                            setNearestStation('');
+                            setGeoWarning('');
+                            setSearchQuery('');
+                          }}
+                        >
+                          Change Location
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Button
+                          className="w-full"
+                          onClick={handleGeolocation}
+                          loading={geoLoading}
+                          icon={!geoLoading ? <LocateFixed className="h-4 w-4" /> : undefined}
+                        >
+                          Use Current Location
+                        </Button>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Search area (e.g. Andheri West)"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+                          />
+                          <Button variant="secondary" onClick={handleManualSearch} icon={<Search className="h-4 w-4" />}>
+                            Search
                           </Button>
                         </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <Button
-                            className="w-full"
-                            onClick={handleGeolocation}
-                            loading={geoLoading}
-                            icon={!geoLoading ? <LocateFixed className="h-4 w-4" /> : undefined}
-                          >
-                            Use current location
-                          </Button>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Search area (e.g. Andheri West)"
-                              value={searchQuery}
-                              onChange={(e) => setSearchQuery(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
-                            />
-                            <Button variant="secondary" onClick={handleManualSearch} icon={<Search className="h-4 w-4" />}>
-                              Search
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                      </>
+                    )}
+
                     <div className="flex items-center justify-between gap-2">
-                      <Button variant="secondary" type="button" onClick={() => setStep(0)}>
+                      <Button variant="secondary" onClick={() => setStep(0)}>
                         Back
                       </Button>
                       <Button
-                        type="button"
                         onClick={() => {
                           if (!canContinueLocation) {
                             setError('Set your location before continuing.');
@@ -342,86 +308,57 @@ export default function JoinRoomPage() {
 
                 {step === 2 ? (
                   <div className="space-y-4">
-                    <div>
-                      <label htmlFor="budget" className="block text-xs text-[var(--color-text-secondary)] mb-1">
-                        Budget per person (INR)
-                      </label>
-                      <Input
-                        id="budget"
-                        type="number"
-                        min={100}
-                        max={10000}
-                        step={50}
-                        value={budget}
-                        onChange={(e) => setBudget(e.target.value)}
-                      />
-                    </div>
+                    <label htmlFor="budget" className="text-sm font-medium block">Budget per person (INR)</label>
+                    <Input
+                      id="budget"
+                      type="number"
+                      min={100}
+                      max={10000}
+                      step={50}
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                    />
 
-                    <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] p-4 space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
-                        <CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" /> Review before joining
-                      </div>
-                      <div className="grid gap-2 text-xs text-[var(--color-text-secondary)]">
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Name</span>
-                          <span className="text-[var(--color-text-primary)] truncate max-w-[180px]">{displayName.trim() || 'Not set'}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Location</span>
-                          <span className="text-[var(--color-text-primary)] truncate max-w-[180px]">{locationName || 'Not set'}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Nearest station</span>
-                          <span className="text-[var(--color-text-primary)] truncate max-w-[180px]">{nearestStation || 'Not set'}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Budget</span>
-                          <span className="text-[var(--color-text-primary)]">₹{validBudget ? budgetNumber : '—'}</span>
-                        </div>
-                      </div>
+                    <div className="saas-band text-sm space-y-2">
+                      <p className="text-[var(--color-text-primary)]">Review before join</p>
+                      <p className="text-[var(--color-text-secondary)]">Name: {displayName.trim() || 'Not set'}</p>
+                      <p className="text-[var(--color-text-secondary)]">Location: {locationName || 'Not set'}</p>
+                      <p className="text-[var(--color-text-secondary)]">Station: {nearestStation || 'Not set'}</p>
+                      <p className="text-[var(--color-text-secondary)]">Budget: ₹{validBudget ? budgetNumber : '—'}</p>
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
-                      <Button variant="secondary" type="button" onClick={() => setStep(1)}>
-                        Back
-                      </Button>
-                      <Button onClick={handleJoin} className="min-w-[130px]" id="confirm-join-btn">
-                        Join This Room
-                      </Button>
+                      <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
+                      <Button onClick={handleJoin} className="min-w-[130px]" id="confirm-join-btn">Join Room</Button>
                     </div>
                   </div>
                 ) : null}
-              </motion.div>
-              {error ? (
-                <motion.p variants={fadeInUp} className="text-sm text-[var(--color-danger)] mb-4 text-left">
-                  {error}
-                </motion.p>
-              ) : null}
-            </>
-          )}
 
-          {status === 'joining' && (
-            <motion.div variants={fadeInUp}>
-              <div className="text-4xl mb-4 animate-pulse-station">🚀</div>
-              <p className="text-[var(--color-text-secondary)]">Joining room...</p>
-            </motion.div>
-          )}
+                {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
+              </div>
+            </div>
+          ) : null}
 
-          {status === 'error' && (
-            <>
-              <motion.div variants={fadeInUp} className="text-4xl mb-4">😬</motion.div>
-              <motion.p variants={fadeInUp} className="text-[var(--color-danger)] mb-6">
-                {error}
-              </motion.p>
-              <motion.div variants={fadeInUp}>
-                <Link href="/dashboard" className="btn-secondary">
-                  Back to Dashboard
-                </Link>
-              </motion.div>
-            </>
-          )}
-        </Card>
-      </motion.div>
+          {status === 'joining' ? (
+            <div className="relative z-[1] text-center py-12">
+              <span className="section-kicker">Finalizing</span>
+              <h1 className="saas-title mt-4">Joining The Room</h1>
+              <p className="saas-lead mx-auto mt-3">Applying your preferences and connecting you to the room workflow.</p>
+            </div>
+          ) : null}
+
+          {status === 'error' ? (
+            <div className="relative z-[1] text-center py-12 max-w-[740px] mx-auto">
+              <span className="section-kicker">Join Failed</span>
+              <h1 className="saas-title mt-4">Could Not Complete Join</h1>
+              <p className="text-sm text-[var(--color-danger)] mt-3">{error}</p>
+              <div className="mt-6">
+                <Link href="/dashboard" className="btn-secondary">Back To Dashboard</Link>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
     </div>
   );
 }

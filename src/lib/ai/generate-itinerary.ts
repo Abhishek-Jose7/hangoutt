@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
 import { AIItineraryResponseSchema } from '@/types';
-import type { AIItineraryResponse, Place, Mood, HubCandidate } from '@/types';
+import type { AIItineraryResponse, Place, Mood, HubCandidate, ItineraryProfile } from '@/types';
 import { buildItineraryPrompt, RETRY_SUFFIX } from './prompts';
 import { buildFallbackItinerary } from './fallback';
 import { selectTopCandidates } from '../scoring';
@@ -108,7 +108,8 @@ export async function generateItineraryForHub(
   places: Place[],
   memberCount: number,
   mood: Mood,
-  perPersonCap: number
+  perPersonCap: number,
+  profile: ItineraryProfile
 ): Promise<{
   plan: AIItineraryResponse;
   method: 'ai' | 'rule_based_fallback';
@@ -122,6 +123,7 @@ export async function generateItineraryForHub(
     hubStation: hub.station,
     memberCount,
     mood,
+    profile,
     perPersonCap,
     startTime: '11:00',
     endTime: '21:00',
@@ -178,7 +180,7 @@ export async function generateItineraryForHub(
     }
 
     if (parsed) {
-      parsed = postProcessItinerary(parsed, topCandidates, hub, perPersonCap, mood);
+      parsed = postProcessItinerary(parsed, topCandidates, hub, perPersonCap, mood, profile);
 
       // Post-process: if over budget, adjust
       if (parsed.total_cost_per_person > perPersonCap) {
@@ -190,14 +192,28 @@ export async function generateItineraryForHub(
     // Fallback
     console.warn(`[AI] All three attempts failed for hub ${hub.name}, using fallback`);
     return {
-      plan: buildFallbackItinerary(topCandidates, perPersonCap, mood),
+      plan: postProcessItinerary(
+        buildFallbackItinerary(topCandidates, perPersonCap, mood),
+        topCandidates,
+        hub,
+        perPersonCap,
+        mood,
+        profile
+      ),
       method: 'rule_based_fallback',
       model: null,
     };
   } catch (err) {
     console.error(`[AI] Error generating for hub ${hub.name}:`, err);
     return {
-      plan: buildFallbackItinerary(topCandidates, perPersonCap, mood),
+      plan: postProcessItinerary(
+        buildFallbackItinerary(topCandidates, perPersonCap, mood),
+        topCandidates,
+        hub,
+        perPersonCap,
+        mood,
+        profile
+      ),
       method: 'rule_based_fallback',
       model: null,
     };
@@ -247,6 +263,21 @@ function moodTypePlan(mood: Mood): Array<AIItineraryResponse['stops'][number]['p
     case 'chill':
       return ['cafe', 'activity', 'outdoor'];
     case 'fun':
+    default:
+      return ['activity', 'restaurant', 'outdoor'];
+  }
+}
+
+function profileTypePlan(profile: ItineraryProfile): Array<AIItineraryResponse['stops'][number]['place_type']> {
+  switch (profile) {
+    case 'chill_walk':
+      return ['cafe', 'outdoor', 'restaurant'];
+    case 'activity_food':
+      return ['activity', 'restaurant', 'outdoor'];
+    case 'premium_dining':
+      return ['restaurant', 'activity', 'cafe'];
+    case 'budget_bites':
+      return ['restaurant', 'outdoor', 'cafe'];
     default:
       return ['activity', 'restaurant', 'outdoor'];
   }
@@ -319,25 +350,47 @@ function walkMins(from: { lat: number; lng: number }, to: { lat: number; lng: nu
   return Math.min(Math.max(mins, 5), 35);
 }
 
+function summarizeFlow(stops: AIItineraryResponse['stops']): string {
+  if (!stops.length) return '';
+  if (stops.length === 1) return stops[0].place_name;
+
+  const chunks: string[] = [stops[0].place_name];
+  for (let i = 1; i < stops.length; i++) {
+    const mode = stops[i].walk_from_previous_mins > 16 ? 'auto' : 'walk';
+    chunks.push(`${mode} -> ${stops[i].place_name}`);
+  }
+  return chunks.join(' -> ');
+}
+
 function postProcessItinerary(
   itinerary: AIItineraryResponse,
   candidates: Place[],
   hub: HubCandidate,
   perPersonCap: number,
-  mood: Mood
+  mood: Mood,
+  profile: ItineraryProfile
 ): AIItineraryResponse {
   const used = new Set<string>();
   let previousPoint: { lat: number; lng: number } = { lat: hub.lat, lng: hub.lng };
-  const desiredTypes = moodTypePlan(mood);
+  const desiredTypes = profileTypePlan(profile) || moodTypePlan(mood);
+
+  const affordablePlaces = candidates.filter((c) => c.estimated_cost === undefined || c.estimated_cost <= perPersonCap);
+  const budgetFirst = profile === 'budget_bites';
+  const premiumFirst = profile === 'premium_dining';
 
   const primaryActivity =
     mood === 'adventure'
-      ? candidates.find((c) => c.type === 'activity' && isTicketedAdventurePlace(c))
-        || candidates.find((c) => c.type === 'activity')
-      : candidates.find((c) => c.type === 'activity');
+      ? (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity' && isTicketedAdventurePlace(c))
+        || (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity')
+      : (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity');
+  const primaryEateryPool = budgetFirst
+    ? affordablePlaces
+    : candidates;
   const primaryEatery =
-    candidates.find((c) => isEatery(c.type) && (c.inferred_rating ?? 0) >= 4.0)
-    || candidates.find((c) => isEatery(c.type));
+    (premiumFirst
+      ? primaryEateryPool.find((c) => isEatery(c.type) && (c.inferred_rating ?? 0) >= 4.3)
+      : primaryEateryPool.find((c) => isEatery(c.type) && (c.inferred_rating ?? 0) >= 4.0))
+    || primaryEateryPool.find((c) => isEatery(c.type));
 
   const stops = itinerary.stops.map((stop, index) => {
     const preferredType = desiredTypes[index] || stop.place_type;
@@ -419,12 +472,30 @@ function postProcessItinerary(
   }
 
   const total = stops.reduce((sum, s) => sum + s.estimated_cost_per_person, 0);
+  const flowSummary = summarizeFlow(stops);
+  const profileTitle: Record<ItineraryProfile, string> = {
+    chill_walk: 'Chill Cafe and Walk Plan',
+    activity_food: 'Action and Food Plan',
+    premium_dining: 'Premium Dining Experience',
+    budget_bites: 'Budget Bites and Hangout',
+  };
+  const vibeTagsMap: Record<ItineraryProfile, string[]> = {
+    chill_walk: ['chill', 'walkable', 'low-stress'],
+    activity_food: ['active', 'social', 'high-energy'],
+    premium_dining: ['premium', 'date-night', 'curated'],
+    budget_bites: ['budget', 'casual', 'value'],
+  };
 
   return {
     ...itinerary,
     stops,
     total_cost_per_person: total,
     contingency_buffer: Math.round(total * 0.15),
+    short_title: itinerary.short_title || profileTitle[profile],
+    area: itinerary.area || hub.name,
+    flow_summary: itinerary.flow_summary || flowSummary,
+    vibe_tags: itinerary.vibe_tags?.length ? itinerary.vibe_tags : vibeTagsMap[profile],
+    profile,
   };
 }
 

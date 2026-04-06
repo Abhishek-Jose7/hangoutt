@@ -2,24 +2,36 @@ import { SignIn } from '@clerk/nextjs';
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen hero-gradient">
-      <div className="container-base section-base max-w-[760px]">
-        <div className="card p-8 sm:p-10 max-w-md mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="display-text text-3xl mb-2">Welcome back</h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Sign in to continue planning
-          </p>
-        </div>
-        <SignIn
-          appearance={{
-            elements: {
-              rootBox: 'w-full',
-              cardBox: 'w-full',
-            },
-          }}
-        />
-        </div>
+    <div className="saas-page">
+      <div className="saas-shell saas-section">
+        <section className="saas-hero">
+          <div className="saas-grid-2 relative z-[1] items-start">
+            <div className="space-y-4">
+              <span className="section-kicker">Account Access</span>
+              <h1 className="saas-title">Sign In To Your Workspace</h1>
+              <p className="saas-lead">
+                Return to your active rooms, continue planning sessions, and keep all group decisions in sync.
+              </p>
+
+              <div className="saas-list">
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">Live room status and member readiness.</div>
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">AI itinerary generation with fairness constraints.</div>
+                <div className="saas-list-item text-sm text-[var(--color-text-secondary)]">Voting and confirmation workflow for final decisions.</div>
+              </div>
+            </div>
+
+            <div className="panel p-5 sm:p-7">
+              <SignIn
+                appearance={{
+                  elements: {
+                    rootBox: 'w-full',
+                    cardBox: 'w-full',
+                  },
+                }}
+              />
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
