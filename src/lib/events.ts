@@ -90,6 +90,24 @@ function looksAggregatorUrl(url: string): boolean {
   ].some((blocked) => lower.includes(blocked));
 }
 
+function isRelevantByKind(title: string, content: string, kind: LocalFeedKind): boolean {
+  const text = `${title} ${content}`.toLowerCase();
+
+  if (/\b(wedding|banquet|hall|venue hire|venue booking|hotel booking|resort booking)\b/.test(text)) {
+    return false;
+  }
+
+  if (kind === 'movie') {
+    return /\b(movie|cinema|theatre|release|showtime|now showing|box office|trailer)\b/.test(text);
+  }
+
+  if (kind === 'event') {
+    return /\b(event|concert|festival|show|stand[-\s]?up|comedy|gig|play|exhibition|workshop|night)\b/.test(text);
+  }
+
+  return /\b(activity|things to do|workshop|adventure|game|experience|walk|tour|escape room|trampoline|bowling|arcade)\b/.test(text);
+}
+
 function extractSubtitle(content: string, fallback: string): string {
   const firstSentence = content
     .replace(/\s+/g, ' ')
@@ -213,6 +231,7 @@ async function mapTavilyResultsToFeed(
     .filter((item) => item.title.length > 3)
     .filter((item) => !looksGenericTitle(item.title))
     .filter((item) => !looksAggregatorUrl(item.sourceUrl))
+    .filter((item) => isRelevantByKind(item.title, item.content, kind))
     .slice(0, limit + 2);
 
   const enriched = await Promise.all(
