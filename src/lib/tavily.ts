@@ -2,6 +2,7 @@ import type { Place, Mood } from '@/types';
 import { cacheGet, cacheSet } from './redis';
 import { getBudgetLabel } from './budget';
 import { getCuratedVenues } from './venue-catalog';
+import { searchTypesensePlaces } from './typesense';
 
 type TavilyResult = { title: string; content: string; url: string; score: number };
 
@@ -24,19 +25,17 @@ export async function searchPlaces(
 
   try {
     const curatedPlaces = getCuratedVenues(hubName, hubLocation, mood, avgBudget, 12);
+    const typesensePlaces = await searchTypesensePlaces(hubName, mood, avgBudget);
 
     const apiKey = process.env.TAVILY_API_KEY;
     if (!apiKey) {
       console.warn('[Tavily] No API key — using OSM fallback');
       const fallback = await overpassFallback(hubName, hubLocation.lat, hubLocation.lng);
-      const dynamicOnly = dedupePlaces([...fallback]);
+      const dynamicOnly = dedupePlaces([...typesensePlaces, ...fallback]);
       const filled = dynamicOnly.length >= 6
         ? dynamicOnly
         : dedupePlaces([...dynamicOnly, ...curatedPlaces]);
-      return filled.map((place) => ({
-        ...place,
-        estimated_cost: place.estimated_cost || defaultEstimatedCost(place.type, avgBudget),
-      }));
+      return filled;
     }
 
     const { tavily } = await import('@tavily/core');
@@ -64,17 +63,13 @@ export async function searchPlaces(
 
     const activityPlaces = parseTavilyPlaces(activityResponse.results || [], 'activity', avgBudget);
     const eateryPlaces = parseTavilyPlaces(eateryResponse.results || [], 'eatery', avgBudget);
-    const tavilyPlaces = prioritizeDynamicPlaces([...activityPlaces, ...eateryPlaces], avgBudget, mood);
+    const tavilyPlaces = prioritizeDynamicPlaces([...typesensePlaces, ...activityPlaces, ...eateryPlaces], avgBudget, mood);
 
     const osmPlaces = await overpassFallback(hubName, hubLocation.lat, hubLocation.lng);
     const dynamicOnly = dedupePlaces([...tavilyPlaces, ...osmPlaces]);
     const merged = (dynamicOnly.length >= 6
       ? dynamicOnly
-      : dedupePlaces([...dynamicOnly, ...curatedPlaces]))
-      .map((place) => ({
-      ...place,
-      estimated_cost: place.estimated_cost || defaultEstimatedCost(place.type, avgBudget),
-    }));
+      : dedupePlaces([...dynamicOnly, ...curatedPlaces]));
 
     const places = merged.length > 0 ? merged : getDefaultPlaces(hubName);
 
@@ -83,14 +78,12 @@ export async function searchPlaces(
   } catch (err) {
     console.error('[Tavily] Search error:', err);
     const fallback = await overpassFallback(hubName, hubLocation.lat, hubLocation.lng);
-    const dynamicOnly = dedupePlaces([...fallback]);
+    const typesensePlaces = await searchTypesensePlaces(hubName, mood, avgBudget);
+    const dynamicOnly = dedupePlaces([...typesensePlaces, ...fallback]);
     const filled = dynamicOnly.length >= 4
       ? dynamicOnly
       : dedupePlaces([...dynamicOnly, ...getCuratedVenues(hubName, hubLocation, mood, avgBudget, 12)]);
-    return filled.map((place) => ({
-      ...place,
-      estimated_cost: place.estimated_cost || defaultEstimatedCost(place.type, avgBudget),
-    }));
+    return filled;
   }
 }
 
@@ -116,7 +109,7 @@ function parseTavilyPlaces(results: TavilyResult[], intent: 'activity' | 'eatery
         relevance_score: Math.min(1, (r.score || 0.5) + ratingBoost),
         url: r.url,
         inferred_rating: inferredRating,
-        estimated_cost: costGuess || defaultEstimatedCost(type, avgBudget),
+        estimated_cost: costGuess,
       } satisfies Place;
     })
     .filter((p) => isSpecificVenueName(p.name) && !looksLikeSearchResult(p.name, p.description, p.url))
@@ -251,6 +244,9 @@ function isSpecificVenueName(name: string): boolean {
     'best lounge',
     'restaurants in',
     'cafe in',
+    'activity spot',
+    'food court',
+    'promenade',
   ];
 
   if (genericPatterns.some((pattern) => lowered.includes(pattern))) {
@@ -262,7 +258,14 @@ function isSpecificVenueName(name: string): boolean {
     return false;
   }
 
-  return /[a-z]/i.test(name);
+  if (!/[a-z]/i.test(name)) return false;
+
+  if (/\b(food court|activity spot|promenade)\b/i.test(lowered)) {
+    const allowNamedPromenade = /(marine drive|carter road)/i.test(lowered);
+    if (!allowNamedPromenade) return false;
+  }
+
+  return true;
 }
 
 function looksLikeSearchResultWithUrl(text: string, url: string): boolean {
@@ -395,19 +398,7 @@ async function overpassFallback(
       lat: el.lat,
       lng: el.lon,
       description: `${el.tags?.amenity || 'venue'} near ${hubName}`,
-      estimated_cost: el.tags?.amenity === 'cafe'
-        ? 250
-        : el.tags?.amenity === 'restaurant'
-        ? 450
-        : el.tags?.amenity === 'fast_food'
-        ? 220
-        : el.tags?.amenity === 'bar'
-        ? 500
-        : el.tags?.tourism === 'museum' || el.tags?.tourism === 'gallery'
-        ? 300
-        : el.tags?.leisure === 'bowling_alley' || el.tags?.leisure === 'escape_game' || el.tags?.leisure === 'amusement_arcade'
-        ? 600
-        : 320,
+      estimated_cost: undefined,
       source: 'osm_fallback' as const,
       relevance_score: 0.5,
     }));

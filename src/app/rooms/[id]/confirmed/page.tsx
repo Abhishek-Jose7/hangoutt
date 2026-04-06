@@ -31,6 +31,10 @@ function getFairnessLabel(score: number): string {
   return 'Uneven';
 }
 
+function renderPrice(value: number): string {
+  return value > 0 ? `₹${value}` : 'Price unavailable';
+}
+
 export default function ConfirmedPage() {
   const params = useParams();
   const roomId = params.id as string;
@@ -246,7 +250,7 @@ export default function ConfirmedPage() {
                               {stop.place_type}
                             </span>
                             <span className="text-sm text-[var(--color-text-secondary)]">
-                              ₹{stop.estimated_cost_per_person} per person
+                              {renderPrice(stop.estimated_cost_per_person)}{stop.estimated_cost_per_person > 0 ? ' per person' : ''}
                             </span>
                           </div>
                           {stop.vibe_note && (

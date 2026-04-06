@@ -19,7 +19,7 @@ Plan group hangouts in Mumbai with AI-powered itineraries, fair travel time calc
 - **Database / Realtime:** Supabase (PostgreSQL with Realtime broadcasts)
 - **Authentication:** Clerk (with secure Svix Webhook syncing to Supabase)
 - **Styling:** TailwindCSS v4 with custom tokens, animations, and Framer Motion logic.
-- **Search & AI:** Groq (LLaMA-3 for Itineraries) & Tavily API (Geospatial place discovery)
+- **Search & AI:** Groq (LLaMA-3 for Itineraries), Typesense (primary venue index search), Tavily API (web fallback venue discovery)
 - **Geocoding:** Rate-limited OpenStreetMap Nominatim.
 - **Caching:** Upstash Redis.
 - **State Management:** Zustand, TanStack Query.
@@ -33,7 +33,7 @@ Plan group hangouts in Mumbai with AI-powered itineraries, fair travel time calc
 - Node.js 18.0.0+ 
 - A Supabase project
 - A Clerk project
-- API Keys for: Groq (supports multiple keys orchestration via `GROQ_API_KEYS`), Tavily, Upstash Redis
+- API Keys for: Groq (supports role-based keys via `GROQ_API_KEY_GENERATOR`, `GROQ_API_KEY_RETRY`, `GROQ_API_KEY_OVERSEER`; each can be comma-separated and rotates per role; or legacy `GROQ_API_KEYS`), Typesense (optional), Tavily, Upstash Redis
 
 ### 2. Installation
 

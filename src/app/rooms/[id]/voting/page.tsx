@@ -52,6 +52,10 @@ function getFairnessLabel(score: number): string {
   return 'Uneven';
 }
 
+function renderPrice(value: number): string {
+  return value > 0 ? `₹${value}` : 'Price unavailable';
+}
+
 export default function VotingPage() {
   const params = useParams();
   const router = useRouter();
@@ -265,7 +269,7 @@ export default function VotingPage() {
                                     {stop.place_type}
                                   </span>
                                   <span className="text-xs text-[var(--color-text-tertiary)]">
-                                    ₹{stop.estimated_cost_per_person}
+                                    {renderPrice(stop.estimated_cost_per_person)}
                                   </span>
                                 </div>
                                 {stop.vibe_note && (

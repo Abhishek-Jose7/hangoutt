@@ -41,10 +41,10 @@ export function buildFallbackItinerary(
     place_type: place.type,
     start_time: timeSlots[i] || `${11 + i * 2}:00`,
     duration_mins: i === selected.length - 1 ? 120 : 90,
-    estimated_cost_per_person: Math.min(
-      place.estimated_cost || costPerStop,
-      costPerStop
-    ),
+    estimated_cost_per_person:
+      place.estimated_cost !== undefined
+        ? Math.min(place.estimated_cost, costPerStop)
+        : 0,
     walk_from_previous_mins: i === 0 ? 10 : 15,
     distance_from_previous_km: i === 0 ? 0.8 : 1.1,
     vibe_note: place.description.slice(0, 80),

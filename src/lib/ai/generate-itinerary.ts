@@ -8,24 +8,92 @@ import { haversineDistance } from '../transit';
 
 const MODEL = 'llama3-70b-8192';
 
-let currentKeyIndex = 0;
+type GroqKeyRole = 'generator' | 'retry' | 'overseer';
 
-function getGroqClient(): Groq {
+interface GroqRoleKeyPools {
+  generator: string[];
+  retry: string[];
+  overseer: string[];
+}
+
+const roleCursor: Record<GroqKeyRole, number> = {
+  generator: 0,
+  retry: 0,
+  overseer: 0,
+};
+
+function parseGroqKeysFromEnv(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY;
-  if (!keysString) {
-    throw new Error('Missing GROQ_API_KEYS in environment');
-  }
-  
-  // Split by comma and clean up whitespace
-  const keys = keysString.split(',').map((k) => k.trim()).filter(Boolean);
+  if (!keysString) return [];
+  return keysString
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
 
+function parseRoleVar(raw: string | undefined): string[] {
+  return (raw || '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+function firstAvailablePool(pools: GroqRoleKeyPools): string[] {
+  return pools.generator.length > 0
+    ? pools.generator
+    : pools.retry.length > 0
+    ? pools.retry
+    : pools.overseer;
+}
+
+function resolveGroqRoleKeyPools(): GroqRoleKeyPools {
+  const explicitPools: GroqRoleKeyPools = {
+    generator: parseRoleVar(process.env.GROQ_API_KEY_GENERATOR),
+    retry: parseRoleVar(process.env.GROQ_API_KEY_RETRY),
+    overseer: parseRoleVar(process.env.GROQ_API_KEY_OVERSEER),
+  };
+
+  const explicitCount =
+    explicitPools.generator.length + explicitPools.retry.length + explicitPools.overseer.length;
+
+  if (explicitCount > 0) {
+    const fallbackPool = firstAvailablePool(explicitPools);
+    return {
+      generator: explicitPools.generator.length > 0 ? explicitPools.generator : fallbackPool,
+      retry: explicitPools.retry.length > 0 ? explicitPools.retry : fallbackPool,
+      overseer: explicitPools.overseer.length > 0 ? explicitPools.overseer : fallbackPool,
+    };
+  }
+
+  const keys = parseGroqKeysFromEnv();
   if (keys.length === 0) {
-    throw new Error('No valid Groq API keys found');
+    throw new Error(
+      'Missing Groq keys. Set GROQ_API_KEY_GENERATOR/GROQ_API_KEY_RETRY/GROQ_API_KEY_OVERSEER or GROQ_API_KEYS'
+    );
   }
 
-  // Round-robin selection for orchestration across multiple keys
-  const key = keys[currentKeyIndex % keys.length];
-  currentKeyIndex++;
+  // Fallback distribution when only GROQ_API_KEYS is provided.
+  const pools: GroqRoleKeyPools = { generator: [], retry: [], overseer: [] };
+  keys.forEach((key, index) => {
+    const slot = index % 3;
+    if (slot === 0) pools.generator.push(key);
+    else if (slot === 1) pools.retry.push(key);
+    else pools.overseer.push(key);
+  });
+
+  const fallbackPool = firstAvailablePool(pools);
+  return {
+    generator: pools.generator.length > 0 ? pools.generator : fallbackPool,
+    retry: pools.retry.length > 0 ? pools.retry : fallbackPool,
+    overseer: pools.overseer.length > 0 ? pools.overseer : fallbackPool,
+  };
+}
+
+function getGroqClient(role: GroqKeyRole): Groq {
+  const rolePools = resolveGroqRoleKeyPools();
+  const pool = rolePools[role];
+  const key = pool[roleCursor[role] % pool.length];
+  roleCursor[role] += 1;
 
   return new Groq({
     apiKey: key,
@@ -61,10 +129,10 @@ export async function generateItineraryForHub(
   });
 
   try {
-    const client = getGroqClient();
+    const generatorClient = getGroqClient('generator');
 
     // First attempt
-    let response = await client.chat.completions.create({
+    let response = await generatorClient.chat.completions.create({
       model: MODEL,
       temperature: 0.2, // lower temperature for more predictable structured output
       response_format: { type: 'json_object' }, // ensures Groq returns valid JSON
@@ -78,13 +146,31 @@ export async function generateItineraryForHub(
 
     // Retry if first attempt fails
     if (!parsed) {
-      // Rotate client to potentially use another key seamlessly
-      const retryClient = getGroqClient();
+      const retryClient = getGroqClient('retry');
       response = await retryClient.chat.completions.create({
         model: MODEL,
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [{ role: 'user', content: `${prompt}\n\n${RETRY_SUFFIX}` }],
+      });
+
+      text = response.choices[0]?.message?.content || '';
+      parsed = tryParseItinerary(text);
+    }
+
+    // Final recovery pass with overseer key to avoid dropping to fallback too early.
+    if (!parsed) {
+      const overseerClient = getGroqClient('overseer');
+      response = await overseerClient.chat.completions.create({
+        model: MODEL,
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'user',
+            content: `${prompt}\n\n${RETRY_SUFFIX}\n\nReturn valid JSON only. Ensure stop names are specific real venues from candidate list.`,
+          },
+        ],
       });
 
       text = response.choices[0]?.message?.content || '';
@@ -102,7 +188,7 @@ export async function generateItineraryForHub(
     }
 
     // Fallback
-    console.warn(`[AI] Both attempts failed for hub ${hub.name}, using fallback`);
+    console.warn(`[AI] All three attempts failed for hub ${hub.name}, using fallback`);
     return {
       plan: buildFallbackItinerary(topCandidates, perPersonCap, mood),
       method: 'rule_based_fallback',
@@ -265,12 +351,9 @@ function postProcessItinerary(
       used.add(matched.name);
     }
 
-    const finalCost = Math.round(
-      Math.min(
-        perPersonCap,
-        matched?.estimated_cost || stop.estimated_cost_per_person
-      )
-    );
+    const finalCost = matched?.estimated_cost !== undefined
+      ? Math.round(Math.min(perPersonCap, matched.estimated_cost))
+      : 0;
 
     const hasCoords = matched?.lat !== undefined && matched?.lng !== undefined;
     const distanceKm =
@@ -308,7 +391,9 @@ function postProcessItinerary(
     const eaterySlot = mood === 'romantic' ? 0 : 1;
 
     if (primaryActivity) {
-      const activityCost = Math.min(perPersonCap, Math.round(primaryActivity.estimated_cost ?? perPersonCap * 0.35));
+      const activityCost = primaryActivity.estimated_cost !== undefined
+        ? Math.min(perPersonCap, Math.round(primaryActivity.estimated_cost))
+        : 0;
       stops[activitySlot] = {
         ...stops[activitySlot],
         place_name: primaryActivity.name,
@@ -320,7 +405,9 @@ function postProcessItinerary(
 
     if (primaryEatery) {
       const eateryType: Place['type'] = isEatery(primaryEatery.type) ? primaryEatery.type : 'restaurant';
-      const eateryCost = Math.min(perPersonCap, Math.round(primaryEatery.estimated_cost ?? perPersonCap * 0.32));
+      const eateryCost = primaryEatery.estimated_cost !== undefined
+        ? Math.min(perPersonCap, Math.round(primaryEatery.estimated_cost))
+        : 0;
       stops[eaterySlot] = {
         ...stops[eaterySlot],
         place_name: primaryEatery.name,
@@ -374,7 +461,7 @@ function adjustBudget(
   let total = itinerary.total_cost_per_person;
 
   const foodStops = stops
-    .filter((s) => s.place_type === 'restaurant' || s.place_type === 'cafe')
+    .filter((s) => (s.place_type === 'restaurant' || s.place_type === 'cafe') && s.estimated_cost_per_person > 0)
     .sort((a, b) => b.estimated_cost_per_person - a.estimated_cost_per_person);
 
   for (const stop of foodStops) {
@@ -388,6 +475,7 @@ function adjustBudget(
 
   for (const stop of stops) {
     if (total <= cap) break;
+    if (stop.estimated_cost_per_person <= 0) continue;
     const excess = total - cap;
     const maxReduction = stop.place_type === 'activity' ? stop.estimated_cost_per_person * 0.2 : stop.estimated_cost_per_person * 0.35;
     const reduction = Math.min(excess, maxReduction);
