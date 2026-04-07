@@ -247,7 +247,7 @@ async function fetchStructuredOsmPlaces(
   const elements = (data.elements || []) as OsmElement[];
 
   const places = elements
-    .map((element) => {
+    .map((element): Place | null => {
       const tags = element.tags || {};
       const name = (tags.name || '').trim();
       const lat = typeof element.lat === 'number' ? element.lat : element.center?.lat;
@@ -260,17 +260,18 @@ async function fetchStructuredOsmPlaces(
       const distanceKm = haversineDistance(hubLocation, { lat, lng });
       const relevance = Math.max(0.2, 1 - distanceKm / 5);
       const detail = tags.cuisine || tags.leisure || tags.tourism || tags.amenity || 'venue';
-
-      return {
+      const place: Place = {
         name,
         type,
         lat,
         lng,
-        description: `${detail} near ${hubName}`,
+        description: detail + ' near ' + hubName,
         estimated_cost: defaultEstimatedCost(type, avgBudget),
-        source: 'osm_fallback' as const,
+        source: 'osm_fallback',
         relevance_score: Math.round(relevance * 100) / 100,
-      } satisfies Place;
+      };
+
+      return place;
     })
     .filter((place): place is Place => place !== null);
 
