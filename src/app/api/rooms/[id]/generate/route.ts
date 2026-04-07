@@ -204,7 +204,14 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
     const results = await Promise.allSettled<InsertItineraryRow>(
       hubs.map(async (hub, index) => {
         const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+
+        // Data stage: OSM-structured places around computed hub centroid.
         const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
+        if (places.length < 4) {
+          throw new Error(`Insufficient real OSM places for hub ${hub.name}`);
+        }
+
+        // AI stage: controlled Generator -> Overseer -> Retry flow.
         const { plan, method, model } = await generateItineraryForHub(
           hub,
           places,
@@ -285,9 +292,20 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
     await supabase.from('itinerary_options').delete().eq('room_id', roomId);
 
+    const rankedItineraries = [...itineraries]
+      .sort((a, b) => {
+        const scoreA = Number((a.plan as { score_breakdown?: { total_score?: number } })?.score_breakdown?.total_score || 0);
+        const scoreB = Number((b.plan as { score_breakdown?: { total_score?: number } })?.score_breakdown?.total_score || 0);
+        return scoreB - scoreA;
+      })
+      .map((row, idx) => ({
+        ...row,
+        option_number: idx + 1,
+      }));
+
     const { error: insertError } = await supabase
       .from('itinerary_options')
-      .insert(itineraries);
+      .insert(rankedItineraries);
 
     if (insertError) {
       throw new Error(insertError.message);
@@ -299,7 +317,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
       state: 'completed',
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
-      options_count: itineraries.length,
+      options_count: rankedItineraries.length,
     } satisfies GenerationJobStatus, 3600);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Generation failed';

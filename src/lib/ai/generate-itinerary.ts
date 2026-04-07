@@ -100,6 +100,128 @@ function getGroqClient(role: GroqKeyRole): Groq {
   });
 }
 
+interface QualityGateResult {
+  passed: boolean;
+  issues: string[];
+  score: number;
+}
+
+interface OverseerAuditResult {
+  approved: boolean;
+  quality_score: number;
+  issues: string[];
+}
+
+function candidateNameSet(candidates: Place[]): Set<string> {
+  return new Set(candidates.map((candidate) => normalizeText(candidate.name)));
+}
+
+function evaluateItineraryRules(
+  plan: AIItineraryResponse,
+  candidates: Place[],
+  perPersonCap: number
+): QualityGateResult {
+  const issues: string[] = [];
+  const candidateNames = candidateNameSet(candidates);
+
+  if (plan.stops.length < 3) {
+    issues.push('Itinerary must contain at least 3 stops.');
+  }
+
+  const usedTypes = new Set<string>();
+  for (let i = 0; i < plan.stops.length; i++) {
+    const stop = plan.stops[i];
+    const normalized = normalizeText(stop.place_name);
+
+    if (!candidateNames.has(normalized)) {
+      issues.push(`Stop ${i + 1} is not from candidate list: ${stop.place_name}`);
+    }
+
+    if (i > 0 && stop.place_type === plan.stops[i - 1].place_type) {
+      issues.push(`Consecutive duplicate stop types at stops ${i} and ${i + 1}.`);
+    }
+
+    if (stop.walk_from_previous_mins > 40) {
+      issues.push(`Stop ${i + 1} has excessive transfer time (${stop.walk_from_previous_mins} mins).`);
+    }
+
+    usedTypes.add(stop.place_type);
+  }
+
+  if (!usedTypes.has('activity') && !usedTypes.has('outdoor')) {
+    issues.push('Itinerary must include at least one activity or outdoor stop.');
+  }
+
+  if (!usedTypes.has('restaurant') && !usedTypes.has('cafe')) {
+    issues.push('Itinerary must include at least one food stop (cafe or restaurant).');
+  }
+
+  if (plan.total_cost_per_person > perPersonCap) {
+    issues.push(`Total cost exceeds cap (₹${plan.total_cost_per_person} > ₹${perPersonCap}).`);
+  }
+
+  const score = Math.max(0, 100 - issues.length * 16);
+  return { passed: issues.length === 0, issues, score };
+}
+
+async function runOverseerAudit(
+  plan: AIItineraryResponse,
+  candidates: Place[],
+  mood: Mood,
+  profile: ItineraryProfile,
+  perPersonCap: number
+): Promise<OverseerAuditResult> {
+  const client = getGroqClient('overseer');
+  const payload = {
+    mood,
+    profile,
+    per_person_cap: perPersonCap,
+    candidate_names: candidates.map((candidate) => candidate.name),
+    itinerary: plan,
+  };
+
+  try {
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content:
+            'You are the Overseer agent for itinerary QA. Evaluate ONLY this itinerary, do not generate new one. ' +
+            'Audit for: candidate integrity (must use only candidate_names), budget fit, logical flow, type variety, and practicality. ' +
+            'Return JSON with keys: approved (boolean), quality_score (0-100), issues (string[]).\n\n' +
+            JSON.stringify(payload),
+        },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || '{}';
+    const raw = JSON.parse(text) as Partial<OverseerAuditResult>;
+    const issues = Array.isArray(raw.issues)
+      ? raw.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 6)
+      : [];
+    const quality = typeof raw.quality_score === 'number' && Number.isFinite(raw.quality_score)
+      ? Math.max(0, Math.min(100, Math.round(raw.quality_score)))
+      : issues.length === 0
+      ? 75
+      : 55;
+
+    return {
+      approved: Boolean(raw.approved) && quality >= 60,
+      quality_score: quality,
+      issues,
+    };
+  } catch {
+    return {
+      approved: true,
+      quality_score: 70,
+      issues: [],
+    };
+  }
+}
+
 /**
  * Generate itinerary for a single hub using Groq
  */
@@ -115,8 +237,23 @@ export async function generateItineraryForHub(
   method: 'ai' | 'rule_based_fallback';
   model: string | null;
 }> {
-  // Score and select top candidates
-  const topCandidates = selectTopCandidates(places, perPersonCap, hub.lat, hub.lng, mood);
+  const topCandidates = selectTopCandidates(places, perPersonCap, hub.lat, hub.lng, mood, 3);
+
+  if (topCandidates.length < 3) {
+    console.warn(`[AI] Insufficient structured places for hub ${hub.name}; using fallback`);
+    return {
+      plan: postProcessItinerary(
+        buildFallbackItinerary(places, perPersonCap, mood),
+        places,
+        hub,
+        perPersonCap,
+        mood,
+        profile
+      ),
+      method: 'rule_based_fallback',
+      model: null,
+    };
+  }
 
   const prompt = buildItineraryPrompt({
     hubName: hub.name,
@@ -130,93 +267,95 @@ export async function generateItineraryForHub(
     candidates: JSON.stringify(topCandidates, null, 2),
   });
 
-  try {
-    const generatorClient = getGroqClient('generator');
+  const finalizePlan = (input: AIItineraryResponse): AIItineraryResponse => {
+    let next = postProcessItinerary(input, topCandidates, hub, perPersonCap, mood, profile);
+    if (next.total_cost_per_person > perPersonCap) {
+      next = adjustBudget(next, perPersonCap);
+    }
+    return next;
+  };
 
-    // First attempt
-    let response = await generatorClient.chat.completions.create({
+  const buildFallback = () => ({
+    plan: postProcessItinerary(
+      buildFallbackItinerary(topCandidates, perPersonCap, mood),
+      topCandidates,
+      hub,
+      perPersonCap,
+      mood,
+      profile
+    ),
+    method: 'rule_based_fallback' as const,
+    model: null,
+  });
+
+  try {
+    // 1) Generator agent: produce initial itinerary.
+    const generatorClient = getGroqClient('generator');
+    const generatorResponse = await generatorClient.chat.completions.create({
       model: MODEL,
-      temperature: 0.2, // lower temperature for more predictable structured output
-      response_format: { type: 'json_object' }, // ensures Groq returns valid JSON
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
     });
 
-    let text = response.choices[0]?.message?.content || '';
+    const generatorText = generatorResponse.choices[0]?.message?.content || '';
+    const generated = tryParseItinerary(generatorText);
+    const collectedRetryIssues: string[] = [];
 
-    // Try to extract JSON from the response
-    let parsed = tryParseItinerary(text);
+    if (generated) {
+      const generatedPlan = finalizePlan(generated);
+      const localGate = evaluateItineraryRules(generatedPlan, topCandidates, perPersonCap);
+      const overseerGate = await runOverseerAudit(generatedPlan, topCandidates, mood, profile, perPersonCap);
 
-    // Retry if first attempt fails
-    if (!parsed) {
-      const retryClient = getGroqClient('retry');
-      response = await retryClient.chat.completions.create({
-        model: MODEL,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: `${prompt}\n\n${RETRY_SUFFIX}` }],
-      });
-
-      text = response.choices[0]?.message?.content || '';
-      parsed = tryParseItinerary(text);
-    }
-
-    // Final recovery pass with overseer key to avoid dropping to fallback too early.
-    if (!parsed) {
-      const overseerClient = getGroqClient('overseer');
-      response = await overseerClient.chat.completions.create({
-        model: MODEL,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'user',
-            content: `${prompt}\n\n${RETRY_SUFFIX}\n\nReturn valid JSON only. Ensure stop names are specific real venues from candidate list.`,
-          },
-        ],
-      });
-
-      text = response.choices[0]?.message?.content || '';
-      parsed = tryParseItinerary(text);
-    }
-
-    if (parsed) {
-      parsed = postProcessItinerary(parsed, topCandidates, hub, perPersonCap, mood, profile);
-
-      // Post-process: if over budget, adjust
-      if (parsed.total_cost_per_person > perPersonCap) {
-        parsed = adjustBudget(parsed, perPersonCap);
+      // 2) Overseer agent: audit quality before acceptance.
+      if (localGate.passed && overseerGate.approved) {
+        return { plan: generatedPlan, method: 'ai', model: MODEL };
       }
-      return { plan: parsed, method: 'ai', model: MODEL };
+      collectedRetryIssues.push(...localGate.issues, ...overseerGate.issues);
+    } else {
+      collectedRetryIssues.push('Generator returned invalid JSON or schema-invalid output.');
     }
 
-    // Fallback
-    console.warn(`[AI] All three attempts failed for hub ${hub.name}, using fallback`);
-    return {
-      plan: postProcessItinerary(
-        buildFallbackItinerary(topCandidates, perPersonCap, mood),
-        topCandidates,
-        hub,
-        perPersonCap,
-        mood,
-        profile
-      ),
-      method: 'rule_based_fallback',
-      model: null,
-    };
+    // 3) Retry agent: regenerate when generator or overseer gates fail.
+    const retryIssues = collectedRetryIssues
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((issue) => `- ${issue}`)
+      .join('\n');
+
+    const retryClient = getGroqClient('retry');
+    const retryResponse = await retryClient.chat.completions.create({
+      model: MODEL,
+      temperature: 0.15,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content:
+            `${prompt}\n\n${RETRY_SUFFIX}\n\n` +
+            `Regenerate and fix these failures strictly:\n${retryIssues}\n` +
+            'Use only candidate venue names exactly as listed. Do not invent any venue.',
+        },
+      ],
+    });
+
+    const retryText = retryResponse.choices[0]?.message?.content || '';
+    const regenerated = tryParseItinerary(retryText);
+    if (regenerated) {
+      const regeneratedPlan = finalizePlan(regenerated);
+      const retryLocalGate = evaluateItineraryRules(regeneratedPlan, topCandidates, perPersonCap);
+      const retryOverseerGate = await runOverseerAudit(regeneratedPlan, topCandidates, mood, profile, perPersonCap);
+
+      if (retryLocalGate.passed && retryOverseerGate.approved) {
+        return { plan: regeneratedPlan, method: 'ai', model: MODEL };
+      }
+    }
+
+    console.warn(`[AI] Generator/Retry quality gates failed for hub ${hub.name}, using fallback`);
+    return buildFallback();
   } catch (err) {
     console.error(`[AI] Error generating for hub ${hub.name}:`, err);
-    return {
-      plan: postProcessItinerary(
-        buildFallbackItinerary(topCandidates, perPersonCap, mood),
-        topCandidates,
-        hub,
-        perPersonCap,
-        mood,
-        profile
-      ),
-      method: 'rule_based_fallback',
-      model: null,
-    };
+    return buildFallback();
   }
 }
 
@@ -394,46 +533,53 @@ function postProcessItinerary(
 
   const stops = itinerary.stops.map((stop, index) => {
     const preferredType = desiredTypes[index] || stop.place_type;
-    let matched = closestCandidateByName(stop.place_name, candidates, used);
+    let chosen = closestCandidateByName(stop.place_name, candidates, used);
 
-    if (!matched || placeNameLooksGeneric(stop.place_name)) {
-      matched = pickByType(preferredType, candidates, used) || pickFallbackCandidate(candidates, used);
+    if (!chosen || placeNameLooksGeneric(stop.place_name)) {
+      chosen = pickByType(preferredType, candidates, used) || pickFallbackCandidate(candidates, used);
     }
 
-    if (matched) {
-      used.add(matched.name);
+    if (!chosen && candidates.length > 0) {
+      chosen = candidates[index % candidates.length];
     }
 
-    const finalCost = matched?.estimated_cost !== undefined
-      ? Math.round(Math.min(perPersonCap, matched.estimated_cost))
+    if (chosen) {
+      used.add(chosen.name);
+    }
+
+    const finalCost = chosen?.estimated_cost !== undefined
+      ? Math.round(Math.min(perPersonCap, chosen.estimated_cost))
       : 0;
 
-    const hasCoords = matched?.lat !== undefined && matched?.lng !== undefined;
+    const hasCoords = chosen?.lat !== undefined && chosen?.lng !== undefined;
     const distanceKm =
       hasCoords
-        ? Math.round(haversineDistance(previousPoint, { lat: Number(matched?.lat), lng: Number(matched?.lng) }) * 10) / 10
+        ? Math.round(haversineDistance(previousPoint, { lat: Number(chosen?.lat), lng: Number(chosen?.lng) }) * 10) / 10
         : Math.round(((index === 0 ? 10 : stop.walk_from_previous_mins) * 4.5 / 60) * 10) / 10;
 
     const walk =
       hasCoords
-        ? walkMins(previousPoint, { lat: Number(matched?.lat), lng: Number(matched?.lng) })
+        ? walkMins(previousPoint, { lat: Number(chosen?.lat), lng: Number(chosen?.lng) })
         : index === 0
         ? 10
         : stop.walk_from_previous_mins;
 
     if (hasCoords) {
-      previousPoint = { lat: Number(matched?.lat), lng: Number(matched?.lng) };
+      previousPoint = { lat: Number(chosen?.lat), lng: Number(chosen?.lng) };
     }
+
+    const safeName = chosen?.name || (candidates[index % candidates.length]?.name || stop.place_name);
+    const safeType = chosen?.type || preferredType;
 
     return {
       ...stop,
-      place_name: matched?.name || stop.place_name,
-      place_type: matched?.type || preferredType,
+      place_name: safeName,
+      place_type: safeType,
       estimated_cost_per_person: finalCost,
       walk_from_previous_mins: walk,
       distance_from_previous_km: distanceKm,
-      lat: hasCoords ? Number(matched?.lat) : undefined,
-      lng: hasCoords ? Number(matched?.lng) : undefined,
+      lat: hasCoords ? Number(chosen?.lat) : undefined,
+      lng: hasCoords ? Number(chosen?.lng) : undefined,
       source_url: undefined,
     };
   });

@@ -59,6 +59,7 @@ Constraints:
 - Use activity search intent and eatery search intent separately when choosing stops: activities/events must be specific, eateries must be specific cafes/restaurants.
 - Prefer top-rated venues that still fit budget and mood.
 - Keep stop names as exact real venue/activity names, never source pages.
+- Every stop_name must match a candidate name exactly (case-insensitive exact venue match).
 - This option must be clearly distinct in style from other options by following the Option style above.
 - Do not stack similar experiences (forbidden pattern examples: cafe -> restaurant -> dessert, cafe -> dessert -> cafe).
 - Prefer diverse sequencing examples like: cafe -> walk/activity -> light food/dessert OR activity -> food -> chill add-on.
