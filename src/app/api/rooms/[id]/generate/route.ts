@@ -67,6 +67,22 @@ const OPTION_PROFILES: ItineraryProfile[] = [
 ];
 
 const PLACE_CONFIDENCE_THRESHOLD = 0.6;
+const HUB_GENERATION_TIMEOUT_MS = 28000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 function clamp01(value: number): number {
   if (value < 0) return 0;
@@ -400,8 +416,10 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
     const hubs = generateHubCandidates(memberLocations, memberStations, mood);
 
     const results = await Promise.allSettled<InsertItineraryRow>(
-      hubs.map(async (hub, index) => {
-        const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+      hubs.map((hub, index) =>
+        withTimeout(
+          (async () => {
+            const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
 
         // Data stage: real nearby venues from OSM/Typesense pipeline.
         const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
@@ -504,22 +522,26 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           why_this_option: reviewedPlan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
         };
 
-        return {
-          room_id: roomId,
-          option_number: index + 1,
-          hub_name: hub.name,
-          hub_lat: hub.lat,
-          hub_lng: hub.lng,
-          hub_strategy: hub.strategy,
-          plan: enrichedPlan,
-          total_cost_estimate: reviewedPlan.total_cost_per_person,
-          max_travel_time_mins: Math.round(hub.maxTravelTime),
-          avg_travel_time_mins: Math.round(hub.avgTravelTime),
-          travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
-          generation_method: method,
-          ai_model_version: reviewed.model || model,
-        };
-      })
+            return {
+              room_id: roomId,
+              option_number: index + 1,
+              hub_name: hub.name,
+              hub_lat: hub.lat,
+              hub_lng: hub.lng,
+              hub_strategy: hub.strategy,
+              plan: enrichedPlan,
+              total_cost_estimate: reviewedPlan.total_cost_per_person,
+              max_travel_time_mins: Math.round(hub.maxTravelTime),
+              avg_travel_time_mins: Math.round(hub.avgTravelTime),
+              travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+              generation_method: method,
+              ai_model_version: reviewed.model || model,
+            };
+          })(),
+          HUB_GENERATION_TIMEOUT_MS,
+          `Hub ${hub.name} generation`
+        )
+      )
     );
 
     const itineraries = results
@@ -527,7 +549,12 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
       .map((result) => result.value);
 
     if (itineraries.length === 0) {
-      throw new Error('All itinerary generations failed. Please try again.');
+      const reasons = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => (result.reason instanceof Error ? result.reason.message : String(result.reason)))
+        .slice(0, 3)
+        .join(' | ');
+      throw new Error(`All itinerary generations failed. ${reasons || 'Please try again.'}`);
     }
 
     await supabase.from('itinerary_options').delete().eq('room_id', roomId);

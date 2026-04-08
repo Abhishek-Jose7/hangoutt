@@ -13,41 +13,24 @@ export function useRoomRealtime(roomId: string | undefined) {
   useEffect(() => {
     if (!roomId) return;
 
-    // 1. New member joins
+    // 1. Member table changes (join/update/leave)
     const membersChannel = supabaseBrowser
       .channel(`room:${roomId}:members`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'room_members',
           filter: `room_id=eq.${roomId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['room', roomId, 'members'] });
+          queryClient.invalidateQueries({ queryKey: ['room', roomId] });
         }
       )
       .subscribe();
 
-    // 2. Member updates location/budget
-    const memberUpdatesChannel = supabaseBrowser
-      .channel(`room:${roomId}:member-updates`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'room_members',
-          filter: `room_id=eq.${roomId}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['room', roomId, 'members'] });
-        }
-      )
-      .subscribe();
-
-    // 3. Room status changes
+    // 2. Room status changes
     const statusChannel = supabaseBrowser
       .channel(`room:${roomId}:status`)
       .on(
@@ -66,7 +49,7 @@ export function useRoomRealtime(roomId: string | undefined) {
       )
       .subscribe();
 
-    // 4. New itinerary options
+    // 3. New itinerary options
     const itinerariesChannel = supabaseBrowser
       .channel(`room:${roomId}:itineraries`)
       .on(
@@ -83,7 +66,7 @@ export function useRoomRealtime(roomId: string | undefined) {
       )
       .subscribe();
 
-    // 5. Votes
+    // 4. Votes
     const votesChannel = supabaseBrowser
       .channel(`room:${roomId}:votes`)
       .on(
@@ -102,7 +85,6 @@ export function useRoomRealtime(roomId: string | undefined) {
 
     return () => {
       supabaseBrowser.removeChannel(membersChannel);
-      supabaseBrowser.removeChannel(memberUpdatesChannel);
       supabaseBrowser.removeChannel(statusChannel);
       supabaseBrowser.removeChannel(itinerariesChannel);
       supabaseBrowser.removeChannel(votesChannel);

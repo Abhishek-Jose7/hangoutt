@@ -25,6 +25,7 @@ export default function GeneratingPage() {
   const status = useRoomStore((s) => s.status);
   const setRoom = useRoomStore((s) => s.setRoom);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   useRoomRealtime(roomId);
 
@@ -35,8 +36,8 @@ export default function GeneratingPage() {
   useEffect(() => {
     if (status === 'voting') router.push(`/rooms/${roomId}/voting`);
     if (status === 'confirmed') router.push(`/rooms/${roomId}/confirmed`);
-    if (status === 'planning') router.push(`/rooms/${roomId}/planning`);
-  }, [status, roomId, router]);
+    if (status === 'planning' && !generationError) router.push(`/rooms/${roomId}/planning`);
+  }, [status, generationError, roomId, router]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -48,17 +49,21 @@ export default function GeneratingPage() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/rooms/${roomId}/itineraries`);
+        const res = await fetch(`/api/rooms/${roomId}/itineraries?include_job=1`);
         const data = await res.json();
 
         if (res.status === 202 && data?.status === 'generating') return;
+        if (res.ok && data?.status === 'failed') {
+          setGenerationError(data?.error_message || 'Generation failed due to an internal error.');
+          return;
+        }
         if (res.ok && Array.isArray(data) && data.length > 0) {
           useRoomStore.getState().setStatus('voting');
         }
       } catch {
         // no-op
       }
-    }, 3000);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [roomId]);
@@ -90,6 +95,17 @@ export default function GeneratingPage() {
                 <Sparkles className="h-4 w-4 text-[var(--color-accent-strong)]" />
                 {messages[messageIndex]}
               </p>
+
+                {generationError ? (
+                  <div className="panel p-4 border-[rgba(255,99,71,0.4)] bg-[rgba(255,99,71,0.08)]">
+                    <p className="text-sm text-[var(--color-danger)]">
+                      Generation error: {generationError}
+                    </p>
+                    <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+                      This error is shown directly to the signed-in account for quick debugging.
+                    </p>
+                  </div>
+                ) : null}
             </div>
 
             <aside className="space-y-2">

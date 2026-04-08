@@ -18,7 +18,7 @@ function getJobKey(roomId: string): string {
 
 // GET /api/rooms/[id]/itineraries — Get all itinerary options
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: RouteContext<'/api/rooms/[id]/itineraries'>
 ) {
   try {
@@ -32,6 +32,7 @@ export async function GET(
 
     const { id } = await ctx.params;
     const supabase = getSupabaseServer();
+    const includeJob = new URL(req.url).searchParams.get('include_job') === '1';
 
     // Verify membership
     const { data: member } = await supabase
@@ -48,17 +49,22 @@ export async function GET(
       );
     }
 
-    const { data: room } = await supabase
-      .from('rooms')
-      .select('status')
-      .eq('id', id)
-      .single();
+    const [roomResult, optionsResult] = await Promise.all([
+      supabase
+        .from('rooms')
+        .select('status')
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('itinerary_options')
+        .select('*')
+        .eq('room_id', id)
+        .order('option_number', { ascending: true }),
+    ]);
 
-    const { data: options, error } = await supabase
-      .from('itinerary_options')
-      .select('*')
-      .eq('room_id', id)
-      .order('option_number', { ascending: true });
+    const room = roomResult.data;
+    const options = optionsResult.data;
+    const error = optionsResult.error;
 
     if (error) {
       return NextResponse.json(
@@ -78,6 +84,22 @@ export async function GET(
         },
         { status: 202 }
       );
+    }
+
+    if (includeJob && (!options || options.length === 0)) {
+      const job = await cacheGet<GenerationJobStatus>(getJobKey(id));
+      if (job?.state === 'failed') {
+        return NextResponse.json(
+          {
+            status: 'failed',
+            options: [],
+            job_status: job.state,
+            error_message: job.error_message || 'Generation failed',
+            completed_at: job.completed_at || null,
+          },
+          { status: 200 }
+        );
+      }
     }
 
     return NextResponse.json(options || []);

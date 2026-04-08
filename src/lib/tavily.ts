@@ -61,8 +61,8 @@ const DISALLOWED_AMENITIES = new Set([
 
 const MAX_PLACE_DISTANCE_KM = 4;
 const PLACE_CONFIDENCE_THRESHOLD = 0.6;
-const OVERPASS_TIMEOUT_MS = 12000;
-const TAVILY_TIMEOUT_MS = 4500;
+const OVERPASS_TIMEOUT_MS = 9000;
+const TAVILY_TIMEOUT_MS = 2500;
 
 const inflightSearches = new Map<string, Promise<Place[]>>();
 
@@ -498,8 +498,7 @@ async function fetchStructuredOsmPlaces(
     'https://lz4.overpass-api.de/api/interpreter',
   ];
 
-  let elements: OsmElement[] = [];
-  for (const endpoint of endpoints) {
+  const fetchFromEndpoint = async (endpoint: string): Promise<OsmElement[]> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
     try {
@@ -513,15 +512,22 @@ async function fetchStructuredOsmPlaces(
         signal: controller.signal,
       });
 
-      if (!response.ok) continue;
+      if (!response.ok) {
+        throw new Error(`${endpoint} returned ${response.status}`);
+      }
+
       const data = await response.json();
-      elements = (data.elements || []) as OsmElement[];
-      break;
-    } catch {
-      // Try next mirror endpoint.
+      return (data.elements || []) as OsmElement[];
     } finally {
       clearTimeout(timer);
     }
+  };
+
+  let elements: OsmElement[] = [];
+  try {
+    elements = await Promise.any(endpoints.map((endpoint) => fetchFromEndpoint(endpoint)));
+  } catch {
+    elements = [];
   }
 
   if (!elements.length) return [];

@@ -155,6 +155,7 @@ export default function PlanningPage() {
     try {
       generate.reset();
       await generate.mutateAsync({ meetup_start_time: meetupStartTime });
+      router.push(`/rooms/${roomId}/generating`);
     } catch {
       // no-op
     }

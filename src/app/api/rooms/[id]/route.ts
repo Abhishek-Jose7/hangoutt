@@ -36,14 +36,26 @@ export async function GET(
       );
     }
 
-    // Get room
-    const { data: room, error: roomError } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const [roomResult, membersResult, confirmedResult] = await Promise.all([
+      supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('room_members')
+        .select('*, users(name, avatar_url, email)')
+        .eq('room_id', id)
+        .order('joined_at', { ascending: true }),
+      supabase
+        .from('confirmed_itinerary')
+        .select('*')
+        .eq('room_id', id)
+        .single(),
+    ]);
 
-    if (roomError || !room) {
+    const room = roomResult.data;
+    if (roomResult.error || !room) {
       return NextResponse.json(
         { error: { code: 'NOT_FOUND', message: 'Room not found' } },
         { status: 404 }
@@ -59,12 +71,7 @@ export async function GET(
       });
     }
 
-    // Get members with user info
-    const { data: members } = await supabase
-      .from('room_members')
-      .select('*, users(name, avatar_url, email)')
-      .eq('room_id', id)
-      .order('joined_at', { ascending: true });
+    const members = membersResult.data;
 
     const normalizedMembers = (members || []).map((member) => {
       const email = member.users?.email || null;
@@ -83,12 +90,7 @@ export async function GET(
       };
     });
 
-    // Get confirmed itinerary if exists
-    const { data: confirmed } = await supabase
-      .from('confirmed_itinerary')
-      .select('*')
-      .eq('room_id', id)
-      .single();
+    const confirmed = confirmedResult.data;
 
     return NextResponse.json({
       ...room,
