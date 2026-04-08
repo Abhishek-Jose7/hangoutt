@@ -4,9 +4,10 @@ import { auth } from '@clerk/nextjs/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { generateHubCandidates } from '@/lib/location';
 import { searchPlaces } from '@/lib/tavily';
-import { generateItineraryForHub } from '@/lib/ai/generate-itinerary';
+import { generateGroundedItineraryForHub } from '@/lib/itinerary-engine';
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
+import { haversineDistance } from '@/lib/transit';
 import type { Mood, LatLng, ItineraryProfile, Place, AIItineraryResponse } from '@/types';
 import { z } from 'zod';
 
@@ -147,6 +148,76 @@ function whyThisOption(profile: ItineraryProfile, budgetMatch: number, distanceS
   return profileReasons[profile];
 }
 
+function validateGroundedPlaces(
+  places: Place[],
+  hub: { lat: number; lng: number }
+): Place[] {
+  const seen = new Set<string>();
+  return places.filter((place) => {
+    if (!place.name || place.name.trim().length < 3) return false;
+    if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return false;
+
+    const key = place.name.toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+
+    const dist = haversineDistance({ lat: place.lat, lng: place.lng }, hub);
+    return dist <= 4.2;
+  });
+}
+
+function buildMemberTravelInsights(params: {
+  plan: AIItineraryResponse;
+  membersWithLocations: Array<{
+    user_id: string;
+    display_name: string | null;
+    budget: number | null;
+  }>;
+  hubTravelTimes: number[];
+  perPersonCap: number;
+  fairnessScore: number;
+}): {
+  member_travel_breakdown: AIItineraryResponse['member_travel_breakdown'];
+  travel_summary: AIItineraryResponse['travel_summary'];
+} {
+  const inAreaTravelMins = params.plan.stops.reduce((sum, stop) => sum + stop.walk_from_previous_mins, 0);
+
+  const memberBreakdown = params.membersWithLocations.map((member, index) => {
+    const toHubMins = Math.max(5, Math.round(params.hubTravelTimes[index] ?? 45));
+    const totalTravelMins = toHubMins + inAreaTravelMins;
+    const budgetCap = member.budget && member.budget > 0 ? Number(member.budget) : params.perPersonCap;
+
+    return {
+      user_id: member.user_id,
+      member_name: member.display_name || member.user_id,
+      budget_cap: budgetCap,
+      to_hub_mins: toHubMins,
+      in_area_travel_mins: inAreaTravelMins,
+      total_travel_mins: totalTravelMins,
+      suits_budget: params.plan.total_cost_per_person <= budgetCap,
+      suits_travel: totalTravelMins <= Math.max(95, Math.round((params.hubTravelTimes[index] ?? 45) * 2.25)),
+    };
+  });
+
+  const totals = memberBreakdown.map((member) => member.total_travel_mins);
+  const avg = totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0;
+  const max = totals.length ? Math.max(...totals) : 0;
+  const fairnessLabel = params.fairnessScore >= 0.85
+    ? 'high fairness'
+    : params.fairnessScore >= 0.7
+    ? 'balanced'
+    : 'moderate fairness';
+
+  return {
+    member_travel_breakdown: memberBreakdown,
+    travel_summary: {
+      avg_total_travel_mins: avg,
+      max_total_travel_mins: max,
+      fairness_indicator: fairnessLabel,
+    },
+  };
+}
+
 async function runGenerationJob(roomId: string, meetupStartTime: string): Promise<void> {
   const supabase = getSupabaseServer();
 
@@ -205,21 +276,22 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
       hubs.map(async (hub, index) => {
         const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
 
-        // Data stage: OSM-structured places around computed hub centroid.
+        // Data stage: real nearby venues from OSM/Typesense pipeline.
         const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
-        if (places.length < 4) {
-          throw new Error(`Insufficient real OSM places for hub ${hub.name}`);
+        const verifiedPlaces = validateGroundedPlaces(places, { lat: hub.lat, lng: hub.lng });
+        if (verifiedPlaces.length < 4) {
+          throw new Error(`Insufficient verified places for hub ${hub.name}`);
         }
 
-        // AI stage: controlled Generator -> Overseer -> Retry flow.
-        const { plan, method, model } = await generateItineraryForHub(
+        // Logic stage: deterministic grounded itinerary (no AI-invented stops).
+        const { plan, method, model } = generateGroundedItineraryForHub({
           hub,
-          places,
-          members.length,
+          places: verifiedPlaces,
           mood,
           perPersonCap,
-          profile
-        );
+          profile,
+          meetupStartTime,
+        });
 
         const firstStopTime = plan.stops?.[0]?.start_time || meetupStartTime;
         const firstStopMins = toMinutes(firstStopTime);
@@ -238,12 +310,19 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
         });
 
         const durationTotalMins = calcDurationMins(plan);
-        const averagePlaceRating = calcAveragePlaceRating(plan, places);
+        const averagePlaceRating = calcAveragePlaceRating(plan, verifiedPlaces);
         const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
         const budgetMatch = calcBudgetMatch(plan.total_cost_per_person, perPersonCap);
         const vibeMatch = calcVibeMatch(plan, mood, profile);
         const ratingScore = averagePlaceRating > 0 ? clamp01((averagePlaceRating - 3) / 2) : 0.45;
         const totalScore = distanceScore + budgetMatch + vibeMatch + ratingScore;
+        const travelInsights = buildMemberTravelInsights({
+          plan,
+          membersWithLocations,
+          hubTravelTimes: hub.travelTimes,
+          perPersonCap,
+          fairnessScore: hub.fairnessScore,
+        });
 
         const enrichedPlan = {
           ...plan,
@@ -261,6 +340,16 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             rating_score: Math.round(ratingScore * 100) / 100,
             total_score: Math.round(totalScore * 100) / 100,
           },
+          dominant_vibe_match_pct: Math.round(vibeMatch * 100),
+          budget_breakdown: {
+            stop_cost_total: plan.total_cost_per_person,
+            contingency_buffer: plan.contingency_buffer,
+            total_with_contingency: plan.total_cost_per_person + plan.contingency_buffer,
+            cap_per_person: perPersonCap,
+            within_cap: plan.total_cost_per_person <= perPersonCap,
+          },
+          member_travel_breakdown: travelInsights.member_travel_breakdown,
+          travel_summary: travelInsights.travel_summary,
           why_this_option: plan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
         };
 

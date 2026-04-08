@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, Clock3, Landmark, Sparkles, Vote } from 'lucide-react';
@@ -53,6 +54,16 @@ function renderPrice(value: number): string {
 function renderMinutes(value?: number): string {
   if (!value || value <= 0) return 'N/A';
   return `${value} min`;
+}
+
+function renderPercent(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'N/A';
+  return `${Math.round(value)}%`;
+}
+
+function renderRating(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 'N/A';
+  return `${value.toFixed(1)} / 5`;
 }
 
 export default function VotingPage() {
@@ -167,7 +178,8 @@ export default function VotingPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">{strategyLabels[option.hub_strategy] || option.hub_strategy}</p>
-                      <h3 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">{plan.short_title || option.hub_name}</h3>
+                      <p className="text-xs text-[var(--color-text-tertiary)] mt-2">{plan.area || option.hub_name}</p>
+                      <h3 className="text-xl font-semibold text-[var(--color-text-primary)] mt-1">{plan.short_title || `${option.hub_name} - Grounded itinerary`}</h3>
                     </div>
                     <span className={`badge ${getFairnessClass(option.travel_fairness_score)}`}>{getFairnessLabel(option.travel_fairness_score)}</span>
                   </div>
@@ -177,8 +189,8 @@ export default function VotingPage() {
                   <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
                     <div className="saas-list-item inline-flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5" /> {renderPrice(option.total_cost_estimate)}/person</div>
                     <div className="saas-list-item inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {renderMinutes(plan.duration_total_mins)} total</div>
-                    <div className="saas-list-item inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {option.avg_travel_time_mins} min avg</div>
-                    <div className="saas-list-item inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> {plan.stops?.length || 0} stops</div>
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {plan.travel_summary?.avg_total_travel_mins || option.avg_travel_time_mins} min avg</div>
+                    <div className="saas-list-item inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Vibe {renderPercent(plan.dominant_vibe_match_pct)}</div>
                   </div>
                 </div>
 
@@ -192,17 +204,65 @@ export default function VotingPage() {
 
                 {isExpanded && plan.stops ? (
                   <div className="px-5 pb-4 space-y-2">
+                    <div className="saas-list-item">
+                      <p className="text-xs text-[var(--color-text-tertiary)] mb-1">Flow</p>
+                      <div className="flex flex-wrap items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+                        {plan.stops.map((stop, idx) => (
+                          <span key={`flow-${stop.stop_number}`} className="inline-flex items-center gap-1">
+                            {stop.map_url ? (
+                              <Link href={stop.map_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline">
+                                {stop.place_name}
+                              </Link>
+                            ) : (
+                              <span>{stop.place_name}</span>
+                            )}
+                            {idx < plan.stops.length - 1 ? <span className="text-[var(--color-text-tertiary)]">-&gt;</span> : null}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
                     {plan.stops.map((stop) => (
                       <div key={stop.stop_number} className="saas-list-item">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{stop.place_name}</p>
+                          {stop.map_url ? (
+                            <Link href={stop.map_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[var(--color-accent)] hover:underline">
+                              {stop.place_name}
+                            </Link>
+                          ) : (
+                            <p className="text-sm font-semibold text-[var(--color-text-primary)]">{stop.place_name}</p>
+                          )}
                           <span className="text-xs text-[var(--color-text-tertiary)]">{stop.start_time}</span>
                         </div>
                         <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                          {stop.place_type} • {renderPrice(stop.estimated_cost_per_person)} • {stop.duration_mins} min
+                          {stop.category_label || stop.place_type} • {renderPrice(stop.estimated_cost_per_person)} • {stop.duration_mins} min • ⭐ {renderRating(stop.place_rating)}
                         </p>
                       </div>
                     ))}
+
+                    {plan.budget_breakdown ? (
+                      <div className="saas-list-item text-xs text-[var(--color-text-secondary)]">
+                        <p>Budget: ₹{plan.budget_breakdown.stop_cost_total} + ₹{plan.budget_breakdown.contingency_buffer} contingency = ₹{plan.budget_breakdown.total_with_contingency}</p>
+                        <p>Cap: ₹{plan.budget_breakdown.cap_per_person} • {plan.budget_breakdown.within_cap ? 'within cap' : 'over cap'}</p>
+                      </div>
+                    ) : null}
+
+                    {plan.member_travel_breakdown?.length ? (
+                      <div className="saas-list-item">
+                        <p className="text-xs text-[var(--color-text-tertiary)] mb-1">Per-user travel suitability</p>
+                        <div className="space-y-1">
+                          {plan.member_travel_breakdown.map((member) => (
+                            <p key={member.user_id} className="text-xs text-[var(--color-text-secondary)]">
+                              {member.member_name}: {member.total_travel_mins} min total ({member.to_hub_mins} to hub + {member.in_area_travel_mins} in area) • budget {member.suits_budget ? 'ok' : 'tight'} • travel {member.suits_travel ? 'ok' : 'high'}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {plan.why_this_option ? (
+                      <p className="text-xs text-[var(--color-text-secondary)]">Why this works: {plan.why_this_option}</p>
+                    ) : null}
                   </div>
                 ) : null}
 

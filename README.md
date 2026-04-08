@@ -83,6 +83,157 @@ Point your browser to [http://localhost:3000](http://localhost:3000) and start y
 
 ---
 
+## 🔎 Typesense Venue Sync Pipeline
+
+This project includes a server-side ingestion script at `scripts/typesense-sync.mjs` (wired to `npm run typesense:sync`) that builds and refreshes the `venues` collection from real OpenStreetMap data.
+
+### Pipeline Stages
+
+1. **Geocode area to centroid**
+	 - Uses Nominatim with area + city + country.
+2. **Fetch OSM places from Overpass**
+	 - Queries venue-focused tags (`amenity`, `leisure`, `tourism`, `shop`).
+	 - Includes retry + mirror fallback for reliability.
+3. **Clean and normalize**
+	 - Drops rows missing `name`, `lat`, `lng`.
+	 - De-duplicates by normalized name + geo bucket.
+4. **Transform to Typesense schema**
+	 - Maps OSM tags to `type`, `tags`, `area`, and inferred `mood`.
+	 - Builds stable `id`, cost estimate, rating fallback, popularity score, and map URL.
+5. **Bulk upsert import**
+	 - Uses `/documents/import?action=upsert` so existing docs update cleanly.
+
+### Required `venues` Schema
+
+Ensure your Typesense collection uses this shape:
+
+```json
+{
+	"name": "venues",
+	"fields": [
+		{ "name": "id", "type": "string" },
+		{ "name": "name", "type": "string" },
+		{ "name": "description", "type": "string", "optional": true },
+		{ "name": "tags", "type": "string[]", "optional": true, "facet": true },
+		{ "name": "area", "type": "string", "optional": true, "facet": true },
+		{ "name": "mood", "type": "string[]", "optional": true, "facet": true },
+		{ "name": "type", "type": "string", "facet": true },
+		{ "name": "estimated_cost", "type": "int32", "optional": true },
+		{ "name": "lat", "type": "float" },
+		{ "name": "lng", "type": "float" },
+		{ "name": "rating", "type": "float", "optional": true },
+		{ "name": "popularity", "type": "int32", "optional": true },
+		{ "name": "url", "type": "string", "optional": true }
+	]
+}
+```
+
+### Environment Variables (Important)
+
+Set these in `.env.local` (or runtime env):
+
+- `TYPESENSE_HOST`
+- `TYPESENSE_PROTOCOL` (typically `https`)
+- `TYPESENSE_PORT` (typically `443`)
+- `TYPESENSE_COLLECTION` (typically `venues`)
+- `TYPESENSE_API_KEY` (search/import if key permissions allow)
+- `TYPESENSE_ADMIN_API_KEY` (recommended for import/upsert)
+
+Use strict `.env` syntax:
+
+```dotenv
+TYPESENSE_HOST=edzboajp2fuk0wlsp-1.a2.typesense.net
+TYPESENSE_PROTOCOL=https
+TYPESENSE_PORT=443
+TYPESENSE_COLLECTION=venues
+TYPESENSE_API_KEY=...
+TYPESENSE_ADMIN_API_KEY=...
+```
+
+Do not add spaces around `=` and do not paste shell commands like `curl ...` into `.env.local`.
+
+### Commands
+
+Dry-run (safe, no import):
+
+```bash
+npm run typesense:sync -- --area "Bandra West" --city "Mumbai" --dry-run --skip-schema-check
+```
+
+Dry-run with remote schema check:
+
+```bash
+npm run typesense:sync -- --area "Bandra West" --city "Mumbai" --dry-run
+```
+
+Real upsert import:
+
+```bash
+npm run typesense:sync -- --area "Bandra West" --city "Mumbai"
+```
+
+Larger radius + capped docs:
+
+```bash
+npm run typesense:sync -- --area "Powai" --city "Mumbai" --radius 3500 --limit 600 --batch-size 150
+```
+
+### Full CLI Reference
+
+- `--area <name>`: required target locality.
+- `--city <name>`: default `Mumbai`.
+- `--country <name>`: default `India`.
+- `--radius <meters>`: default `2800`.
+- `--limit <count>`: default `450` transformed docs.
+- `--batch-size <count>`: default `100` import batch size.
+- `--timeout <seconds>`: default `50` for Overpass query.
+- `--collection <name>`: default `TYPESENSE_COLLECTION` or `venues`.
+- `--dry-run`: generate docs only; no import write.
+- `--skip-schema-check`: skip remote collection schema validation.
+- `--help`: print usage.
+
+### What the Script Validates
+
+- Required fields and types before import.
+- Optional remote schema compatibility (unless skipped).
+- Import response line-by-line to report failed rows.
+
+### Scheduling / Automation
+
+Single area, every 6 hours:
+
+```bash
+0 */6 * * * cd /path/to/hangout && npm run typesense:sync -- --area "Bandra West" --city "Mumbai" >> /var/log/hangout-typesense-sync.log 2>&1
+```
+
+Multiple areas, nightly:
+
+```bash
+0 2 * * * cd /path/to/hangout && for area in "Bandra West" "Powai" "Andheri West" "Lower Parel"; do npm run typesense:sync -- --area "$area" --city "Mumbai"; done >> /var/log/hangout-typesense-sync.log 2>&1
+```
+
+### Troubleshooting
+
+- `Missing TYPESENSE_HOST environment variable`
+	- Fix `.env.local` formatting (`KEY=value`, no spaces around `=`).
+- `collection not found`
+	- Ensure `TYPESENSE_COLLECTION=venues` exists in your cluster.
+- `schema is incompatible`
+	- Update collection fields to match the required schema block above.
+- `Overpass ... timeout`
+	- Re-run command; script already retries across mirrors.
+- `import failed` for some rows
+	- Check the reported row error; usually type mismatch or malformed field data.
+
+### Recommended Workflow
+
+1. Run dry-run with `--skip-schema-check` to confirm OSM fetch and transformation.
+2. Run dry-run without skip to confirm collection schema compatibility.
+3. Run live import for one area.
+4. Automate recurring sync via cron for priority areas.
+
+---
+
 ## 📜 License
 
 [MIT License](LICENSE)

@@ -71,14 +71,19 @@ export const ItineraryStopSchema = z.object({
   stop_number: z.number().int().min(1),
   place_name: z.string(),
   place_type: z.enum(['cafe', 'activity', 'restaurant', 'outdoor']),
+  category_label: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
   start_time: z.string(),
   duration_mins: z.number().int().positive(),
   estimated_cost_per_person: z.number().min(0),
+  place_rating: z.number().min(0).max(5).optional(),
   walk_from_previous_mins: z.number().min(0),
   distance_from_previous_km: z.number().min(0).optional(),
   vibe_note: z.string(),
+  map_url: z.string().url().optional(),
+  google_maps_url: z.string().url().optional(),
+  osm_maps_url: z.string().url().optional(),
   source_url: z.string().url().optional(),
 });
 export type ItineraryStop = z.infer<typeof ItineraryStopSchema>;
@@ -97,6 +102,29 @@ export const AIItineraryResponseSchema = z.object({
   average_place_rating: z.number().min(0).max(5).optional(),
   why_this_option: z.string().optional(),
   profile: ItineraryProfileEnum.optional(),
+  dominant_vibe_match_pct: z.number().min(0).max(100).optional(),
+  budget_breakdown: z.object({
+    stop_cost_total: z.number().min(0),
+    contingency_buffer: z.number().min(0),
+    total_with_contingency: z.number().min(0),
+    cap_per_person: z.number().min(0),
+    within_cap: z.boolean(),
+  }).optional(),
+  travel_summary: z.object({
+    avg_total_travel_mins: z.number().min(0),
+    max_total_travel_mins: z.number().min(0),
+    fairness_indicator: z.string(),
+  }).optional(),
+  member_travel_breakdown: z.array(z.object({
+    user_id: z.string(),
+    member_name: z.string(),
+    budget_cap: z.number().min(0),
+    to_hub_mins: z.number().min(0),
+    in_area_travel_mins: z.number().min(0),
+    total_travel_mins: z.number().min(0),
+    suits_budget: z.boolean(),
+    suits_travel: z.boolean(),
+  })).optional(),
   score_breakdown: z.object({
     distance_score: z.number().min(0).max(1),
     budget_match: z.number().min(0).max(1),
@@ -247,7 +275,7 @@ export interface Place {
   description: string;
   estimated_cost?: number;
   inferred_rating?: number;
-  source: 'tavily' | 'osm_fallback';
+  source: 'tavily' | 'osm_fallback' | 'typesense';
   relevance_score: number;
   url?: string;
 }

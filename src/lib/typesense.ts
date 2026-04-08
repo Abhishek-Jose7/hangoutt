@@ -1,3 +1,5 @@
+import 'server-only';
+
 import type { Mood, Place } from '@/types';
 
 interface TypesenseHit {
@@ -7,6 +9,13 @@ interface TypesenseHit {
 
 interface TypesenseSearchResponse {
   hits?: TypesenseHit[];
+}
+
+interface TypesenseConfig {
+  baseUrl: string;
+  apiKey: string;
+  collection: string;
+  queryBy: string;
 }
 
 const TYPESENSE_TIMEOUT_MS = 2200;
@@ -23,6 +32,22 @@ function getTypesenseBaseUrl(): string | null {
   const port = process.env.TYPESENSE_PORT?.trim();
   const hostWithPort = port ? `${hostRaw}:${port}` : hostRaw;
   return `${protocol}://${hostWithPort}`.replace(/\/$/, '');
+}
+
+function getTypesenseConfig(): TypesenseConfig | null {
+  const baseUrl = getTypesenseBaseUrl();
+  const apiKey = process.env.TYPESENSE_API_KEY?.trim();
+  const collection = process.env.TYPESENSE_COLLECTION?.trim() || 'venues';
+  const queryBy = process.env.TYPESENSE_QUERY_BY?.trim() || 'name,description,tags,area,mood';
+
+  if (!baseUrl || !apiKey) return null;
+
+  return {
+    baseUrl,
+    apiKey,
+    collection,
+    queryBy,
+  };
 }
 
 function moodTerms(mood: Mood): string {
@@ -88,7 +113,7 @@ function mapHitToPlace(hit: TypesenseHit): Place | null {
     lng: toNumber(doc.lng),
     estimated_cost: estimatedCost,
     inferred_rating: inferredRating,
-    source: 'tavily',
+    source: 'typesense',
     relevance_score: Math.min(1, Math.max(0.35, (hit.text_match ?? 10000) / 100000)),
     url: toStringValue(doc.url),
   };
@@ -145,12 +170,8 @@ export async function searchTypesensePlaces(
   mood: Mood,
   avgBudget: number
 ): Promise<Place[]> {
-  const baseUrl = getTypesenseBaseUrl();
-  const apiKey = process.env.TYPESENSE_API_KEY?.trim();
-  const collection = process.env.TYPESENSE_COLLECTION?.trim() || 'venues';
-  const queryBy = process.env.TYPESENSE_QUERY_BY?.trim() || 'name,description,tags,area,mood';
-
-  if (!baseUrl || !apiKey) return [];
+  const config = getTypesenseConfig();
+  if (!config) return [];
 
   try {
     const moodQuery = moodTerms(mood);
@@ -161,27 +182,27 @@ export async function searchTypesensePlaces(
 
     const [activities, eateries] = await Promise.all([
       searchCollection({
-        baseUrl,
-        apiKey,
-        collection,
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        collection: config.collection,
         q: activityQuery,
-        queryBy,
+        queryBy: config.queryBy,
         filterBy: 'type:=[activity,outdoor]',
         perPage: 8,
       }),
       searchCollection({
-        baseUrl,
-        apiKey,
-        collection,
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        collection: config.collection,
         q: eateryQuery,
-        queryBy,
+        queryBy: config.queryBy,
         filterBy: `type:=[cafe,restaurant] && estimated_cost:<=${budgetUpper}`,
         perPage: 10,
       }),
     ]);
 
     return [...activities, ...eateries];
-  } catch (err) {
+  } catch {
     console.warn('[Typesense] search unavailable, continuing with fallback providers');
     return [];
   }

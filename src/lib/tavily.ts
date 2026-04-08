@@ -1,6 +1,7 @@
 import type { Mood, Place } from '@/types';
 import { cacheGet, cacheSet } from './redis';
 import { haversineDistance } from './transit';
+import { searchTypesensePlaces } from './typesense';
 
 type TavilyResult = { title: string; content: string; url: string; score: number };
 type OsmElement = {
@@ -84,6 +85,41 @@ function dedupePlaces(places: Place[]): Place[] {
   }
 
   return out;
+}
+
+function blendOsmAndTypesense(
+  osmPlaces: Place[],
+  typesensePlaces: Place[],
+  hubLocation: { lat: number; lng: number },
+  avgBudget: number
+): Place[] {
+  if (typesensePlaces.length === 0) return osmPlaces;
+
+  const osmKeys = new Set(osmPlaces.map((place) => normalizeText(place.name)));
+  const enrichedTypesense = typesensePlaces
+    .filter((place) => isSpecificVenueName(place.name))
+    .filter((place) => {
+      if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return true;
+      return haversineDistance(hubLocation, { lat: place.lat, lng: place.lng }) <= 4.8;
+    })
+    .map((place) => {
+      const distanceBoost =
+        typeof place.lat === 'number' && typeof place.lng === 'number'
+          ? Math.max(0.3, 1 - haversineDistance(hubLocation, { lat: place.lat, lng: place.lng }) / 6)
+          : 0.55;
+      const budget = place.estimated_cost ?? defaultEstimatedCost(place.type, avgBudget);
+      const budgetBoost = budget <= avgBudget ? 1 : Math.max(0.45, 1 - (budget - avgBudget) / Math.max(avgBudget, 1));
+
+      return {
+        ...place,
+        source: 'typesense' as const,
+        estimated_cost: place.estimated_cost ?? defaultEstimatedCost(place.type, avgBudget),
+        relevance_score: Math.min(1, Math.max(place.relevance_score, distanceBoost * 0.6 + budgetBoost * 0.4)),
+      };
+    })
+    .filter((place) => !osmKeys.has(normalizeText(place.name)));
+
+  return dedupePlaces([...osmPlaces, ...enrichedTypesense]);
 }
 
 function extractRatingValue(text: string): number | undefined {
@@ -279,10 +315,11 @@ async function fetchStructuredOsmPlaces(
 }
 
 /**
- * Data pipeline (OSM-only for place sourcing):
+ * Data pipeline (OSM + Typesense with Tavily enrichment):
  * 1) Fetch real nearby places from OSM around hub centroid.
- * 2) Optionally enrich existing places with Tavily hints (never add new places).
- * 3) Rank by budget, mood, and proximity with type variety constraints.
+ * 2) Blend in nearby Typesense candidates side-by-side (without replacing OSM).
+ * 3) Optionally enrich existing places with Tavily hints (never add new places).
+ * 4) Rank by budget, mood, and proximity with type variety constraints.
  */
 export async function searchPlaces(
   hubName: string,
@@ -291,19 +328,24 @@ export async function searchPlaces(
   avgBudget: number
 ): Promise<Place[]> {
   const slug = hubName.toLowerCase().replace(/\s+/g, '_');
-  const cacheKey = `places_pipeline:v3:${slug}:${mood}:${Math.round(avgBudget / 50) * 50}`;
+  const cacheKey = `places_pipeline:v4:${slug}:${mood}:${Math.round(avgBudget / 50) * 50}`;
 
   const cached = await cacheGet<Place[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const osmPlaces = await fetchStructuredOsmPlaces(hubName, hubLocation, avgBudget);
+    const [osmPlaces, typesensePlaces] = await Promise.all([
+      fetchStructuredOsmPlaces(hubName, hubLocation, avgBudget),
+      searchTypesensePlaces(hubName, mood, avgBudget),
+    ]);
+
     if (osmPlaces.length === 0) {
       console.warn(`[PlacePipeline] OSM returned no places for hub ${hubName}`);
       return [];
     }
 
-    const enrichedPlaces = await enrichPlacesWithTavilyHints(osmPlaces, hubName, mood);
+    const sourcedPlaces = blendOsmAndTypesense(osmPlaces, typesensePlaces, hubLocation, avgBudget);
+    const enrichedPlaces = await enrichPlacesWithTavilyHints(sourcedPlaces, hubName, mood);
     const ranked = [...enrichedPlaces]
       .map((place) => ({ place, score: scorePlaceForMood(place, mood, avgBudget) }))
       .sort((a, b) => b.score - a.score)

@@ -29,6 +29,11 @@ function renderPrice(value: number): string {
   return value > 0 ? `₹${value}` : 'Price unavailable';
 }
 
+function renderPercent(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'N/A';
+  return `${Math.round(value)}%`;
+}
+
 type MapMarker = {
   position: { lat: number; lng: number };
   title: string;
@@ -137,6 +142,10 @@ export default function ConfirmedPage() {
                 <p className="saas-kpi-label">Stops</p>
                 <p className="saas-kpi-value">{plan.stops?.length || 0}</p>
               </div>
+              <div className="saas-kpi">
+                <p className="saas-kpi-label">Vibe Match</p>
+                <p className="saas-kpi-value">{renderPercent(plan.dominant_vibe_match_pct)}</p>
+              </div>
             </WebsiteSection>
 
             <WebsiteSection className="saas-grid-2 items-start">
@@ -147,17 +156,45 @@ export default function ConfirmedPage() {
                     {plan.stops?.map((stop, idx) => (
                       <div key={stop.stop_number} className="saas-list-item">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{idx + 1}. {stop.place_name}</p>
+                          <span className="text-sm font-semibold text-[var(--color-text-primary)]">{idx + 1}.</span>
+                          {stop.map_url ? (
+                            <Link href={stop.map_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[var(--color-accent)] hover:underline flex-1">
+                              {stop.place_name}
+                            </Link>
+                          ) : (
+                            <p className="text-sm font-semibold text-[var(--color-text-primary)] flex-1">{stop.place_name}</p>
+                          )}
                           <span className="text-xs text-[var(--color-text-tertiary)]">{stop.start_time}</span>
                         </div>
                         <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                          {stop.place_type} • {stop.duration_mins} min • {renderPrice(stop.estimated_cost_per_person)}
+                          {stop.category_label || stop.place_type} • {stop.duration_mins} min • {renderPrice(stop.estimated_cost_per_person)}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+                          {stop.google_maps_url ? <Link href={stop.google_maps_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline">Google Maps</Link> : null}
+                          {stop.google_maps_url && stop.osm_maps_url ? ' • ' : null}
+                          {stop.osm_maps_url ? <Link href={stop.osm_maps_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline">OpenStreetMap</Link> : null}
                         </p>
                         {stop.vibe_note ? <p className="text-xs text-[var(--color-text-tertiary)] mt-1 italic">{stop.vibe_note}</p> : null}
                       </div>
                     ))}
                   </div>
                 </Card>
+
+                {plan.member_travel_breakdown?.length ? (
+                  <Card className="p-5">
+                    <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3">Per-user Travel Suitability</h3>
+                    <div className="space-y-2">
+                      {plan.member_travel_breakdown.map((member) => (
+                        <div key={member.user_id} className="saas-list-item">
+                          <p className="text-sm text-[var(--color-text-primary)]">{member.member_name}</p>
+                          <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                            {member.total_travel_mins} min total ({member.to_hub_mins} to hub + {member.in_area_travel_mins} in area) • budget {member.suits_budget ? 'ok' : 'tight'} • travel {member.suits_travel ? 'ok' : 'high'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ) : null}
 
                 {plan.station_guidance?.length ? (
                   <Card className="p-5">
@@ -191,12 +228,23 @@ export default function ConfirmedPage() {
                     <ShieldCheck className="h-4 w-4 text-[var(--color-accent)]" />
                     Budget Snapshot
                   </p>
-                  <p className="text-sm text-[var(--color-text-secondary)] mt-2">
-                    ₹{plan.total_cost_per_person} + ₹{plan.contingency_buffer} contingency
-                  </p>
+                  {plan.budget_breakdown ? (
+                    <p className="text-sm text-[var(--color-text-secondary)] mt-2">
+                      ₹{plan.budget_breakdown.stop_cost_total} + ₹{plan.budget_breakdown.contingency_buffer} contingency (cap ₹{plan.budget_breakdown.cap_per_person})
+                    </p>
+                  ) : (
+                    <p className="text-sm text-[var(--color-text-secondary)] mt-2">
+                      ₹{plan.total_cost_per_person} + ₹{plan.contingency_buffer} contingency
+                    </p>
+                  )}
                   <p className="text-2xl font-bold text-[var(--color-accent)] mt-2">
-                    ₹{plan.total_cost_per_person + plan.contingency_buffer}
+                    ₹{plan.budget_breakdown?.total_with_contingency || plan.total_cost_per_person + plan.contingency_buffer}
                   </p>
+                  {plan.travel_summary ? (
+                    <p className="text-xs text-[var(--color-text-secondary)] mt-2">
+                      Avg travel {plan.travel_summary.avg_total_travel_mins} min • Max {plan.travel_summary.max_total_travel_mins} min • {plan.travel_summary.fairness_indicator}
+                    </p>
+                  ) : null}
                 </Card>
               </aside>
             </WebsiteSection>
