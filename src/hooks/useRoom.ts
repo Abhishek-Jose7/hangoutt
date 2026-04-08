@@ -4,30 +4,30 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // ── Room Hooks ──────────────────────────────────────────────
 
+const ROOM_REFETCH_MS = 5000;
+
+async function fetchRoomData(roomId: string) {
+  const res = await fetch(`/api/rooms/${roomId}`);
+  if (!res.ok) throw new Error('Failed to fetch room');
+  return res.json();
+}
+
 export function useRoom(roomId: string | undefined) {
   return useQuery({
     queryKey: ['room', roomId],
-    queryFn: async () => {
-      const res = await fetch(`/api/rooms/${roomId}`);
-      if (!res.ok) throw new Error('Failed to fetch room');
-      return res.json();
-    },
+    queryFn: () => fetchRoomData(roomId as string),
     enabled: !!roomId,
-    refetchInterval: 10000,
+    refetchInterval: ROOM_REFETCH_MS,
   });
 }
 
 export function useRoomMembers(roomId: string | undefined) {
   return useQuery({
-    queryKey: ['room', roomId, 'members'],
-    queryFn: async () => {
-      const res = await fetch(`/api/rooms/${roomId}`);
-      if (!res.ok) throw new Error('Failed to fetch members');
-      const data = await res.json();
-      return data.members || [];
-    },
+    queryKey: ['room', roomId],
+    queryFn: () => fetchRoomData(roomId as string),
+    select: (data) => data.members || [],
     enabled: !!roomId,
-    refetchInterval: 5000,
+    refetchInterval: ROOM_REFETCH_MS,
   });
 }
 
@@ -133,6 +133,7 @@ export function useUpdateMemberInfo(roomId: string) {
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room', roomId] });
       queryClient.invalidateQueries({ queryKey: ['room', roomId, 'members'] });
     },
   });

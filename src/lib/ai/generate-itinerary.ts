@@ -12,6 +12,7 @@ import { selectTopCandidates } from '../scoring';
 import { haversineDistance } from '../transit';
 
 const MODEL = 'llama3-70b-8192';
+const GROQ_REVIEW_TIMEOUT_MS = 8000;
 
 type GroqKeyRole = 'generator' | 'retry' | 'overseer';
 
@@ -26,6 +27,21 @@ const roleCursor: Record<GroqKeyRole, number> = {
   retry: 0,
   overseer: 0,
 };
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 function parseGroqKeysFromEnv(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY;
@@ -211,26 +227,29 @@ async function runOverseerAudit(
   });
 
   try {
-    const response = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'user',
-          content: `${overseerPrompt}\n\nAdditional validator context:\n${JSON.stringify(
-            {
-              mood,
-              profile,
-              per_person_cap: perPersonCap,
-              candidate_names: candidates.map((candidate) => candidate.name),
-            },
-            null,
-            2
-          )}`,
-        },
-      ],
-    });
+    const response = await withTimeout(
+      client.chat.completions.create({
+        model: MODEL,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'user',
+            content: `${overseerPrompt}\n\nAdditional validator context:\n${JSON.stringify(
+              {
+                mood,
+                profile,
+                per_person_cap: perPersonCap,
+                candidate_names: candidates.map((candidate) => candidate.name),
+              },
+              null,
+              2
+            )}`,
+          },
+        ],
+      }),
+      GROQ_REVIEW_TIMEOUT_MS
+    );
 
     const text = response.choices[0]?.message?.content || '{}';
     const raw = JSON.parse(text) as Partial<OverseerAuditResult> & {
@@ -346,20 +365,23 @@ export async function reviewDeterministicItineraryWithGroq(params: {
       vibe: params.mood,
     });
 
-    const retryResponse = await retryClient.chat.completions.create({
-      model: MODEL,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'user',
-          content:
-            `${retryPrompt}\n\n` +
-            'Correction mode: return full corrected AIItineraryResponse JSON only.\n' +
-            'Do not generate from scratch. Correct the current itinerary using candidate places only.',
-        },
-      ],
-    });
+    const retryResponse = await withTimeout(
+      retryClient.chat.completions.create({
+        model: MODEL,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'user',
+            content:
+              `${retryPrompt}\n\n` +
+              'Correction mode: return full corrected AIItineraryResponse JSON only.\n' +
+              'Do not generate from scratch. Correct the current itinerary using candidate places only.',
+          },
+        ],
+      }),
+      GROQ_REVIEW_TIMEOUT_MS
+    );
 
     const correctedText = retryResponse.choices[0]?.message?.content || '';
     const corrected = tryParseItinerary(correctedText);

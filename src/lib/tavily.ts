@@ -61,6 +61,28 @@ const DISALLOWED_AMENITIES = new Set([
 
 const MAX_PLACE_DISTANCE_KM = 4;
 const PLACE_CONFIDENCE_THRESHOLD = 0.6;
+const OVERPASS_TIMEOUT_MS = 12000;
+const TAVILY_TIMEOUT_MS = 4500;
+
+const inflightSearches = new Map<string, Promise<Place[]>>();
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('timeout'));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 function normalizeText(input: string): string {
   return input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -351,10 +373,13 @@ async function enrichPlacesWithTavilyHints(
       .map((p) => `"${p.name}"`)
       .join(', ')}), return short factual vibe hints and approximate per-person cost for ${mood} mood.`;
 
-    const response = await client.search(query, {
-      maxResults: 16,
-      searchDepth: 'basic',
-    });
+    const response = await withTimeout(
+      client.search(query, {
+        maxResults: 16,
+        searchDepth: 'basic',
+      }),
+      TAVILY_TIMEOUT_MS
+    );
 
     const results = (response.results || []) as TavilyResult[];
     if (!results.length) return places;
@@ -467,11 +492,39 @@ async function fetchStructuredOsmPlaces(
     nwr["shop"="mall"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
   );out center 160;`;
 
-  const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-  if (!response.ok) return [];
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+  ];
 
-  const data = await response.json();
-  const elements = (data.elements || []) as OsmElement[];
+  let elements: OsmElement[] = [];
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=UTF-8',
+          'User-Agent': 'hangout-place-pipeline/1.0',
+        },
+        body: query,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) continue;
+      const data = await response.json();
+      elements = (data.elements || []) as OsmElement[];
+      break;
+    } catch {
+      // Try next mirror endpoint.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  if (!elements.length) return [];
 
   const places = elements
     .map((element): Place | null => {
@@ -548,66 +601,78 @@ export async function searchPlaces(
   const cached = await cacheGet<Place[]>(cacheKey);
   if (cached) return cached;
 
-  try {
-    const [osmPlaces, typesensePlaces] = await Promise.all([
-      fetchStructuredOsmPlaces(hubName, hubLocation, avgBudget),
-      searchTypesensePlaces(hubName, mood, avgBudget),
-    ]);
+  const inflight = inflightSearches.get(cacheKey);
+  if (inflight) return inflight;
 
-    if (osmPlaces.length === 0) {
-      console.warn(`[PlacePipeline] OSM returned no places for hub ${hubName}`);
+  const task = (async () => {
+    try {
+      const [osmPlaces, typesensePlaces] = await Promise.all([
+        fetchStructuredOsmPlaces(hubName, hubLocation, avgBudget),
+        searchTypesensePlaces(hubName, mood, avgBudget),
+      ]);
+
+      if (osmPlaces.length === 0) {
+        console.warn(`[PlacePipeline] OSM returned no places for hub ${hubName}`);
+        return [];
+      }
+
+      const sourcedPlaces = blendOsmAndTypesense(osmPlaces, typesensePlaces, hubLocation, avgBudget, hubName);
+      const enrichedPlaces = await enrichPlacesWithTavilyHints(sourcedPlaces, hubName, mood);
+      const strictPlaces = enrichedPlaces
+        .map((place) => ({
+          ...place,
+          confidence_score: computePlaceConfidence(place),
+        }))
+        .filter((place) => isSpecificVenueName(place.name))
+        .filter((place) => passesGeoAndLocality(place, hubName, hubLocation))
+        .filter((place) => (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD);
+
+      const ranked = [...(strictPlaces.length > 0 ? strictPlaces : enrichedPlaces)]
+        .map((place) => {
+          const distanceKm =
+            typeof place.lat === 'number' && typeof place.lng === 'number'
+              ? haversineDistance(hubLocation, { lat: place.lat, lng: place.lng })
+              : MAX_PLACE_DISTANCE_KM;
+          const vibeAlignment = computeVibeAlignment(place, mood);
+          const hangoutScore = computeHangoutScore(place, mood, avgBudget, hubLocation);
+
+          return {
+            place: {
+              ...place,
+              hangout_score: Math.round(hangoutScore * 100) / 100,
+            },
+            distanceKm,
+            vibeAlignment,
+            hangoutScore,
+          };
+        })
+        .sort((a, b) => {
+          const distanceDelta = a.distanceKm - b.distanceKm;
+          if (Math.abs(distanceDelta) > 0.15) return distanceDelta;
+
+          if (b.hangoutScore !== a.hangoutScore) {
+            return b.hangoutScore - a.hangoutScore;
+          }
+
+          return b.vibeAlignment - a.vibeAlignment;
+        })
+        .map((entry) => entry.place);
+
+      const balanced = selectBalancedTopPlaces(ranked);
+      const finalPlaces = dedupePlaces(balanced);
+
+      await cacheSet(cacheKey, finalPlaces, 60 * 60); // 1 hour TTL
+      return finalPlaces;
+    } catch (err) {
+      console.error('[PlacePipeline] searchPlaces failed:', err);
       return [];
     }
+  })();
 
-    const sourcedPlaces = blendOsmAndTypesense(osmPlaces, typesensePlaces, hubLocation, avgBudget, hubName);
-    const enrichedPlaces = await enrichPlacesWithTavilyHints(sourcedPlaces, hubName, mood);
-    const strictPlaces = enrichedPlaces
-      .map((place) => ({
-        ...place,
-        confidence_score: computePlaceConfidence(place),
-      }))
-      .filter((place) => isSpecificVenueName(place.name))
-      .filter((place) => passesGeoAndLocality(place, hubName, hubLocation))
-      .filter((place) => (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD);
-
-    const ranked = [...(strictPlaces.length > 0 ? strictPlaces : enrichedPlaces)]
-      .map((place) => {
-        const distanceKm =
-          typeof place.lat === 'number' && typeof place.lng === 'number'
-            ? haversineDistance(hubLocation, { lat: place.lat, lng: place.lng })
-            : MAX_PLACE_DISTANCE_KM;
-        const vibeAlignment = computeVibeAlignment(place, mood);
-        const hangoutScore = computeHangoutScore(place, mood, avgBudget, hubLocation);
-
-        return {
-          place: {
-            ...place,
-            hangout_score: Math.round(hangoutScore * 100) / 100,
-          },
-          distanceKm,
-          vibeAlignment,
-          hangoutScore,
-        };
-      })
-      .sort((a, b) => {
-        const distanceDelta = a.distanceKm - b.distanceKm;
-        if (Math.abs(distanceDelta) > 0.15) return distanceDelta;
-
-        if (b.hangoutScore !== a.hangoutScore) {
-          return b.hangoutScore - a.hangoutScore;
-        }
-
-        return b.vibeAlignment - a.vibeAlignment;
-      })
-      .map((entry) => entry.place);
-
-    const balanced = selectBalancedTopPlaces(ranked);
-    const finalPlaces = dedupePlaces(balanced);
-
-    await cacheSet(cacheKey, finalPlaces, 60 * 60); // 1 hour TTL
-    return finalPlaces;
-  } catch (err) {
-    console.error('[PlacePipeline] searchPlaces failed:', err);
-    return [];
+  inflightSearches.set(cacheKey, task);
+  try {
+    return await task;
+  } finally {
+    inflightSearches.delete(cacheKey);
   }
 }

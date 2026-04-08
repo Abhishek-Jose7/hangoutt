@@ -31,6 +31,7 @@ export default function PlanningPage() {
   const [budget, setBudget] = useState('500');
   const [locationName, setLocationName] = useState('');
   const [nearestStation, setNearestStation] = useState('');
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [stationLine, setStationLine] = useState<string[]>([]);
   const [geoWarning, setGeoWarning] = useState('');
   const [locationSet, setLocationSet] = useState(false);
@@ -77,22 +78,26 @@ export default function PlanningPage() {
 
           setLocationName(data?.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
           setNearestStation(data?.nearest_station || '');
+          setSelectedCoords({ lat: latitude, lng: longitude });
           setStationLine(Array.isArray(data?.station_line) ? data.station_line : []);
           setGeoWarning(data?.warning || '');
           setLocationSet(true);
 
-          await updateMember.mutateAsync({
+          setGeoLoading(false);
+          void updateMember.mutateAsync({
             lat: latitude,
             lng: longitude,
             location_name: data?.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
             nearest_station: data?.nearest_station || '',
+          }).catch(() => {
+            // no-op
           });
         } catch {
           setLocationName(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          setSelectedCoords({ lat: latitude, lng: longitude });
           setLocationSet(true);
+          setGeoLoading(false);
         }
-
-        setGeoLoading(false);
       },
       () => {
         setGeoLoading(false);
@@ -111,15 +116,18 @@ export default function PlanningPage() {
 
       setLocationName(data.display_name || searchQuery);
       setNearestStation(data.nearest_station || '');
+      setSelectedCoords({ lat: Number(data.lat), lng: Number(data.lng) });
       setStationLine(Array.isArray(data?.station_line) ? data.station_line : []);
       setGeoWarning(data?.warning || '');
       setLocationSet(true);
 
-      await updateMember.mutateAsync({
+      void updateMember.mutateAsync({
         lat: data.lat,
         lng: data.lng,
         location_name: data.display_name || searchQuery,
         nearest_station: data.nearest_station || '',
+      }).catch(() => {
+        // no-op
       });
     } catch {
       // no-op
@@ -127,8 +135,16 @@ export default function PlanningPage() {
   };
 
   const handleSubmit = async () => {
+    if (!selectedCoords) return;
+
     try {
-      await updateMember.mutateAsync({ budget: parseFloat(budget) || 500 });
+      await updateMember.mutateAsync({
+        budget: parseFloat(budget) || 500,
+        lat: selectedCoords.lat,
+        lng: selectedCoords.lng,
+        location_name: locationName || undefined,
+        nearest_station: nearestStation || undefined,
+      });
       setSubmitted(true);
     } catch {
       // no-op
@@ -189,7 +205,15 @@ export default function PlanningPage() {
                       {geoWarning}
                     </p>
                   ) : null}
-                  <Button variant="secondary" onClick={() => setLocationSet(false)}>Change Location</Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setLocationSet(false);
+                      setSelectedCoords(null);
+                    }}
+                  >
+                    Change Location
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -246,7 +270,7 @@ export default function PlanningPage() {
           </div>
 
           {!submitted ? (
-            <Button onClick={handleSubmit} disabled={!locationSet || updateMember.isPending} loading={updateMember.isPending} className="w-full" id="ready-btn">
+            <Button onClick={handleSubmit} disabled={!locationSet || !selectedCoords || updateMember.isPending} loading={updateMember.isPending} className="w-full" id="ready-btn">
               Save My Inputs
             </Button>
           ) : (
