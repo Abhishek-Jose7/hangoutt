@@ -275,6 +275,11 @@ export interface Place {
   description: string;
   estimated_cost?: number;
   inferred_rating?: number;
+  popularity?: number;
+  area?: string;
+  tags?: string[];
+  confidence_score?: number;
+  hangout_score?: number;
   source: 'tavily' | 'osm_fallback' | 'typesense';
   relevance_score: number;
   url?: string;

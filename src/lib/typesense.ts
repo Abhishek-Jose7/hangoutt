@@ -19,6 +19,34 @@ interface TypesenseConfig {
 }
 
 const TYPESENSE_TIMEOUT_MS = 2200;
+const QUALITY_FILTER = 'rating:>3 && estimated_cost:>0';
+const BLOCKED_NAME_KEYWORDS = [
+  'bank',
+  'atm',
+  'office',
+  'government',
+  'school',
+  'hospital',
+  'clinic',
+  'pharmacy',
+  'toilet',
+  'fuel',
+  'warehouse',
+  'best places',
+  'things to do',
+  'near me',
+];
+
+function normalizeText(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function hasStrongName(name: string): boolean {
+  const lowered = normalizeText(name);
+  if (name.trim().length < 4 || !name.includes(' ')) return false;
+  if (/^unnamed|^plot\s*\d+|^shop\s*\d+|^building\s*\d+/i.test(lowered)) return false;
+  return !BLOCKED_NAME_KEYWORDS.some((keyword) => lowered.includes(keyword));
+}
 
 function getTypesenseBaseUrl(): string | null {
   const hostRaw = process.env.TYPESENSE_HOST?.trim();
@@ -88,6 +116,7 @@ function mapHitToPlace(hit: TypesenseHit): Place | null {
 
   const name = toStringValue(doc.name) || toStringValue(doc.title);
   if (!name) return null;
+  if (!hasStrongName(name)) return null;
 
   const type = inferType(doc);
   const description =
@@ -105,6 +134,29 @@ function mapHitToPlace(hit: TypesenseHit): Place | null {
     toNumber(doc.google_rating) ??
     toNumber(doc.aggregate_rating);
 
+  const popularity =
+    toNumber(doc.popularity) ??
+    toNumber(doc.popularity_score) ??
+    toNumber(doc.visits);
+
+  const area = toStringValue(doc.area);
+  const tagsRaw = doc.tags;
+  const tags = Array.isArray(tagsRaw)
+    ? tagsRaw.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : typeof tagsRaw === 'string'
+    ? tagsRaw
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : undefined;
+
+  const normalizedName = normalizeText(name);
+  const nameQuality = normalizedName.length >= 8 && normalizedName.includes(' ') ? 1 : 0;
+  const hasRating = typeof inferredRating === 'number' && inferredRating > 0 ? 1 : 0;
+  const hasTags = tags && tags.length > 0 ? 1 : 0;
+  const typeValidity = ['cafe', 'restaurant', 'activity', 'outdoor'].includes(type) ? 1 : 0;
+  const confidence = (nameQuality + hasRating + hasTags + typeValidity) / 4;
+
   return {
     name,
     type,
@@ -113,6 +165,10 @@ function mapHitToPlace(hit: TypesenseHit): Place | null {
     lng: toNumber(doc.lng),
     estimated_cost: estimatedCost,
     inferred_rating: inferredRating,
+    popularity,
+    area,
+    tags,
+    confidence_score: confidence,
     source: 'typesense',
     relevance_score: Math.min(1, Math.max(0.35, (hit.text_match ?? 10000) / 100000)),
     url: toStringValue(doc.url),
@@ -187,7 +243,7 @@ export async function searchTypesensePlaces(
         collection: config.collection,
         q: activityQuery,
         queryBy: config.queryBy,
-        filterBy: 'type:=[activity,outdoor]',
+        filterBy: `${QUALITY_FILTER} && type:=[activity,outdoor]`,
         perPage: 8,
       }),
       searchCollection({
@@ -196,7 +252,7 @@ export async function searchTypesensePlaces(
         collection: config.collection,
         q: eateryQuery,
         queryBy: config.queryBy,
-        filterBy: `type:=[cafe,restaurant] && estimated_cost:<=${budgetUpper}`,
+        filterBy: `${QUALITY_FILTER} && type:=[cafe,restaurant] && estimated_cost:<=${budgetUpper}`,
         perPage: 10,
       }),
     ]);

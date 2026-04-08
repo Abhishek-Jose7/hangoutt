@@ -11,13 +11,111 @@ type OsmElement = {
   center?: { lat: number; lon: number };
 };
 
+const VALID_OSM_TYPES = new Set([
+  'cafe',
+  'restaurant',
+  'fast_food',
+  'bar',
+  'park',
+  'garden',
+  'mall',
+  'cinema',
+  'tourist_attraction',
+]);
+
+const BLOCKED_KEYWORDS = [
+  'bank',
+  'atm',
+  'office',
+  'government',
+  'school',
+  'hospital',
+  'clinic',
+  'pharmacy',
+  'toilet',
+  'fuel',
+  'warehouse',
+];
+
+const DISALLOWED_AMENITIES = new Set([
+  'bank',
+  'atm',
+  'pharmacy',
+  'hospital',
+  'clinic',
+  'doctors',
+  'dentist',
+  'school',
+  'college',
+  'university',
+  'police',
+  'fire_station',
+  'post_office',
+  'courthouse',
+  'government',
+  'bus_station',
+  'fuel',
+  'parking',
+  'toilets',
+]);
+
+const MAX_PLACE_DISTANCE_KM = 4;
+const PLACE_CONFIDENCE_THRESHOLD = 0.6;
+
 function normalizeText(input: string): string {
   return input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function isSpecificVenueName(name: string): boolean {
+function tokenQuality(name: string): string[] {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+}
+
+function hasBalancedAlpha(name: string): boolean {
+  const compact = name.replace(/\s+/g, '');
+  if (!compact) return false;
+  const alphaChars = compact.replace(/[^A-Za-z]/g, '').length;
+  return alphaChars / compact.length >= 0.55;
+}
+
+function looksLikeGarbagePoi(name: string): boolean {
   const lowered = normalizeText(name);
-  if (name.trim().length < 3) return false;
+  if (!lowered || lowered.length < 4) return true;
+
+  const genericPatterns = [
+    /^unnamed/,
+    /^plot\s*\d+/,
+    /^shop\s*\d+/,
+    /^building\s*\d+/,
+    /^gate\s*\d+/,
+    /^house\s*\d+/,
+    /^flat\s*\d+/,
+    /^road\s*\d+/,
+    /^lane\s*\d+/,
+  ];
+
+  if (genericPatterns.some((pattern) => pattern.test(lowered))) return true;
+  if (BLOCKED_KEYWORDS.some((keyword) => lowered.includes(keyword))) return true;
+  if (!hasBalancedAlpha(name)) return true;
+  if (tokenQuality(name).length < 2) return true;
+
+  return false;
+}
+
+function hasBlockedOsmContext(tags: Record<string, string | undefined>, name: string): boolean {
+  const amenity = (tags.amenity || '').toLowerCase();
+  if (amenity && DISALLOWED_AMENITIES.has(amenity)) return true;
+
+  const blob = normalizeText(
+    `${name} ${tags.amenity || ''} ${tags.office || ''} ${tags.building || ''} ${tags.healthcare || ''}`
+  );
+  return BLOCKED_KEYWORDS.some((keyword) => blob.includes(keyword));
+}
+
+function isSpecificVenueName(name: string): boolean {
+  if (looksLikeGarbagePoi(name)) return false;
 
   const blocked = [
     'best places',
@@ -32,34 +130,95 @@ function isSpecificVenueName(name: string): boolean {
     'zomato',
   ];
 
-  return !blocked.some((term) => lowered.includes(term));
+  return !blocked.some((term) => normalizeText(name).includes(term));
 }
 
-function inferTypeFromTags(tags: Record<string, string | undefined>): Place['type'] {
+function resolveOsmType(tags: Record<string, string | undefined>): string | null {
   const amenity = (tags.amenity || '').toLowerCase();
   const leisure = (tags.leisure || '').toLowerCase();
   const tourism = (tags.tourism || '').toLowerCase();
+  const shop = (tags.shop || '').toLowerCase();
 
-  if (amenity === 'cafe' || amenity === 'ice_cream') return 'cafe';
-  if (amenity === 'restaurant' || amenity === 'fast_food') return 'restaurant';
-  if (leisure === 'park' || leisure === 'garden' || leisure === 'nature_reserve' || tourism === 'viewpoint') return 'outdoor';
+  if (amenity === 'cafe') return 'cafe';
+  if (amenity === 'restaurant') return 'restaurant';
+  if (amenity === 'fast_food') return 'fast_food';
+  if (amenity === 'bar') return 'bar';
+  if (leisure === 'park') return 'park';
+  if (leisure === 'garden') return 'garden';
+  if (shop === 'mall') return 'mall';
+  if (amenity === 'cinema') return 'cinema';
+  if (tourism === 'attraction') return 'tourist_attraction';
 
-  if (
-    amenity === 'cinema' ||
-    leisure === 'sports_centre' ||
-    leisure === 'pitch' ||
-    leisure === 'escape_game' ||
-    leisure === 'bowling_alley' ||
-    leisure === 'amusement_arcade' ||
-    tourism === 'attraction' ||
-    tourism === 'museum' ||
-    tourism === 'gallery' ||
-    tourism === 'theme_park'
-  ) {
-    return 'activity';
-  }
+  return null;
+}
 
+function mapOsmTypeToPlaceType(osmType: string): Place['type'] {
+  if (osmType === 'cafe') return 'cafe';
+  if (osmType === 'restaurant' || osmType === 'fast_food' || osmType === 'bar') return 'restaurant';
+  if (osmType === 'park' || osmType === 'garden') return 'outdoor';
   return 'activity';
+}
+
+function localityMatches(placeArea: string | undefined, hubName: string): boolean {
+  if (!placeArea) return false;
+  const a = normalizeText(placeArea);
+  const b = normalizeText(hubName);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const aTokens = new Set(a.split(' ').filter((token) => token.length >= 3));
+  const bTokens = b.split(' ').filter((token) => token.length >= 3);
+  const overlap = bTokens.filter((token) => aTokens.has(token)).length;
+  return overlap >= Math.min(2, bTokens.length);
+}
+
+function nameHintsLocality(placeName: string, hubName: string): boolean {
+  const n = normalizeText(placeName);
+  const h = normalizeText(hubName);
+  if (!n || !h) return false;
+  if (n.includes(h) || h.includes(n)) return true;
+
+  const hTokens = h.split(' ').filter((token) => token.length >= 4);
+  return hTokens.some((token) => n.includes(token));
+}
+
+function normalizePopularity(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0.5;
+  return Math.max(0, Math.min(1, raw / 100));
+}
+
+function inferOsmPopularity(tags: Record<string, string | undefined>): number {
+  let score = 35;
+  if (tags.website || tags['contact:website']) score += 18;
+  if (tags.phone || tags['contact:phone']) score += 10;
+  if (tags.opening_hours) score += 9;
+  if (tags.brand || tags.operator) score += 11;
+  if (tags.wikidata || tags.wikipedia) score += 14;
+
+  const stars = Number(tags.stars || tags.rating || 0);
+  if (Number.isFinite(stars) && stars >= 4) score += 8;
+
+  return Math.max(1, Math.min(100, Math.round(score)));
+}
+
+function computePlaceConfidence(place: Place): number {
+  const hasRating = typeof place.inferred_rating === 'number' && place.inferred_rating > 0 ? 1 : 0;
+  const hasTags = Array.isArray(place.tags) && place.tags.length > 0 ? 1 : 0;
+  const nameQuality = isSpecificVenueName(place.name) ? 1 : 0;
+  const typeValidity = ['cafe', 'restaurant', 'activity', 'outdoor'].includes(place.type) ? 1 : 0;
+
+  return (hasRating + hasTags + nameQuality + typeValidity) / 4;
+}
+
+function passesGeoAndLocality(place: Place, hubName: string, hubLocation: { lat: number; lng: number }): boolean {
+  if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return false;
+  const distanceKm = haversineDistance(hubLocation, { lat: place.lat, lng: place.lng });
+  if (distanceKm > MAX_PLACE_DISTANCE_KM) return false;
+
+  const areaMatch = localityMatches(place.area, hubName);
+  const localityMatch = nameHintsLocality(place.name, hubName);
+  return areaMatch || localityMatch;
 }
 
 function defaultEstimatedCost(type: Place['type'], budget: number): number {
@@ -91,17 +250,15 @@ function blendOsmAndTypesense(
   osmPlaces: Place[],
   typesensePlaces: Place[],
   hubLocation: { lat: number; lng: number },
-  avgBudget: number
+  avgBudget: number,
+  hubName: string
 ): Place[] {
   if (typesensePlaces.length === 0) return osmPlaces;
 
   const osmKeys = new Set(osmPlaces.map((place) => normalizeText(place.name)));
   const enrichedTypesense = typesensePlaces
     .filter((place) => isSpecificVenueName(place.name))
-    .filter((place) => {
-      if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return true;
-      return haversineDistance(hubLocation, { lat: place.lat, lng: place.lng }) <= 4.8;
-    })
+    .filter((place) => passesGeoAndLocality(place, hubName, hubLocation))
     .map((place) => {
       const distanceBoost =
         typeof place.lat === 'number' && typeof place.lng === 'number'
@@ -110,13 +267,20 @@ function blendOsmAndTypesense(
       const budget = place.estimated_cost ?? defaultEstimatedCost(place.type, avgBudget);
       const budgetBoost = budget <= avgBudget ? 1 : Math.max(0.45, 1 - (budget - avgBudget) / Math.max(avgBudget, 1));
 
-      return {
+      const normalized: Place = {
         ...place,
         source: 'typesense' as const,
         estimated_cost: place.estimated_cost ?? defaultEstimatedCost(place.type, avgBudget),
         relevance_score: Math.min(1, Math.max(place.relevance_score, distanceBoost * 0.6 + budgetBoost * 0.4)),
       };
+      const confidence = computePlaceConfidence(normalized);
+
+      return {
+        ...normalized,
+        confidence_score: confidence,
+      };
     })
+    .filter((place) => (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD)
     .filter((place) => !osmKeys.has(normalizeText(place.name)));
 
   return dedupePlaces([...osmPlaces, ...enrichedTypesense]);
@@ -212,13 +376,11 @@ async function enrichPlacesWithTavilyHints(
   }
 }
 
-function scorePlaceForMood(place: Place, mood: Mood, perPersonCap: number): number {
+function computeVibeAlignment(
+  place: Place,
+  mood: Mood,
+): number {
   const text = normalizeText(`${place.name} ${place.description}`);
-  const budget = place.estimated_cost ?? defaultEstimatedCost(place.type, perPersonCap);
-  const budgetFit = budget <= perPersonCap
-    ? 1
-    : Math.max(0.2, 1 - (budget - perPersonCap) / Math.max(perPersonCap, 1));
-
   const moodTokens: Record<Mood, string[]> = {
     fun: ['arcade', 'social', 'lively', 'music', 'games'],
     chill: ['calm', 'cozy', 'walk', 'relax', 'quiet'],
@@ -234,10 +396,38 @@ function scorePlaceForMood(place: Place, mood: Mood, perPersonCap: number): numb
   };
 
   const moodHits = moodTokens[mood].filter((token) => text.includes(token)).length;
-  const moodScore = Math.min(1, moodHits / 2) * 0.55 + moodTypeBoost[mood][place.type] * 0.45;
-  const ratingScore = place.inferred_rating ? Math.min(1, Math.max(0, (place.inferred_rating - 3) / 2)) : 0.5;
+  return Math.min(1, moodHits / 2) * 0.55 + moodTypeBoost[mood][place.type] * 0.45;
+}
 
-  return place.relevance_score * 0.45 + budgetFit * 0.25 + moodScore * 0.2 + ratingScore * 0.1;
+function computeHangoutScore(
+  place: Place,
+  mood: Mood,
+  perPersonCap: number,
+  hubLocation: { lat: number; lng: number }
+): number {
+  const budget = place.estimated_cost ?? defaultEstimatedCost(place.type, perPersonCap);
+  const budgetFit = budget <= perPersonCap
+    ? 1
+    : Math.max(0.2, 1 - (budget - perPersonCap) / Math.max(perPersonCap, 1));
+
+  const distanceKm =
+    typeof place.lat === 'number' && typeof place.lng === 'number'
+      ? haversineDistance(hubLocation, { lat: place.lat, lng: place.lng })
+      : MAX_PLACE_DISTANCE_KM;
+  const geoDecay = Math.exp(-distanceKm / 2.1);
+  const distanceScore = Math.max(0.05, Math.min(1, geoDecay));
+  const moodScore = computeVibeAlignment(place, mood);
+  const ratingScore = place.inferred_rating ? Math.min(1, Math.max(0, (place.inferred_rating - 3) / 2)) : 0.5;
+  const popularityScore = normalizePopularity(place.popularity);
+  const confidenceScore = Math.max(0, Math.min(1, place.confidence_score ?? 0.5));
+
+  return (
+    distanceScore * 0.45 +
+    moodScore * 0.25 +
+    (ratingScore * 0.55 + popularityScore * 0.45) * 0.15 +
+    confidenceScore * 0.1 +
+    budgetFit * 0.05
+  );
 }
 
 function selectBalancedTopPlaces(places: Place[]): Place[] {
@@ -271,9 +461,10 @@ async function fetchStructuredOsmPlaces(
   avgBudget: number
 ): Promise<Place[]> {
   const query = `[out:json][timeout:30];(
-    nwr["amenity"~"cafe|restaurant|fast_food|ice_cream|cinema"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
-    nwr["leisure"~"park|garden|nature_reserve|sports_centre|pitch|escape_game|bowling_alley|amusement_arcade"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
-    nwr["tourism"~"attraction|museum|gallery|theme_park|viewpoint"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
+    nwr["amenity"~"cafe|restaurant|fast_food|bar|cinema"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
+    nwr["leisure"~"park|garden"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
+    nwr["tourism"="attraction"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
+    nwr["shop"="mall"]["name"](around:3200,${hubLocation.lat},${hubLocation.lng});
   );out center 160;`;
 
   const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
@@ -291,21 +482,45 @@ async function fetchStructuredOsmPlaces(
 
       if (!name || typeof lat !== 'number' || typeof lng !== 'number') return null;
       if (!isSpecificVenueName(name)) return null;
+      if (hasBlockedOsmContext(tags, name)) return null;
 
-      const type = inferTypeFromTags(tags);
+      const osmType = resolveOsmType(tags);
+      if (!osmType || !VALID_OSM_TYPES.has(osmType)) return null;
+
+      const type = mapOsmTypeToPlaceType(osmType);
       const distanceKm = haversineDistance(hubLocation, { lat, lng });
+      if (distanceKm > MAX_PLACE_DISTANCE_KM) return null;
+
       const relevance = Math.max(0.2, 1 - distanceKm / 5);
       const detail = tags.cuisine || tags.leisure || tags.tourism || tags.amenity || 'venue';
+      const rawTags = [
+        tags.amenity,
+        tags.leisure,
+        tags.tourism,
+        tags.shop,
+        tags.cuisine,
+      ]
+        .flatMap((value) => (value ? String(value).split(';') : []))
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 8);
+
       const place: Place = {
         name,
         type,
         lat,
         lng,
+        popularity: inferOsmPopularity(tags),
+        area: hubName,
+        tags: rawTags,
         description: detail + ' near ' + hubName,
         estimated_cost: defaultEstimatedCost(type, avgBudget),
         source: 'osm_fallback',
         relevance_score: Math.round(relevance * 100) / 100,
       };
+
+      place.confidence_score = computePlaceConfidence(place);
+      if ((place.confidence_score || 0) < PLACE_CONFIDENCE_THRESHOLD) return null;
 
       return place;
     })
@@ -328,7 +543,7 @@ export async function searchPlaces(
   avgBudget: number
 ): Promise<Place[]> {
   const slug = hubName.toLowerCase().replace(/\s+/g, '_');
-  const cacheKey = `places_pipeline:v4:${slug}:${mood}:${Math.round(avgBudget / 50) * 50}`;
+  const cacheKey = `places_pipeline:v6:${slug}:${mood}:${Math.round(avgBudget / 50) * 50}`;
 
   const cached = await cacheGet<Place[]>(cacheKey);
   if (cached) return cached;
@@ -344,11 +559,46 @@ export async function searchPlaces(
       return [];
     }
 
-    const sourcedPlaces = blendOsmAndTypesense(osmPlaces, typesensePlaces, hubLocation, avgBudget);
+    const sourcedPlaces = blendOsmAndTypesense(osmPlaces, typesensePlaces, hubLocation, avgBudget, hubName);
     const enrichedPlaces = await enrichPlacesWithTavilyHints(sourcedPlaces, hubName, mood);
-    const ranked = [...enrichedPlaces]
-      .map((place) => ({ place, score: scorePlaceForMood(place, mood, avgBudget) }))
-      .sort((a, b) => b.score - a.score)
+    const strictPlaces = enrichedPlaces
+      .map((place) => ({
+        ...place,
+        confidence_score: computePlaceConfidence(place),
+      }))
+      .filter((place) => isSpecificVenueName(place.name))
+      .filter((place) => passesGeoAndLocality(place, hubName, hubLocation))
+      .filter((place) => (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD);
+
+    const ranked = [...(strictPlaces.length > 0 ? strictPlaces : enrichedPlaces)]
+      .map((place) => {
+        const distanceKm =
+          typeof place.lat === 'number' && typeof place.lng === 'number'
+            ? haversineDistance(hubLocation, { lat: place.lat, lng: place.lng })
+            : MAX_PLACE_DISTANCE_KM;
+        const vibeAlignment = computeVibeAlignment(place, mood);
+        const hangoutScore = computeHangoutScore(place, mood, avgBudget, hubLocation);
+
+        return {
+          place: {
+            ...place,
+            hangout_score: Math.round(hangoutScore * 100) / 100,
+          },
+          distanceKm,
+          vibeAlignment,
+          hangoutScore,
+        };
+      })
+      .sort((a, b) => {
+        const distanceDelta = a.distanceKm - b.distanceKm;
+        if (Math.abs(distanceDelta) > 0.15) return distanceDelta;
+
+        if (b.hangoutScore !== a.hangoutScore) {
+          return b.hangoutScore - a.hangoutScore;
+        }
+
+        return b.vibeAlignment - a.vibeAlignment;
+      })
       .map((entry) => entry.place);
 
     const balanced = selectBalancedTopPlaces(ranked);

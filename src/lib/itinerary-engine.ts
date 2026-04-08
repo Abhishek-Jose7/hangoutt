@@ -11,6 +11,9 @@ interface RankedPlace {
 const HUB_RADIUS_KM = 3.4;
 const STEP_RADIUS_KM = 2.6;
 
+type DayPhase = 'morning' | 'afternoon' | 'evening';
+type DominantVibe = 'calm' | 'social' | 'explore';
+
 function normalizeText(input: string): string {
   return input.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -105,21 +108,70 @@ function buildMapLinks(lat: number, lng: number, name: string): {
   };
 }
 
-function slotFamilies(profile: ItineraryProfile): string[] {
-  switch (profile) {
-    case 'activity_food':
-      return ['engage', 'activity', 'food', 'relax'];
-    case 'premium_dining':
-      return ['engage', 'activity', 'food'];
-    case 'budget_bites':
-      return ['engage', 'activity', 'food'];
-    case 'chill_walk':
-    default:
-      return ['engage', 'activity', 'relax'];
-  }
+function getDayPhase(meetupStartTime: string): DayPhase {
+  const hour = Number(meetupStartTime.split(':')[0] || 12);
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  return 'evening';
 }
 
-function familyCategoryMap(family: string, mood: Mood): string[] {
+function inferDominantVibe(ranked: RankedPlace[], mood: Mood): DominantVibe {
+  const top = ranked.slice(0, 6);
+  const avgVibe = top.length > 0 ? top.reduce((sum, item) => sum + item.vibeScore, 0) / top.length : 0.5;
+
+  if (mood === 'chill' || mood === 'romantic') return avgVibe >= 0.62 ? 'calm' : 'social';
+  if (mood === 'adventure') return 'explore';
+  return avgVibe >= 0.58 ? 'social' : 'explore';
+}
+
+function slotFamilies(profile: ItineraryProfile, context: {
+  meetupStartTime: string;
+  perPersonCap: number;
+  dominantVibe: DominantVibe;
+}): string[] {
+  let base: string[];
+
+  switch (profile) {
+    case 'activity_food':
+      base = ['engage', 'activity', 'food', 'relax'];
+      break;
+    case 'premium_dining':
+      base = ['engage', 'activity', 'food'];
+      break;
+    case 'budget_bites':
+      base = ['engage', 'activity', 'food'];
+      break;
+    case 'chill_walk':
+    default:
+      base = ['engage', 'activity', 'relax'];
+  }
+
+  const phase = getDayPhase(context.meetupStartTime);
+  const budgetTight = context.perPersonCap <= 500;
+
+  if (phase === 'evening') {
+    base = ['engage', 'food', 'relax', ...base.filter((item) => item !== 'engage' && item !== 'food' && item !== 'relax')];
+  }
+
+  if (context.dominantVibe === 'calm') {
+    base = ['engage', 'relax', ...base.filter((item) => item !== 'engage' && item !== 'relax')];
+  }
+
+  if (budgetTight) {
+    base = ['engage', 'food', ...base.filter((item) => item !== 'engage' && item !== 'food')];
+  }
+
+  return base;
+}
+
+function familyCategoryMap(
+  family: string,
+  mood: Mood,
+  context: { meetupStartTime: string; perPersonCap: number; dominantVibe: DominantVibe }
+): string[] {
+  const phase = getDayPhase(context.meetupStartTime);
+  const budgetTight = context.perPersonCap <= 500;
+
   const byMood: Record<Mood, string[]> = {
     fun: ['activity', 'cafe', 'dessert', 'park'],
     chill: ['cafe', 'park', 'dessert', 'activity'],
@@ -127,9 +179,23 @@ function familyCategoryMap(family: string, mood: Mood): string[] {
     adventure: ['activity', 'park', 'cafe', 'restaurant'],
   };
 
-  if (family === 'engage') return byMood[mood];
-  if (family === 'activity') return ['activity', 'park', 'movie'];
-  if (family === 'food') return ['restaurant', 'cafe', 'dessert'];
+  if (family === 'engage') {
+    if (context.dominantVibe === 'calm') return ['cafe', 'park', 'activity', 'dessert'];
+    return byMood[mood];
+  }
+
+  if (family === 'activity') {
+    if (budgetTight) return ['park', 'activity', 'movie'];
+    return ['activity', 'park', 'movie'];
+  }
+
+  if (family === 'food') {
+    if (budgetTight) return ['cafe', 'dessert', 'restaurant'];
+    if (phase === 'evening') return ['restaurant', 'dessert', 'cafe'];
+    return ['restaurant', 'cafe', 'dessert'];
+  }
+
+  if (phase === 'evening') return ['dessert', 'cafe', 'park'];
   return ['park', 'dessert', 'cafe'];
 }
 
@@ -182,9 +248,12 @@ function pickForSlot(
   ranked: RankedPlace[],
   categories: string[],
   usedKeys: Set<string>,
-  anchor?: { lat: number; lng: number },
+  previousPoint?: { lat: number; lng: number },
   previousCategory?: string
 ): RankedPlace | null {
+  let best: RankedPlace | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
   for (const category of categories) {
     for (const entry of ranked) {
       const key = normalizeText(entry.place.name);
@@ -193,17 +262,25 @@ function pickForSlot(
       const entryCategory = inferCategoryLabel(entry.place);
       if (entryCategory !== category) continue;
 
-      if (anchor) {
-        const dist = haversineDistance(anchor, { lat: Number(entry.place.lat), lng: Number(entry.place.lng) });
-        if (dist > STEP_RADIUS_KM) continue;
+      if (previousCategory && isFoodCategory(previousCategory) && isFoodCategory(entryCategory)) {
+        continue;
       }
 
-      if (previousCategory && isFoodCategory(previousCategory) && isFoodCategory(entryCategory)) {
+      if (previousPoint) {
+        const dist = haversineDistance(previousPoint, { lat: Number(entry.place.lat), lng: Number(entry.place.lng) });
+        if (dist > STEP_RADIUS_KM) continue;
+
+        if (dist < bestDistance) {
+          best = entry;
+          bestDistance = dist;
+        }
         continue;
       }
 
       return entry;
     }
+
+    if (best) return best;
   }
 
   return null;
@@ -226,24 +303,31 @@ export function generateGroundedItineraryForHub(params: {
     throw new Error(`Insufficient verified places in ${params.hub.name} for grounded itinerary`);
   }
 
-  const families = slotFamilies(params.profile);
+  const dominantVibe = inferDominantVibe(ranked, params.mood);
+  const families = slotFamilies(params.profile, {
+    meetupStartTime: params.meetupStartTime,
+    perPersonCap: params.perPersonCap,
+    dominantVibe,
+  });
   const used = new Set<string>();
   const selected: RankedPlace[] = [];
 
-  let anchor: { lat: number; lng: number } | undefined;
+  let chainingPoint: { lat: number; lng: number } | undefined;
   let previousCategory: string | undefined;
 
   for (const family of families) {
-    const categories = familyCategoryMap(family, params.mood);
-    const picked = pickForSlot(ranked, categories, used, anchor, previousCategory);
+    const categories = familyCategoryMap(family, params.mood, {
+      meetupStartTime: params.meetupStartTime,
+      perPersonCap: params.perPersonCap,
+      dominantVibe,
+    });
+    const picked = pickForSlot(ranked, categories, used, chainingPoint, previousCategory);
     if (!picked) continue;
 
     selected.push(picked);
     used.add(normalizeText(picked.place.name));
 
-    if (!anchor) {
-      anchor = { lat: Number(picked.place.lat), lng: Number(picked.place.lng) };
-    }
+    chainingPoint = { lat: Number(picked.place.lat), lng: Number(picked.place.lng) };
     previousCategory = inferCategoryLabel(picked.place);
   }
 
@@ -259,13 +343,14 @@ export function generateGroundedItineraryForHub(params: {
       const lastCategory = last ? inferCategoryLabel(last.place) : undefined;
       if (lastCategory && isFoodCategory(lastCategory) && isFoodCategory(category)) continue;
 
-      if (anchor) {
-        const dist = haversineDistance(anchor, { lat: Number(entry.place.lat), lng: Number(entry.place.lng) });
+      if (chainingPoint) {
+        const dist = haversineDistance(chainingPoint, { lat: Number(entry.place.lat), lng: Number(entry.place.lng) });
         if (dist > STEP_RADIUS_KM) continue;
       }
 
       selected.push(entry);
       used.add(key);
+      chainingPoint = { lat: Number(entry.place.lat), lng: Number(entry.place.lng) };
     }
   }
 

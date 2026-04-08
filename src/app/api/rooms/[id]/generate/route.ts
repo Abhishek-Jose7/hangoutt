@@ -5,6 +5,7 @@ import { getSupabaseServer } from '@/lib/supabase/server';
 import { generateHubCandidates } from '@/lib/location';
 import { searchPlaces } from '@/lib/tavily';
 import { generateGroundedItineraryForHub } from '@/lib/itinerary-engine';
+import { reviewDeterministicItineraryWithGroq } from '@/lib/ai/generate-itinerary';
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
 import { haversineDistance } from '@/lib/transit';
@@ -64,6 +65,8 @@ const OPTION_PROFILES: ItineraryProfile[] = [
   'premium_dining',
   'budget_bites',
 ];
+
+const PLACE_CONFIDENCE_THRESHOLD = 0.6;
 
 function clamp01(value: number): number {
   if (value < 0) return 0;
@@ -133,6 +136,115 @@ function calcDistanceScore(avgTravelMins: number): number {
   return 0.25;
 }
 
+function calcPlaceQualityScore(plan: AIItineraryResponse, places: Place[], averagePlaceRating: number): number {
+  const byName = new Map(places.map((place) => [place.name.toLowerCase(), place]));
+  const matched = plan.stops
+    .map((stop) => byName.get(stop.place_name.toLowerCase()))
+    .filter((place): place is Place => Boolean(place));
+
+  const ratingComponent = averagePlaceRating > 0 ? clamp01((averagePlaceRating - 3) / 2) : 0.45;
+  const popularityComponent = matched.length
+    ? clamp01(
+        matched.reduce((sum, place) => sum + (typeof place.popularity === 'number' ? place.popularity : 50), 0) /
+          (matched.length * 100)
+      )
+    : 0.5;
+  const confidenceComponent = matched.length
+    ? clamp01(matched.reduce((sum, place) => sum + (place.confidence_score || 0), 0) / matched.length)
+    : 0.5;
+
+  return Math.round((ratingComponent * 0.5 + popularityComponent * 0.3 + confidenceComponent * 0.2) * 100) / 100;
+}
+
+function calcHardPenalty(params: {
+  avgTravelMins: number;
+  maxTravelMins: number;
+  totalCost: number;
+  perPersonCap: number;
+}): number {
+  let penalty = 0;
+
+  const budgetRatio = params.totalCost / Math.max(params.perPersonCap, 1);
+  if (budgetRatio > 1) {
+    penalty += Math.min(0.45, (budgetRatio - 1) * 0.9);
+  }
+
+  if (params.avgTravelMins > 55) penalty += 0.12;
+  if (params.maxTravelMins > 80) penalty += 0.14;
+  if (params.maxTravelMins > 95) penalty += 0.16;
+
+  return Math.min(0.55, penalty);
+}
+
+function calcWeightedOptionScore(params: {
+  distanceScore: number;
+  budgetMatch: number;
+  vibeMatch: number;
+  placeQualityScore: number;
+  penalty: number;
+}): number {
+  const weighted =
+    params.distanceScore * 0.32 +
+    params.budgetMatch * 0.26 +
+    params.vibeMatch * 0.24 +
+    params.placeQualityScore * 0.18;
+
+  return Math.round(clamp01(weighted - params.penalty) * 100) / 100;
+}
+
+function optionTypeSignature(plan: AIItineraryResponse): string {
+  return plan.stops.map((stop) => stop.place_type).join('>');
+}
+
+function optionSimilarity(a: AIItineraryResponse, b: AIItineraryResponse): number {
+  const namesA = new Set(a.stops.map((stop) => stop.place_name.toLowerCase()));
+  const namesB = new Set(b.stops.map((stop) => stop.place_name.toLowerCase()));
+  const overlap = [...namesA].filter((name) => namesB.has(name)).length;
+  const union = new Set([...namesA, ...namesB]).size || 1;
+  const nameJaccard = overlap / union;
+
+  const typeSeqMatch = optionTypeSignature(a) === optionTypeSignature(b) ? 1 : 0;
+  const vibeGap = Math.abs((a.dominant_vibe_match_pct || 0) - (b.dominant_vibe_match_pct || 0)) / 100;
+  const profileMatch = a.profile && b.profile && a.profile === b.profile ? 1 : 0;
+
+  return clamp01(nameJaccard * 0.52 + typeSeqMatch * 0.28 + (1 - vibeGap) * 0.12 + profileMatch * 0.08);
+}
+
+function rankItinerariesWithDiversity(itineraries: InsertItineraryRow[]): InsertItineraryRow[] {
+  const remaining = [...itineraries];
+  const selected: InsertItineraryRow[] = [];
+
+  while (remaining.length > 0) {
+    let bestIndex = 0;
+    let bestAdjustedScore = Number.NEGATIVE_INFINITY;
+
+    for (let i = 0; i < remaining.length; i += 1) {
+      const candidate = remaining[i];
+      const candidatePlan = candidate.plan as AIItineraryResponse;
+      const baseScore = Number(candidatePlan.score_breakdown?.total_score || 0);
+
+      const maxSimilarity = selected.length
+        ? Math.max(
+            ...selected.map((picked) => optionSimilarity(candidatePlan, picked.plan as AIItineraryResponse))
+          )
+        : 0;
+
+      const adjustedScore = baseScore - maxSimilarity * 0.18;
+      if (adjustedScore > bestAdjustedScore) {
+        bestAdjustedScore = adjustedScore;
+        bestIndex = i;
+      }
+    }
+
+    selected.push(remaining.splice(bestIndex, 1)[0]);
+  }
+
+  return selected.map((row, index) => ({
+    ...row,
+    option_number: index + 1,
+  }));
+}
+
 function whyThisOption(profile: ItineraryProfile, budgetMatch: number, distanceScore: number): string {
   const profileReasons: Record<ItineraryProfile, string> = {
     chill_walk: 'Relaxed pace with easy transitions and low stress movement.',
@@ -154,16 +266,31 @@ function validateGroundedPlaces(
 ): Place[] {
   const seen = new Set<string>();
   return places.filter((place) => {
-    if (!place.name || place.name.trim().length < 3) return false;
+    if (!place.name || place.name.trim().length < 4) return false;
     if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return false;
+    if (!place.type) return false;
+    if ((place.confidence_score || 0) < PLACE_CONFIDENCE_THRESHOLD) return false;
 
     const key = place.name.toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key);
 
     const dist = haversineDistance({ lat: place.lat, lng: place.lng }, hub);
-    return dist <= 4.2;
+    return dist <= 4;
   });
+}
+
+function finalValidatePlacesBeforeEngine(places: Place[]): Place[] {
+  return places.filter((place) =>
+    Boolean(place.name) &&
+    place.name.trim().length > 3 &&
+    typeof place.lat === 'number' &&
+    Number.isFinite(place.lat) &&
+    typeof place.lng === 'number' &&
+    Number.isFinite(place.lng) &&
+    Boolean(place.type) &&
+    (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD
+  );
 }
 
 function buildMemberTravelInsights(params: {
@@ -278,7 +405,8 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
         // Data stage: real nearby venues from OSM/Typesense pipeline.
         const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
-        const verifiedPlaces = validateGroundedPlaces(places, { lat: hub.lat, lng: hub.lng });
+        const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
+        const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
         if (verifiedPlaces.length < 4) {
           throw new Error(`Insufficient verified places for hub ${hub.name}`);
         }
@@ -293,7 +421,18 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           meetupStartTime,
         });
 
-        const firstStopTime = plan.stops?.[0]?.start_time || meetupStartTime;
+        const reviewed = await reviewDeterministicItineraryWithGroq({
+          plan,
+          candidates: verifiedPlaces,
+          hub,
+          mood,
+          profile,
+          perPersonCap,
+        });
+
+        const reviewedPlan = reviewed.plan;
+
+        const firstStopTime = reviewedPlan.stops?.[0]?.start_time || meetupStartTime;
         const firstStopMins = toMinutes(firstStopTime);
         const stationGuidance = membersWithLocations.map((member, memberIndex) => {
           const travelMins = Math.max(5, Math.round(hub.travelTimes[memberIndex] ?? 45));
@@ -309,15 +448,27 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           };
         });
 
-        const durationTotalMins = calcDurationMins(plan);
-        const averagePlaceRating = calcAveragePlaceRating(plan, verifiedPlaces);
+        const durationTotalMins = calcDurationMins(reviewedPlan);
+        const averagePlaceRating = calcAveragePlaceRating(reviewedPlan, verifiedPlaces);
         const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
-        const budgetMatch = calcBudgetMatch(plan.total_cost_per_person, perPersonCap);
-        const vibeMatch = calcVibeMatch(plan, mood, profile);
-        const ratingScore = averagePlaceRating > 0 ? clamp01((averagePlaceRating - 3) / 2) : 0.45;
-        const totalScore = distanceScore + budgetMatch + vibeMatch + ratingScore;
+        const budgetMatch = calcBudgetMatch(reviewedPlan.total_cost_per_person, perPersonCap);
+        const vibeMatch = calcVibeMatch(reviewedPlan, mood, profile);
+        const placeQualityScore = calcPlaceQualityScore(reviewedPlan, verifiedPlaces, averagePlaceRating);
+        const penalty = calcHardPenalty({
+          avgTravelMins: Math.round(hub.avgTravelTime),
+          maxTravelMins: Math.round(hub.maxTravelTime),
+          totalCost: reviewedPlan.total_cost_per_person,
+          perPersonCap,
+        });
+        const totalScore = calcWeightedOptionScore({
+          distanceScore,
+          budgetMatch,
+          vibeMatch,
+          placeQualityScore,
+          penalty,
+        });
         const travelInsights = buildMemberTravelInsights({
-          plan,
+          plan: reviewedPlan,
           membersWithLocations,
           hubTravelTimes: hub.travelTimes,
           perPersonCap,
@@ -325,32 +476,32 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
         });
 
         const enrichedPlan = {
-          ...plan,
+          ...reviewedPlan,
           meetup_start_time: meetupStartTime,
           station_guidance: stationGuidance,
-          area: plan.area || hub.name,
+          area: reviewedPlan.area || hub.name,
           profile,
-          flow_summary: plan.flow_summary || buildFlowSummary(plan),
+          flow_summary: reviewedPlan.flow_summary || buildFlowSummary(reviewedPlan),
           duration_total_mins: durationTotalMins,
           average_place_rating: averagePlaceRating,
           score_breakdown: {
             distance_score: Math.round(distanceScore * 100) / 100,
             budget_match: Math.round(budgetMatch * 100) / 100,
             vibe_match: Math.round(vibeMatch * 100) / 100,
-            rating_score: Math.round(ratingScore * 100) / 100,
+            rating_score: Math.round(placeQualityScore * 100) / 100,
             total_score: Math.round(totalScore * 100) / 100,
           },
           dominant_vibe_match_pct: Math.round(vibeMatch * 100),
           budget_breakdown: {
-            stop_cost_total: plan.total_cost_per_person,
-            contingency_buffer: plan.contingency_buffer,
-            total_with_contingency: plan.total_cost_per_person + plan.contingency_buffer,
+            stop_cost_total: reviewedPlan.total_cost_per_person,
+            contingency_buffer: reviewedPlan.contingency_buffer,
+            total_with_contingency: reviewedPlan.total_cost_per_person + reviewedPlan.contingency_buffer,
             cap_per_person: perPersonCap,
-            within_cap: plan.total_cost_per_person <= perPersonCap,
+            within_cap: reviewedPlan.total_cost_per_person <= perPersonCap,
           },
           member_travel_breakdown: travelInsights.member_travel_breakdown,
           travel_summary: travelInsights.travel_summary,
-          why_this_option: plan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
+          why_this_option: reviewedPlan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
         };
 
         return {
@@ -361,12 +512,12 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           hub_lng: hub.lng,
           hub_strategy: hub.strategy,
           plan: enrichedPlan,
-          total_cost_estimate: plan.total_cost_per_person,
+          total_cost_estimate: reviewedPlan.total_cost_per_person,
           max_travel_time_mins: Math.round(hub.maxTravelTime),
           avg_travel_time_mins: Math.round(hub.avgTravelTime),
           travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
           generation_method: method,
-          ai_model_version: model,
+          ai_model_version: reviewed.model || model,
         };
       })
     );
@@ -381,16 +532,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
     await supabase.from('itinerary_options').delete().eq('room_id', roomId);
 
-    const rankedItineraries = [...itineraries]
-      .sort((a, b) => {
-        const scoreA = Number((a.plan as { score_breakdown?: { total_score?: number } })?.score_breakdown?.total_score || 0);
-        const scoreB = Number((b.plan as { score_breakdown?: { total_score?: number } })?.score_breakdown?.total_score || 0);
-        return scoreB - scoreA;
-      })
-      .map((row, idx) => ({
-        ...row,
-        option_number: idx + 1,
-      }));
+    const rankedItineraries = rankItinerariesWithDiversity(itineraries);
 
     const { error: insertError } = await supabase
       .from('itinerary_options')

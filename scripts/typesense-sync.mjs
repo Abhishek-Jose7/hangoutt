@@ -55,6 +55,56 @@ const REQUIRED_SCHEMA = {
   url: 'string',
 };
 
+const VALID_TYPES = [
+  'cafe',
+  'restaurant',
+  'fast_food',
+  'bar',
+  'park',
+  'garden',
+  'mall',
+  'cinema',
+  'tourist_attraction',
+];
+
+const BLOCKED_KEYWORDS = [
+  'bank',
+  'atm',
+  'office',
+  'government',
+  'school',
+  'hospital',
+  'clinic',
+  'pharmacy',
+  'petrol',
+  'fuel',
+  'warehouse',
+  'toilet',
+  'public toilet',
+];
+
+const DISALLOWED_AMENITIES = new Set([
+  'bank',
+  'atm',
+  'pharmacy',
+  'hospital',
+  'clinic',
+  'doctors',
+  'dentist',
+  'school',
+  'college',
+  'university',
+  'police',
+  'fire_station',
+  'post_office',
+  'courthouse',
+  'government',
+  'bus_station',
+  'fuel',
+  'parking',
+  'toilets',
+]);
+
 function printHelpAndExit(code) {
   console.log(`\nTypesense Venue Sync\n\nUsage:\n  npm run typesense:sync -- --area "Bandra West" [options]\n\nOptions:\n  --city <name>          City name (default: Mumbai)\n  --country <name>       Country name (default: India)\n  --radius <meters>      Overpass search radius (default: 2800)\n  --limit <count>        Max transformed docs to import (default: 450)\n  --batch-size <count>   Typesense import batch size (default: 100)\n  --timeout <seconds>    Overpass timeout value (default: 50)\n  --collection <name>    Typesense collection (default: env TYPESENSE_COLLECTION or venues)\n  --dry-run              Build docs but do not import\n  --skip-schema-check    Skip remote schema validation\n  --help                 Show this help\n`);
   process.exit(code);
@@ -161,6 +211,66 @@ function slug(input) {
   return normalizeText(input).replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
+function normalizeAreaName(input) {
+  const cleaned = normalizeText(input);
+  if (!cleaned) return 'Mumbai';
+  return cleaned
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+}
+
+function tokenQuality(name) {
+  return String(name)
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+}
+
+function hasBalancedAlpha(name) {
+  const compact = String(name).replace(/\s+/g, '');
+  if (!compact) return false;
+  const alphaChars = compact.replace(/[^A-Za-z]/g, '').length;
+  return alphaChars / compact.length >= 0.55;
+}
+
+function looksLikeGarbagePoi(name) {
+  const lowered = normalizeText(name);
+  if (!lowered) return true;
+  if (lowered.length < 4) return true;
+
+  const genericPatterns = [
+    /^unnamed/,
+    /^plot\s*\d+/,
+    /^shop\s*\d+/,
+    /^building\s*\d+/,
+    /^gate\s*\d+/,
+    /^house\s*\d+/,
+    /^flat\s*\d+/,
+    /^road\s*\d+/,
+    /^lane\s*\d+/,
+  ];
+
+  if (genericPatterns.some((pattern) => pattern.test(lowered))) return true;
+  if (BLOCKED_KEYWORDS.some((keyword) => lowered.includes(keyword))) return true;
+  if (!hasBalancedAlpha(name)) return true;
+  if (tokenQuality(name).length < 2) return true;
+
+  return false;
+}
+
+function hasDisallowedTags(tags) {
+  const amenity = String(tags.amenity || '').toLowerCase();
+  if (amenity && DISALLOWED_AMENITIES.has(amenity)) return true;
+
+  const text = normalizeText(
+    `${tags.amenity || ''} ${tags.office || ''} ${tags.building || ''} ${tags.healthcare || ''} ${tags.name || ''}`
+  );
+
+  return BLOCKED_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
 function toNum(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -191,40 +301,29 @@ function parseRupees(text) {
   return value;
 }
 
-function inferType(tags) {
+function resolveOsmType(tags) {
   const amenity = String(tags.amenity || '').toLowerCase();
   const leisure = String(tags.leisure || '').toLowerCase();
   const tourism = String(tags.tourism || '').toLowerCase();
   const shop = String(tags.shop || '').toLowerCase();
 
-  if (amenity === 'cafe' || amenity === 'ice_cream') return 'cafe';
-  if (amenity === 'restaurant' || amenity === 'fast_food' || amenity === 'food_court') return 'restaurant';
+  if (amenity === 'cafe') return 'cafe';
+  if (amenity === 'restaurant') return 'restaurant';
+  if (amenity === 'fast_food') return 'fast_food';
+  if (amenity === 'bar') return 'bar';
+  if (leisure === 'park') return 'park';
+  if (leisure === 'garden') return 'garden';
+  if (shop === 'mall') return 'mall';
+  if (amenity === 'cinema') return 'cinema';
+  if (tourism === 'attraction') return 'tourist_attraction';
 
-  if (
-    leisure === 'park' ||
-    leisure === 'garden' ||
-    leisure === 'nature_reserve' ||
-    tourism === 'viewpoint' ||
-    tourism === 'picnic_site'
-  ) {
-    return 'outdoor';
-  }
+  return null;
+}
 
-  if (
-    amenity === 'cinema' ||
-    leisure === 'sports_centre' ||
-    leisure === 'bowling_alley' ||
-    leisure === 'escape_game' ||
-    leisure === 'amusement_arcade' ||
-    tourism === 'museum' ||
-    tourism === 'gallery' ||
-    tourism === 'attraction' ||
-    tourism === 'theme_park' ||
-    shop === 'mall'
-  ) {
-    return 'activity';
-  }
-
+function inferType(osmType) {
+  if (osmType === 'cafe') return 'cafe';
+  if (osmType === 'restaurant' || osmType === 'fast_food' || osmType === 'bar') return 'restaurant';
+  if (osmType === 'park' || osmType === 'garden') return 'outdoor';
   return 'activity';
 }
 
@@ -402,7 +501,7 @@ async function geocodeArea({ area, city, country }) {
 }
 
 function buildOverpassQuery({ lat, lng, radius, timeoutSeconds }) {
-  return `[out:json][timeout:${timeoutSeconds}];\n(\n  nwr[\"amenity\"~\"cafe|restaurant|fast_food|ice_cream|food_court|cinema|bar|pub\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"leisure\"~\"park|garden|nature_reserve|sports_centre|escape_game|bowling_alley|amusement_arcade\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"tourism\"~\"attraction|museum|gallery|theme_park|viewpoint|picnic_site\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"shop\"~\"mall\"][\"name\"](around:${radius},${lat},${lng});\n);\nout center;`;
+  return `[out:json][timeout:${timeoutSeconds}];\n(\n  nwr[\"amenity\"~\"cafe|restaurant|fast_food|bar|cinema\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"leisure\"~\"park|garden\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"tourism\"=\"attraction\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"shop\"=\"mall\"][\"name\"](around:${radius},${lat},${lng});\n);\nout center;`;
 }
 
 async function fetchOsmPlaces(query) {
@@ -464,8 +563,17 @@ function transformElementsToDocs(elements, options) {
       continue;
     }
 
+    if (hasDisallowedTags(tags) || looksLikeGarbagePoi(name)) {
+      continue;
+    }
+
+    const osmType = resolveOsmType(tags);
+    if (!osmType || !VALID_TYPES.includes(osmType)) {
+      continue;
+    }
+
     const normalizedName = normalizeText(name);
-    if (!normalizedName || normalizedName.length < 3) {
+    if (!normalizedName || normalizedName.length < 4) {
       continue;
     }
 
@@ -475,7 +583,7 @@ function transformElementsToDocs(elements, options) {
     }
     seen.add(dedupeKey);
 
-    const type = inferType(tags);
+    const type = inferType(osmType);
     const mood = inferMoods(type, tags);
     const doc = {
       id: makeStableId(name, lat, lng),
@@ -658,6 +766,7 @@ async function importDocuments(config, docs, batchSize) {
 
 async function run() {
   const args = parseArgs(process.argv.slice(2));
+  args.area = normalizeAreaName(args.area);
   const config = resolveTypesenseConfig(args.collection, args.dryRun && args.skipSchemaCheck);
 
   console.log(`\n[TypesenseSync] Area: ${args.area}, City: ${args.city}`);

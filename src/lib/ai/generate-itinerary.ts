@@ -2,6 +2,11 @@ import Groq from 'groq-sdk';
 import { AIItineraryResponseSchema } from '@/types';
 import type { AIItineraryResponse, Place, Mood, HubCandidate, ItineraryProfile } from '@/types';
 import { buildItineraryPrompt, RETRY_SUFFIX } from './prompts';
+import {
+  buildGeneratorAgentPrompt,
+  buildOverseerAgentPrompt,
+  buildRetryAgentPrompt,
+} from './agent-role-prompts';
 import { buildFallbackItinerary } from './fallback';
 import { selectTopCandidates } from '../scoring';
 import { haversineDistance } from '../transit';
@@ -100,6 +105,15 @@ function getGroqClient(role: GroqKeyRole): Groq {
   });
 }
 
+function hasGroqRoleKeysConfigured(): boolean {
+  return (
+    parseRoleVar(process.env.GROQ_API_KEY_GENERATOR).length > 0 ||
+    parseRoleVar(process.env.GROQ_API_KEY_RETRY).length > 0 ||
+    parseRoleVar(process.env.GROQ_API_KEY_OVERSEER).length > 0 ||
+    parseGroqKeysFromEnv().length > 0
+  );
+}
+
 interface QualityGateResult {
   passed: boolean;
   issues: string[];
@@ -110,10 +124,26 @@ interface OverseerAuditResult {
   approved: boolean;
   quality_score: number;
   issues: string[];
+  summary: string;
+}
+
+interface GeneratorRefinePromptShape {
+  stops: AIItineraryResponse['stops'];
+  total_cost_per_person: number;
+  duration_total_mins: number;
+  vibe: Mood;
+  travel_summary?: AIItineraryResponse['travel_summary'];
 }
 
 function candidateNameSet(candidates: Place[]): Set<string> {
   return new Set(candidates.map((candidate) => normalizeText(candidate.name)));
+}
+
+function calcDurationMins(plan: AIItineraryResponse): number {
+  return plan.stops.reduce(
+    (sum, stop) => sum + stop.duration_mins + stop.walk_from_previous_mins,
+    0
+  );
 }
 
 function evaluateItineraryRules(
@@ -172,13 +202,13 @@ async function runOverseerAudit(
   perPersonCap: number
 ): Promise<OverseerAuditResult> {
   const client = getGroqClient('overseer');
-  const payload = {
-    mood,
-    profile,
-    per_person_cap: perPersonCap,
-    candidate_names: candidates.map((candidate) => candidate.name),
+  const perUserTravel = plan.member_travel_breakdown;
+  const overseerPrompt = buildOverseerAgentPrompt({
     itinerary: plan,
-  };
+    per_user_travel: perUserTravel,
+    budget: perPersonCap,
+    vibe: mood,
+  });
 
   try {
     const response = await client.chat.completions.create({
@@ -188,36 +218,203 @@ async function runOverseerAudit(
       messages: [
         {
           role: 'user',
-          content:
-            'You are the Overseer agent for itinerary QA. Evaluate ONLY this itinerary, do not generate new one. ' +
-            'Audit for: candidate integrity (must use only candidate_names), budget fit, logical flow, type variety, and practicality. ' +
-            'Return JSON with keys: approved (boolean), quality_score (0-100), issues (string[]).\n\n' +
-            JSON.stringify(payload),
+          content: `${overseerPrompt}\n\nAdditional validator context:\n${JSON.stringify(
+            {
+              mood,
+              profile,
+              per_person_cap: perPersonCap,
+              candidate_names: candidates.map((candidate) => candidate.name),
+            },
+            null,
+            2
+          )}`,
         },
       ],
     });
 
     const text = response.choices[0]?.message?.content || '{}';
-    const raw = JSON.parse(text) as Partial<OverseerAuditResult>;
+    const raw = JSON.parse(text) as Partial<OverseerAuditResult> & {
+      valid?: boolean;
+      score?: number;
+      verdict?: 'accept' | 'reject';
+    };
     const issues = Array.isArray(raw.issues)
       ? raw.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 6)
       : [];
+    const summary = typeof raw.summary === 'string' && raw.summary.trim().length > 0
+      ? raw.summary.trim()
+      : issues.length > 0
+      ? issues.slice(0, 2).join(' ')
+      : 'Plan passes practical validation checks.';
     const quality = typeof raw.quality_score === 'number' && Number.isFinite(raw.quality_score)
       ? Math.max(0, Math.min(100, Math.round(raw.quality_score)))
+      : typeof raw.score === 'number' && Number.isFinite(raw.score)
+      ? Math.max(0, Math.min(100, Math.round(raw.score * 100)))
       : issues.length === 0
       ? 75
       : 55;
+    const approvedFromVerdict = raw.verdict ? raw.verdict === 'accept' : undefined;
+    const approvedFromValid = typeof raw.valid === 'boolean' ? raw.valid : undefined;
+    const approved =
+      approvedFromVerdict ??
+      approvedFromValid ??
+      Boolean(raw.approved);
 
     return {
-      approved: Boolean(raw.approved) && quality >= 60,
+      approved: approved && quality >= 60,
       quality_score: quality,
       issues,
+      summary,
     };
   } catch {
     return {
       approved: true,
       quality_score: 70,
       issues: [],
+      summary: 'AI reviewer unavailable, keeping deterministic plan.',
+    };
+  }
+}
+
+export async function reviewDeterministicItineraryWithGroq(params: {
+  plan: AIItineraryResponse;
+  candidates: Place[];
+  hub: HubCandidate;
+  mood: Mood;
+  profile: ItineraryProfile;
+  perPersonCap: number;
+}): Promise<{
+  plan: AIItineraryResponse;
+  model: string | null;
+  corrected: boolean;
+}> {
+  const finalizePlan = (input: AIItineraryResponse): AIItineraryResponse => {
+    let next = postProcessItinerary(
+      input,
+      params.candidates,
+      params.hub,
+      params.perPersonCap,
+      params.mood,
+      params.profile
+    );
+    if (next.total_cost_per_person > params.perPersonCap) {
+      next = adjustBudget(next, params.perPersonCap);
+    }
+    return next;
+  };
+
+  const basePlan = finalizePlan(params.plan);
+  if (!hasGroqRoleKeysConfigured()) {
+    return {
+      plan: basePlan,
+      model: null,
+      corrected: false,
+    };
+  }
+
+  const localGate = evaluateItineraryRules(basePlan, params.candidates, params.perPersonCap);
+  const overseerGate = await runOverseerAudit(
+    basePlan,
+    params.candidates,
+    params.mood,
+    params.profile,
+    params.perPersonCap
+  );
+
+  if (localGate.passed && overseerGate.approved) {
+    return {
+      plan: {
+        ...basePlan,
+        why_this_option: basePlan.why_this_option || overseerGate.summary,
+      },
+      model: MODEL,
+      corrected: false,
+    };
+  }
+
+  const reviewIssues = [...localGate.issues, ...overseerGate.issues]
+    .filter(Boolean)
+    .slice(0, 8);
+
+  try {
+    const retryClient = getGroqClient('retry');
+    const retryPrompt = buildRetryAgentPrompt({
+      current_itinerary: basePlan,
+      issues: reviewIssues,
+      candidate_places: params.candidates,
+      budget: params.perPersonCap,
+      vibe: params.mood,
+    });
+
+    const retryResponse = await retryClient.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content:
+            `${retryPrompt}\n\n` +
+            'Correction mode: return full corrected AIItineraryResponse JSON only.\n' +
+            'Do not generate from scratch. Correct the current itinerary using candidate places only.',
+        },
+      ],
+    });
+
+    const correctedText = retryResponse.choices[0]?.message?.content || '';
+    const corrected = tryParseItinerary(correctedText);
+    if (!corrected) {
+      return {
+        plan: {
+          ...basePlan,
+          why_this_option: basePlan.why_this_option || overseerGate.summary,
+        },
+        model: MODEL,
+        corrected: false,
+      };
+    }
+
+    const correctedPlan = finalizePlan(corrected);
+    const correctedLocalGate = evaluateItineraryRules(
+      correctedPlan,
+      params.candidates,
+      params.perPersonCap
+    );
+    const correctedOverseerGate = await runOverseerAudit(
+      correctedPlan,
+      params.candidates,
+      params.mood,
+      params.profile,
+      params.perPersonCap
+    );
+
+    if (correctedLocalGate.passed && correctedOverseerGate.approved) {
+      return {
+        plan: {
+          ...correctedPlan,
+          why_this_option: correctedPlan.why_this_option || correctedOverseerGate.summary,
+        },
+        model: MODEL,
+        corrected: true,
+      };
+    }
+
+    return {
+      plan: {
+        ...basePlan,
+        why_this_option: basePlan.why_this_option || overseerGate.summary,
+      },
+      model: MODEL,
+      corrected: false,
+    };
+  } catch {
+    return {
+      plan: {
+        ...basePlan,
+        why_this_option: basePlan.why_this_option || overseerGate.summary,
+      },
+      model: MODEL,
+      corrected: false,
     };
   }
 }
@@ -267,6 +464,16 @@ export async function generateItineraryForHub(
     candidates: JSON.stringify(topCandidates, null, 2),
   });
 
+  const fallbackSeed = buildFallbackItinerary(topCandidates, perPersonCap, mood);
+  const generatorRolePromptInput: GeneratorRefinePromptShape = {
+    stops: fallbackSeed.stops,
+    total_cost_per_person: fallbackSeed.total_cost_per_person,
+    duration_total_mins: calcDurationMins(fallbackSeed),
+    vibe: mood,
+    travel_summary: undefined,
+  };
+  const generatorRolePrompt = buildGeneratorAgentPrompt(generatorRolePromptInput);
+
   const finalizePlan = (input: AIItineraryResponse): AIItineraryResponse => {
     let next = postProcessItinerary(input, topCandidates, hub, perPersonCap, mood, profile);
     if (next.total_cost_per_person > perPersonCap) {
@@ -295,7 +502,14 @@ export async function generateItineraryForHub(
       model: MODEL,
       temperature: 0.2,
       response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        {
+          role: 'user',
+          content:
+            `${prompt}\n\nRole constraints for generator agent:\n${generatorRolePrompt}\n\n` +
+            'Final output contract for this call: return full AIItineraryResponse JSON only.',
+        },
+      ],
     });
 
     const generatorText = generatorResponse.choices[0]?.message?.content || '';
@@ -324,6 +538,15 @@ export async function generateItineraryForHub(
       .join('\n');
 
     const retryClient = getGroqClient('retry');
+    const retryPrompt = buildRetryAgentPrompt({
+      current_itinerary: generated
+        ? finalizePlan(generated)
+        : buildFallbackItinerary(topCandidates, perPersonCap, mood),
+      issues: collectedRetryIssues,
+      candidate_places: topCandidates,
+      budget: perPersonCap,
+      vibe: mood,
+    });
     const retryResponse = await retryClient.chat.completions.create({
       model: MODEL,
       temperature: 0.15,
@@ -332,9 +555,9 @@ export async function generateItineraryForHub(
         {
           role: 'user',
           content:
-            `${prompt}\n\n${RETRY_SUFFIX}\n\n` +
+            `${retryPrompt}\n\n${prompt}\n\n${RETRY_SUFFIX}\n\n` +
             `Regenerate and fix these failures strictly:\n${retryIssues}\n` +
-            'Use only candidate venue names exactly as listed. Do not invent any venue.',
+            'Use only candidate venue names exactly as listed. Do not invent any venue. Return full AIItineraryResponse JSON only.',
         },
       ],
     });
