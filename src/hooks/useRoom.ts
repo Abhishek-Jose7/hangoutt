@@ -162,11 +162,17 @@ export function useGenerateItineraries(roomId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data?: { meetup_start_time?: string }) => {
-      const res = await fetch(`/api/rooms/${roomId}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data || {}),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`/api/rooms/${roomId}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data || {}),
+          cache: 'no-store',
+        });
+      } catch {
+        throw new Error('Network error: unable to reach server');
+      }
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error?.message || 'Failed to generate');

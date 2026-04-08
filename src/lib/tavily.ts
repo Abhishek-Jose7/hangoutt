@@ -61,8 +61,8 @@ const DISALLOWED_AMENITIES = new Set([
 
 const MAX_PLACE_DISTANCE_KM = 4;
 const PLACE_CONFIDENCE_THRESHOLD = 0.6;
-const OVERPASS_TIMEOUT_MS = 9000;
-const TAVILY_TIMEOUT_MS = 2500;
+const OVERPASS_TIMEOUT_MS = 13000;
+const TAVILY_TIMEOUT_MS = 3500;
 
 const inflightSearches = new Map<string, Promise<Place[]>>();
 
@@ -524,10 +524,15 @@ async function fetchStructuredOsmPlaces(
   };
 
   let elements: OsmElement[] = [];
-  try {
-    elements = await Promise.any(endpoints.map((endpoint) => fetchFromEndpoint(endpoint)));
-  } catch {
-    elements = [];
+  const settled = await Promise.allSettled(endpoints.map((endpoint) => fetchFromEndpoint(endpoint)));
+  const successful = settled
+    .filter((result): result is PromiseFulfilledResult<OsmElement[]> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((batch) => Array.isArray(batch));
+
+  if (successful.length > 0) {
+    successful.sort((a, b) => b.length - a.length);
+    elements = successful[0];
   }
 
   if (!elements.length) return [];

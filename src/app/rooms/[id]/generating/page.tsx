@@ -26,6 +26,7 @@ export default function GeneratingPage() {
   const setRoom = useRoomStore((s) => s.setRoom);
   const [messageIndex, setMessageIndex] = useState(0);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [networkError, setNetworkError] = useState<string | null>(null);
 
   useRoomRealtime(roomId);
 
@@ -36,8 +37,8 @@ export default function GeneratingPage() {
   useEffect(() => {
     if (status === 'voting') router.push(`/rooms/${roomId}/voting`);
     if (status === 'confirmed') router.push(`/rooms/${roomId}/confirmed`);
-    if (status === 'planning' && !generationError) router.push(`/rooms/${roomId}/planning`);
-  }, [status, generationError, roomId, router]);
+    if (status === 'planning' && !generationError && !networkError) router.push(`/rooms/${roomId}/planning`);
+  }, [status, generationError, networkError, roomId, router]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -48,9 +49,15 @@ export default function GeneratingPage() {
 
   useEffect(() => {
     const interval = setInterval(async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
       try {
-        const res = await fetch(`/api/rooms/${roomId}/itineraries?include_job=1`);
+        const res = await fetch(`/api/rooms/${roomId}/itineraries?include_job=1`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
         const data = await res.json();
+        setNetworkError(null);
 
         if (res.status === 202 && data?.status === 'generating') return;
         if (res.ok && data?.status === 'failed') {
@@ -61,7 +68,9 @@ export default function GeneratingPage() {
           useRoomStore.getState().setStatus('voting');
         }
       } catch {
-        // no-op
+        setNetworkError('Network error: unable to reach server. Check connection and refresh.');
+      } finally {
+        clearTimeout(timeout);
       }
     }, 1500);
 
@@ -103,6 +112,14 @@ export default function GeneratingPage() {
                     </p>
                     <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
                       This error is shown directly to the signed-in account for quick debugging.
+                    </p>
+                  </div>
+                ) : null}
+
+                {networkError ? (
+                  <div className="panel p-4 border-[rgba(255,193,7,0.4)] bg-[rgba(255,193,7,0.08)]">
+                    <p className="text-sm text-[var(--color-warning)]">
+                      {networkError}
                     </p>
                   </div>
                 ) : null}

@@ -67,7 +67,7 @@ const OPTION_PROFILES: ItineraryProfile[] = [
 ];
 
 const PLACE_CONFIDENCE_THRESHOLD = 0.6;
-const HUB_GENERATION_TIMEOUT_MS = 28000;
+const HUB_GENERATION_TIMEOUT_MS = 24000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -274,6 +274,80 @@ function whyThisOption(profile: ItineraryProfile, budgetMatch: number, distanceS
   }
 
   return profileReasons[profile];
+}
+
+function buildEmergencyFallbackPlan(params: {
+  hub: { name: string; lat: number; lng: number };
+  mood: Mood;
+  perPersonCap: number;
+  meetupStartTime: string;
+  reason: string;
+}): AIItineraryResponse {
+  const typeByMood: Record<Mood, Array<'cafe' | 'activity' | 'restaurant' | 'outdoor'>> = {
+    fun: ['activity', 'restaurant', 'cafe'],
+    chill: ['cafe', 'outdoor', 'restaurant'],
+    romantic: ['restaurant', 'outdoor', 'cafe'],
+    adventure: ['activity', 'outdoor', 'restaurant'],
+  };
+
+  const labelsByType: Record<'cafe' | 'activity' | 'restaurant' | 'outdoor', string> = {
+    cafe: 'Cafe',
+    activity: 'Activity Spot',
+    restaurant: 'Restaurant',
+    outdoor: 'Walk Area',
+  };
+
+  const costs = [0.2, 0.34, 0.28].map((ratio) => Math.max(80, Math.round(params.perPersonCap * ratio)));
+  const durations = [65, 95, 80];
+  const walkMins = [8, 14, 12];
+  const deltas = [
+    { lat: 0, lng: 0 },
+    { lat: 0.0032, lng: 0.0023 },
+    { lat: -0.0026, lng: 0.0018 },
+  ];
+
+  let cursor = toMinutes(params.meetupStartTime);
+  const stops = typeByMood[params.mood].map((type, index) => {
+    const lat = Number((params.hub.lat + deltas[index].lat).toFixed(6));
+    const lng = Number((params.hub.lng + deltas[index].lng).toFixed(6));
+    const name = `${params.hub.name} ${labelsByType[type]}`;
+    const start = toHHMM(cursor);
+    cursor += durations[index] + walkMins[index];
+
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}(${encodeURIComponent(name)})`;
+
+    return {
+      stop_number: index + 1,
+      place_name: name,
+      place_type: type,
+      category_label: type,
+      lat,
+      lng,
+      start_time: start,
+      duration_mins: durations[index],
+      estimated_cost_per_person: costs[index],
+      walk_from_previous_mins: walkMins[index],
+      distance_from_previous_km: Number((0.7 + index * 0.4).toFixed(1)),
+      vibe_note: `${params.mood} aligned fallback stop in ${params.hub.name}`,
+      map_url: mapUrl,
+      google_maps_url: mapUrl,
+      osm_maps_url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=15/${lat}/${lng}`,
+      source_url: mapUrl,
+    };
+  });
+
+  const total = stops.reduce((sum, stop) => sum + stop.estimated_cost_per_person, 0);
+
+  return {
+    stops,
+    total_cost_per_person: total,
+    contingency_buffer: Math.round(total * 0.12),
+    day_summary: `Fallback grounded itinerary for ${params.hub.name}. Triggered because: ${params.reason}`,
+    short_title: `${params.hub.name} - Reliable fallback plan`,
+    area: params.hub.name,
+    vibe_tags: [params.mood, 'fallback', 'deterministic'],
+    meetup_start_time: params.meetupStartTime,
+  };
 }
 
 function validateGroundedPlaces(
@@ -540,7 +614,85 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           })(),
           HUB_GENERATION_TIMEOUT_MS,
           `Hub ${hub.name} generation`
-        )
+        ).catch((error: unknown) => {
+          const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+          const reason = error instanceof Error ? error.message : 'unknown_generation_error';
+          const fallbackPlan = buildEmergencyFallbackPlan({
+            hub,
+            mood,
+            perPersonCap,
+            meetupStartTime,
+            reason,
+          });
+
+          const averagePlaceRating = calcAveragePlaceRating(fallbackPlan, []);
+          const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
+          const budgetMatch = calcBudgetMatch(fallbackPlan.total_cost_per_person, perPersonCap);
+          const vibeMatch = calcVibeMatch(fallbackPlan, mood, profile);
+          const placeQualityScore = calcPlaceQualityScore(fallbackPlan, [], averagePlaceRating);
+          const penalty = calcHardPenalty({
+            avgTravelMins: Math.round(hub.avgTravelTime),
+            maxTravelMins: Math.round(hub.maxTravelTime),
+            totalCost: fallbackPlan.total_cost_per_person,
+            perPersonCap,
+          });
+          const totalScore = calcWeightedOptionScore({
+            distanceScore,
+            budgetMatch,
+            vibeMatch,
+            placeQualityScore,
+            penalty,
+          });
+          const travelInsights = buildMemberTravelInsights({
+            plan: fallbackPlan,
+            membersWithLocations,
+            hubTravelTimes: hub.travelTimes,
+            perPersonCap,
+            fairnessScore: hub.fairnessScore,
+          });
+
+          const enrichedPlan = {
+            ...fallbackPlan,
+            profile,
+            flow_summary: fallbackPlan.flow_summary || buildFlowSummary(fallbackPlan),
+            duration_total_mins: calcDurationMins(fallbackPlan),
+            average_place_rating: averagePlaceRating,
+            score_breakdown: {
+              distance_score: Math.round(distanceScore * 100) / 100,
+              budget_match: Math.round(budgetMatch * 100) / 100,
+              vibe_match: Math.round(vibeMatch * 100) / 100,
+              rating_score: Math.round(placeQualityScore * 100) / 100,
+              total_score: Math.round(totalScore * 100) / 100,
+            },
+            dominant_vibe_match_pct: Math.round(vibeMatch * 100),
+            budget_breakdown: {
+              stop_cost_total: fallbackPlan.total_cost_per_person,
+              contingency_buffer: fallbackPlan.contingency_buffer,
+              total_with_contingency: fallbackPlan.total_cost_per_person + fallbackPlan.contingency_buffer,
+              cap_per_person: perPersonCap,
+              within_cap: fallbackPlan.total_cost_per_person <= perPersonCap,
+            },
+            member_travel_breakdown: travelInsights.member_travel_breakdown,
+            travel_summary: travelInsights.travel_summary,
+            why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
+          };
+
+          return {
+            room_id: roomId,
+            option_number: index + 1,
+            hub_name: hub.name,
+            hub_lat: hub.lat,
+            hub_lng: hub.lng,
+            hub_strategy: hub.strategy,
+            plan: enrichedPlan,
+            total_cost_estimate: fallbackPlan.total_cost_per_person,
+            max_travel_time_mins: Math.round(hub.maxTravelTime),
+            avg_travel_time_mins: Math.round(hub.avgTravelTime),
+            travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+            generation_method: 'rule_based_fallback',
+            ai_model_version: null,
+          };
+        })
       )
     );
 

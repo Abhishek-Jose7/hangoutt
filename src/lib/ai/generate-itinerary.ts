@@ -12,7 +12,7 @@ import { selectTopCandidates } from '../scoring';
 import { haversineDistance } from '../transit';
 
 const MODEL = 'llama3-70b-8192';
-const GROQ_REVIEW_TIMEOUT_MS = 3000;
+const GROQ_REVIEW_TIMEOUT_MS = 5000;
 
 type GroqKeyRole = 'generator' | 'retry' | 'overseer';
 
