@@ -7,7 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typesense:sync": "node scripts/typesense-sync.mjs"
+    "typesense:sync": "node scripts/typesense-sync.mjs",
+    "typesense:live-sync": "node scripts/tavily-typesense-live-sync.mjs --once",
+    "typesense:live-worker": "node scripts/tavily-typesense-live-sync.mjs",
+    "typesense:live-dry": "node scripts/tavily-typesense-live-sync.mjs --once --dry-run --skip-schema-check",
+    "itinerary": "bun scripts/itinerary-cli.ts",
+    "itinerary:demo": "bun scripts/itinerary-cli.ts Borivali -m fun -b 1000 -t 12:00 -p chill_walk --no-trace",
+    "itinerary:discovery": "bun scripts/itinerary-discovery-cli.ts",
+    "itinerary:discovery:demo": "bun scripts/itinerary-discovery-cli.ts Borivali -m fun -b 1000 -t 12:00 -p chill_walk --no-trace"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.8",

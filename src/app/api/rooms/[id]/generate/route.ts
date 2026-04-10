@@ -8,7 +8,7 @@ import { generateGroundedItineraryForHub } from '@/lib/itinerary-engine';
 import { reviewDeterministicItineraryWithGroq } from '@/lib/ai/generate-itinerary';
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
-import { haversineDistance } from '@/lib/transit';
+import { finalValidatePlacesBeforeEngine, validateGroundedPlaces } from '@/lib/place-validation';
 import type { Mood, LatLng, ItineraryProfile, Place, AIItineraryResponse } from '@/types';
 import { z } from 'zod';
 
@@ -66,8 +66,7 @@ const OPTION_PROFILES: ItineraryProfile[] = [
   'budget_bites',
 ];
 
-const PLACE_CONFIDENCE_THRESHOLD = 0.6;
-const HUB_GENERATION_TIMEOUT_MS = 24000;
+const HUB_GENERATION_TIMEOUT_MS = 65000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -350,39 +349,6 @@ function buildEmergencyFallbackPlan(params: {
   };
 }
 
-function validateGroundedPlaces(
-  places: Place[],
-  hub: { lat: number; lng: number }
-): Place[] {
-  const seen = new Set<string>();
-  return places.filter((place) => {
-    if (!place.name || place.name.trim().length < 4) return false;
-    if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return false;
-    if (!place.type) return false;
-    if ((place.confidence_score || 0) < PLACE_CONFIDENCE_THRESHOLD) return false;
-
-    const key = place.name.toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-
-    const dist = haversineDistance({ lat: place.lat, lng: place.lng }, hub);
-    return dist <= 4;
-  });
-}
-
-function finalValidatePlacesBeforeEngine(places: Place[]): Place[] {
-  return places.filter((place) =>
-    Boolean(place.name) &&
-    place.name.trim().length > 3 &&
-    typeof place.lat === 'number' &&
-    Number.isFinite(place.lat) &&
-    typeof place.lng === 'number' &&
-    Number.isFinite(place.lng) &&
-    Boolean(place.type) &&
-    (place.confidence_score || 0) >= PLACE_CONFIDENCE_THRESHOLD
-  );
-}
-
 function buildMemberTravelInsights(params: {
   plan: AIItineraryResponse;
   membersWithLocations: Array<{
@@ -496,10 +462,11 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
 
         // Data stage: real nearby venues from OSM/Typesense pipeline.
-        const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap);
+        const groupSize = members.length;
+        const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
         const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
         const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
-        if (verifiedPlaces.length < 4) {
+        if (verifiedPlaces.length < 3) {
           throw new Error(`Insufficient verified places for hub ${hub.name}`);
         }
 
@@ -511,6 +478,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           perPersonCap,
           profile,
           meetupStartTime,
+          groupSize,
         });
 
         const reviewed = await reviewDeterministicItineraryWithGroq({

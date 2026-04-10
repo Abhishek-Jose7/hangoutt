@@ -274,12 +274,18 @@ export interface Place {
   lng?: number;
   description: string;
   estimated_cost?: number;
+  cost_range?: {
+    min: number;
+    max: number;
+  };
   inferred_rating?: number;
   popularity?: number;
   area?: string;
   tags?: string[];
   confidence_score?: number;
   hangout_score?: number;
+  activity_type?: string;
+  group_suitability?: number;
   source: 'tavily' | 'osm_fallback' | 'typesense';
   relevance_score: number;
   url?: string;

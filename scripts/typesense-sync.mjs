@@ -59,13 +59,14 @@ const VALID_TYPES = [
   'cafe',
   'restaurant',
   'fast_food',
-  'bar',
   'park',
   'garden',
   'mall',
-  'cinema',
   'tourist_attraction',
 ];
+
+const MIN_SYNC_CONFIDENCE = 0.58;
+const MIN_SYNC_HANGOUT = 0.5;
 
 const BLOCKED_KEYWORDS = [
   'bank',
@@ -253,9 +254,20 @@ function looksLikeGarbagePoi(name) {
   ];
 
   if (genericPatterns.some((pattern) => pattern.test(lowered))) return true;
+  if (/^(garden|park|ground|playground|building|complex|mall|restaurant|cafe)$/.test(lowered)) {
+    return true;
+  }
+  const tokens = tokenQuality(name).map((token) => normalizeText(token));
+  if (
+    tokens.length <= 2 &&
+    tokens.length > 0 &&
+    tokens.every((token) => ['garden', 'park', 'ground', 'building', 'complex'].includes(token))
+  ) {
+    return true;
+  }
   if (BLOCKED_KEYWORDS.some((keyword) => lowered.includes(keyword))) return true;
   if (!hasBalancedAlpha(name)) return true;
-  if (tokenQuality(name).length < 2) return true;
+  if (tokens.length < 2 && String(name).trim().length < 8) return true;
 
   return false;
 }
@@ -310,11 +322,9 @@ function resolveOsmType(tags) {
   if (amenity === 'cafe') return 'cafe';
   if (amenity === 'restaurant') return 'restaurant';
   if (amenity === 'fast_food') return 'fast_food';
-  if (amenity === 'bar') return 'bar';
   if (leisure === 'park') return 'park';
   if (leisure === 'garden') return 'garden';
   if (shop === 'mall') return 'mall';
-  if (amenity === 'cinema') return 'cinema';
   if (tourism === 'attraction') return 'tourist_attraction';
 
   return null;
@@ -322,9 +332,29 @@ function resolveOsmType(tags) {
 
 function inferType(osmType) {
   if (osmType === 'cafe') return 'cafe';
-  if (osmType === 'restaurant' || osmType === 'fast_food' || osmType === 'bar') return 'restaurant';
+  if (osmType === 'restaurant' || osmType === 'fast_food') return 'restaurant';
   if (osmType === 'park' || osmType === 'garden') return 'outdoor';
   return 'activity';
+}
+
+function hasSelectiveOutdoorSignals(name, tags) {
+  const text = normalizeText(
+    `${name} ${tags.leisure || ''} ${tags.tourism || ''} ${tags.website || ''} ${tags.operator || ''}`
+  );
+  if (looksLikeGarbagePoi(name)) return false;
+
+  if (/\b(promenade|seaface|beach|lake|viewpoint|fort|museum|garden|park|trail)\b/.test(text)) {
+    return tokenQuality(name).length >= 2;
+  }
+
+  return Boolean(
+    tags.website ||
+      tags['contact:website'] ||
+      tags.wikidata ||
+      tags.wikipedia ||
+      tags.operator ||
+      tags.opening_hours
+  );
 }
 
 function inferMoods(type, tags) {
@@ -397,6 +427,71 @@ function inferPopularity(tags) {
   if (typeof rating === 'number' && rating >= 4) score += 8;
 
   return Math.round(clamp(score, 1, 100));
+}
+
+function computeNameQualityScore(name) {
+  if (looksLikeGarbagePoi(name)) return 0;
+
+  const tokens = tokenQuality(name);
+  const normalized = normalizeText(name);
+  let score = 0.55;
+  if (tokens.length >= 2) score += 0.2;
+  if (tokens.length >= 3) score += 0.08;
+  if (String(name).trim().length >= 10) score += 0.07;
+  if (/(mall|cafe|coffee|arcade|promenade|gymkhana|club)/.test(normalized)) score += 0.05;
+  if (/^(garden|ground|building|complex)$/.test(normalized)) score -= 0.35;
+
+  return clamp(score, 0, 1);
+}
+
+function metadataSignalScore(tags, inferredRating, popularity) {
+  const hasTags = Object.values(tags).some((value) => Boolean(value)) ? 1 : 0;
+  const hasRating = typeof inferredRating === 'number' && inferredRating > 0 ? 1 : 0;
+  const hasPopularity = typeof popularity === 'number' && popularity > 0 ? 1 : 0;
+  const hasContact = tags.phone || tags['contact:phone'] || tags.website || tags['contact:website'] ? 1 : 0;
+  const hasHours = tags.opening_hours ? 1 : 0;
+
+  return (hasTags + hasRating + hasPopularity + hasContact + hasHours) / 5;
+}
+
+function computeConfidenceScore({ name, tags, inferredRating, popularity }) {
+  const nameQuality = computeNameQualityScore(name);
+  const metadata = metadataSignalScore(tags, inferredRating, popularity);
+  const sourceReliability = 0.72; // OSM reliability baseline
+  const typeValidity = resolveOsmType(tags) ? 1 : 0;
+
+  return clamp(
+    nameQuality * 0.36 +
+      metadata * 0.28 +
+      sourceReliability * 0.24 +
+      typeValidity * 0.12,
+    0,
+    1
+  );
+}
+
+function computeHangoutAffinity({ name, type, popularity, tags }) {
+  const text = normalizeText(`${name} ${tags.cuisine || ''} ${tags.shop || ''} ${tags.tourism || ''}`);
+  const popularityScore = clamp((popularity || 50) / 100, 0, 1);
+
+  let baseByType = 0.56;
+  if (type === 'cafe') baseByType = 0.9;
+  if (type === 'restaurant') baseByType = 0.72;
+  if (type === 'activity') baseByType = 0.78;
+  if (type === 'outdoor') baseByType = 0.5;
+
+  let bonus = 0;
+  if (/\b(mall|shopping|arcade|bowling|board game|promenade|gymkhana|club|cafe|coffee|food court)\b/.test(text)) {
+    bonus += 0.16;
+  }
+  if (/\b(starbucks|chaayos|tim hortons|burger king|mcdonald|subway|dominos|pizza hut|costa|ccd)\b/.test(text)) {
+    bonus += 0.08;
+  }
+  if (/\b(garden|ground|building|complex)\b/.test(text) && tokenQuality(name).length <= 2) {
+    bonus -= 0.18;
+  }
+
+  return clamp(baseByType * 0.72 + popularityScore * 0.18 + bonus, 0, 1);
 }
 
 function inferDescription(tags, type, area) {
@@ -501,7 +596,7 @@ async function geocodeArea({ area, city, country }) {
 }
 
 function buildOverpassQuery({ lat, lng, radius, timeoutSeconds }) {
-  return `[out:json][timeout:${timeoutSeconds}];\n(\n  nwr[\"amenity\"~\"cafe|restaurant|fast_food|bar|cinema\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"leisure\"~\"park|garden\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"tourism\"=\"attraction\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"shop\"=\"mall\"][\"name\"](around:${radius},${lat},${lng});\n);\nout center;`;
+  return `[out:json][timeout:${timeoutSeconds}];\n(\n  nwr[\"amenity\"~\"cafe|restaurant|fast_food\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"leisure\"~\"park|garden\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"tourism\"=\"attraction\"][\"name\"](around:${radius},${lat},${lng});\n  nwr[\"shop\"=\"mall\"][\"name\"](around:${radius},${lat},${lng});\n);\nout center;`;
 }
 
 async function fetchOsmPlaces(query) {
@@ -571,6 +666,9 @@ function transformElementsToDocs(elements, options) {
     if (!osmType || !VALID_TYPES.includes(osmType)) {
       continue;
     }
+    if ((osmType === 'park' || osmType === 'garden') && !hasSelectiveOutdoorSignals(name, tags)) {
+      continue;
+    }
 
     const normalizedName = normalizeText(name);
     if (!normalizedName || normalizedName.length < 4) {
@@ -584,6 +682,25 @@ function transformElementsToDocs(elements, options) {
     seen.add(dedupeKey);
 
     const type = inferType(osmType);
+    const inferredRating = inferRating(tags);
+    const inferredPopularity = inferPopularity(tags);
+    const confidenceScore = computeConfidenceScore({
+      name,
+      tags,
+      inferredRating,
+      popularity: inferredPopularity,
+    });
+    const hangoutScore = computeHangoutAffinity({
+      name,
+      type,
+      popularity: inferredPopularity,
+      tags,
+    });
+
+    if (confidenceScore < MIN_SYNC_CONFIDENCE || hangoutScore < MIN_SYNC_HANGOUT) {
+      continue;
+    }
+
     const mood = inferMoods(type, tags);
     const doc = {
       id: makeStableId(name, lat, lng),
@@ -596,8 +713,8 @@ function transformElementsToDocs(elements, options) {
       estimated_cost: inferEstimatedCost(type, tags),
       lat,
       lng,
-      rating: inferRating(tags),
-      popularity: inferPopularity(tags),
+      rating: inferredRating,
+      popularity: inferredPopularity,
       url: mapsUrl(lat, lng, name),
     };
 

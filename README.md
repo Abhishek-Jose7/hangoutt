@@ -72,6 +72,98 @@ npm run dev
 
 Point your browser to [http://localhost:3000](http://localhost:3000) and start your first room!
 
+### 6. Itinerary CLI Scripts
+
+This repo includes two itinerary CLIs:
+
+- `npm run itinerary` -> `scripts/itinerary-cli.ts`
+- `npm run itinerary:discovery` -> `scripts/itinerary-discovery-cli.ts`
+
+Both scripts support interactive user input. If you run them without args, they prompt for location, mood, budget, start time, and profile, then print the generated itinerary.
+
+### One-Line Quick Runs (All 3 Scripts)
+
+- `npm run itinerary:demo`
+	- Runs a stable standard itinerary demo (`searchPlaces` + deterministic engine + Groq review).
+- `npm run itinerary:discovery:demo`
+	- Runs the discovery-layer itinerary demo (Tavily discovery -> OSM/Typesense merge -> deterministic engine + Groq review).
+- `npm run typesense:live-sync -- --areas "Bandra West,Borivali"`
+	- Runs one live Tavily -> Typesense ingestion cycle for the listed areas (discover, validate, dedupe, upsert).
+
+#### A) Standard Itinerary Script (`itinerary`)
+
+Show help:
+
+```bash
+npm run itinerary -- --help
+```
+
+Run sample:
+
+```bash
+npm run itinerary:demo
+```
+
+Run interactive (prompts for user input):
+
+```bash
+npm run itinerary
+```
+
+Run custom:
+
+```bash
+npm run itinerary -- Borivali -m fun -b 1000 -t 12:00 -p chill_walk --strict --trace
+```
+
+How it works:
+
+1. Resolves the hub location (geocode + fallback coordinates).
+2. Calls the unified search pipeline (`searchPlaces`) that combines and filters venue candidates.
+3. Validates places (distance, grounding, and quality checks).
+4. Builds a deterministic itinerary flow from the validated places.
+5. Sends the deterministic plan to Groq reviewer/retry loop for final realism corrections.
+
+#### B) Discovery-Layer Script (`itinerary:discovery`)
+
+Show help:
+
+```bash
+npm run itinerary:discovery -- --help
+```
+
+Run sample:
+
+```bash
+npm run itinerary:discovery:demo
+```
+
+Run interactive (prompts for user input):
+
+```bash
+npm run itinerary:discovery
+```
+
+Run custom:
+
+```bash
+npm run itinerary:discovery -- Borivali -m fun -b 1000 -t 12:00 -p chill_walk --no-trace
+```
+
+How it works:
+
+1. Resolves the hub/midpoint area first.
+2. Uses Tavily as a discovery layer with adaptive strict -> relaxed fallback to find concrete venue names near the area.
+3. Geocodes each discovered name and keeps only nearby valid venues.
+4. Fetches structured OSM and Typesense candidates in parallel.
+5. Merges all sources, deduplicates by name similarity, ranks with only a small Tavily boost.
+6. Runs final place validation, deterministic itinerary generation, and Groq review.
+
+When to use which:
+
+- Use `itinerary` for the default end-to-end planning path.
+- Use `itinerary:discovery` when you want explicit source tracing and Tavily discovery behavior separated from structured retrieval.
+
 ---
 
 ## 📂 Project Structure Highlights
@@ -212,6 +304,75 @@ Multiple areas, nightly:
 0 2 * * * cd /path/to/hangout && for area in "Bandra West" "Powai" "Andheri West" "Lower Parel"; do npm run typesense:sync -- --area "$area" --city "Mumbai"; done >> /var/log/hangout-typesense-sync.log 2>&1
 ```
 
+## Live Tavily -> Typesense Continuous Sync
+
+This repo now includes a continuous learning ingestion worker at [scripts/tavily-typesense-live-sync.mjs](scripts/tavily-typesense-live-sync.mjs).
+
+Purpose:
+
+1. Discover fresh venues from Tavily every cycle.
+2. Validate/geocode/clean those candidates.
+3. Fuzzy-merge with existing Typesense docs.
+4. Upsert stable venue records so the store improves over time.
+5. Apply popularity boosts for repeated discoveries and stale decay for long-unseen entries.
+
+### Run Commands
+
+One-shot cycle (good for cron):
+
+```bash
+npm run typesense:live-sync -- --areas "Bandra West,Borivali,Andheri West"
+```
+
+Continuous worker loop:
+
+```bash
+npm run typesense:live-worker -- --areas "Bandra West,Borivali" --interval-hours 4
+```
+
+Dry-run preview (no writes):
+
+```bash
+npm run typesense:live-dry -- --areas "Bandra West"
+```
+
+### How The Live Sync Works
+
+1. Scheduler/worker loop runs every `--interval-hours` for active areas.
+2. For each area, it generates smart Tavily queries (cafes, restaurants, activities, outdoor).
+3. It extracts only concrete venue names from Tavily results (filters vague list-like phrases).
+4. Each candidate is geocoded with Nominatim and rejected if outside area radius.
+5. It normalizes fields (`name`, `type`, `area`, `tags`, `mood`) and infers `estimated_cost` + `cost_range`.
+6. It computes `confidence_score` and `hangout_score` for initial quality gating.
+7. It fuzzy-matches against existing Typesense docs (e.g. Blue Tokai naming variants) to avoid duplicates.
+8. It upserts with stable IDs (`sha1(normalized_name + area)` for new Tavily-origin docs).
+9. It boosts recurring venues across runs (popularity signal) and decays stale unseen candidates.
+
+### Recommended Runtime Querying
+
+Your planner can keep querying Typesense as usual using `filter_by` and optional `sort_by` for quality fields when available.
+Example:
+
+```text
+filter_by=area:=`Bandra West` && type:=[cafe,restaurant,activity,outdoor]
+sort_by=popularity:desc,rating:desc
+```
+
+### Optional Fields
+
+If your Typesense schema supports additional fields (or wildcard schema), the live sync also writes:
+
+- `confidence_score`
+- `hangout_score`
+- `cost_range_min`
+- `cost_range_max`
+- `cost_range_label`
+- `source`
+- `discovery_hits`
+- `last_seen`
+
+If these fields are not present, the worker still upserts core venue fields and remains compatible.
+
 ### Troubleshooting
 
 - `Missing TYPESENSE_HOST environment variable`
@@ -231,6 +392,16 @@ Multiple areas, nightly:
 2. Run dry-run without skip to confirm collection schema compatibility.
 3. Run live import for one area.
 4. Automate recurring sync via cron for priority areas.
+
+### populator 
+# Single area
+node scripts/tavily-groq-discover.mjs "Andheri" --mood fun
+
+# All 22 Mumbai areas
+node scripts/tavily-groq-discover.mjs --all
+
+# Dry run (preview only)
+node scripts/tavily-groq-discover.mjs "Bandra" --dry-run
 
 ---
 

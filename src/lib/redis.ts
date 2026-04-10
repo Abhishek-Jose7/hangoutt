@@ -1,6 +1,13 @@
 import { Redis } from '@upstash/redis';
 
 let redis: Redis | null = null;
+let cacheDisabledLogged = false;
+
+function logCacheDisabled(message: string): void {
+  if (cacheDisabledLogged) return;
+  cacheDisabledLogged = true;
+  console.warn(message);
+}
 
 export function getRedis(): Redis | null {
   if (redis) return redis;
@@ -9,7 +16,13 @@ export function getRedis(): Redis | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   
   if (!url || !token) {
-    console.warn('[Redis] Missing UPSTASH env variables — caching disabled');
+    logCacheDisabled('[Redis] Missing UPSTASH env variables - caching disabled');
+    return null;
+  }
+
+  const hint = `${url} ${token}`.toLowerCase();
+  if (hint.includes('placeholder') || hint.includes('example') || hint.includes('changeme')) {
+    logCacheDisabled('[Redis] Placeholder UPSTASH env values detected - caching disabled');
     return null;
   }
   

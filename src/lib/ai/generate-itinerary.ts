@@ -11,8 +11,11 @@ import { buildFallbackItinerary } from './fallback';
 import { selectTopCandidates } from '../scoring';
 import { haversineDistance } from '../transit';
 
-const MODEL = 'llama3-70b-8192';
-const GROQ_REVIEW_TIMEOUT_MS = 5000;
+const MODEL = 'llama-3.3-70b-versatile';
+const GROQ_REVIEW_TIMEOUT_MS = 12000;
+const MAX_FOOD_STOPS = 2;
+const MAX_HEAVY_MEAL_STOPS = 1;
+const MAX_ITINERARY_SPREAD_KM = 3.4;
 
 type GroqKeyRole = 'generator' | 'retry' | 'overseer';
 
@@ -143,6 +146,87 @@ interface OverseerAuditResult {
   summary: string;
 }
 
+function moodNameSuitabilityIssue(
+  placeName: string,
+  mood: Mood
+): string | null {
+  const text = normalizeText(placeName);
+  const padded = ` ${text} `;
+
+  const alwaysBlocked = [
+    'wine shop',
+    'liquor',
+    'permit room',
+    'beer shop',
+    'alcohol shop',
+    'wine and more',
+  ];
+
+  if (alwaysBlocked.some((token) => text.includes(token))) {
+    return `place appears alcohol-retail oriented (${placeName})`;
+  }
+
+  if (padded.includes(' wine ') || padded.includes(' wines ')) {
+    return `place appears wine/alcohol oriented by name (${placeName})`;
+  }
+
+  const nonHangoutLandmarks = [
+    ' shrine ',
+    ' oratory ',
+    ' bungalow ',
+    ' memorial ',
+    ' cemetery ',
+    ' dargah ',
+    ' fort gate ',
+  ];
+  if (nonHangoutLandmarks.some((token) => padded.includes(token))) {
+    return `place appears landmark/residential and weak for hangout (${placeName})`;
+  }
+
+  if (padded.includes(' house ') && !padded.includes(' coffee house ')) {
+    return `place appears residential-landmark oriented (${placeName})`;
+  }
+
+  if (/\b(cinema|theatre|theater|movie|pvr|inox|imax)\b/i.test(text)) {
+    return `movie/theatre stop requires a specific showtime (${placeName})`;
+  }
+
+  if (mood === 'chill') {
+    const chillBlocked = [
+      ' bar ',
+      ' pub ',
+      ' nightclub',
+      ' night club',
+      ' lounge',
+      ' taproom',
+      ' brewery',
+    ];
+    if (chillBlocked.some((token) => padded.includes(token))) {
+      return `place is nightlife-heavy and not suitable for chill vibe (${placeName})`;
+    }
+  }
+
+  return null;
+}
+
+function weakShoppingOnlyIssue(stopName: string, stopType: string, candidate?: Place): string | null {
+  const sourceText = normalizeText(
+    `${stopName} ${candidate?.description || ''} ${(candidate?.tags || []).join(' ')}`
+  );
+  if (stopType !== 'activity') return null;
+
+  const shoppingSignals = /\b(mall|shopping centre|shopping center|shopping complex|plaza|market)\b/.test(sourceText);
+  if (!shoppingSignals) return null;
+
+  const engagementSignals =
+    /\b(arcade|bowling|trampoline|escape room|gaming|cinema|movie|theatre|theater|pvr|inox|food court|board game|event|comedy|concert|show|timezone|smaaash)\b/.test(
+      sourceText
+    );
+
+  if (engagementSignals) return null;
+  return `looks like generic shopping stop without a real activity hook (${stopName})`;
+}
+
 interface GeneratorRefinePromptShape {
   stops: AIItineraryResponse['stops'];
   total_cost_per_person: number;
@@ -162,16 +246,30 @@ function calcDurationMins(plan: AIItineraryResponse): number {
   );
 }
 
+function isFoodStop(stop: AIItineraryResponse['stops'][number]): boolean {
+  if (stop.place_type === 'restaurant' || stop.place_type === 'cafe') return true;
+  return stop.category_label === 'dessert';
+}
+
+function isHeavyMealStop(stop: AIItineraryResponse['stops'][number]): boolean {
+  return stop.place_type === 'restaurant' || stop.category_label === 'restaurant';
+}
+
 function evaluateItineraryRules(
   plan: AIItineraryResponse,
   candidates: Place[],
-  perPersonCap: number
+  perPersonCap: number,
+  mood: Mood
 ): QualityGateResult {
   const issues: string[] = [];
   const candidateNames = candidateNameSet(candidates);
+  const candidateByName = new Map(candidates.map((candidate) => [normalizeText(candidate.name), candidate]));
+  const usedNames = new Set<string>();
+  let foodStops = 0;
+  let heavyMealStops = 0;
 
-  if (plan.stops.length < 3) {
-    issues.push('Itinerary must contain at least 3 stops.');
+  if (plan.stops.length < 2) {
+    issues.push('Itinerary must contain at least 2 stops.');
   }
 
   const usedTypes = new Set<string>();
@@ -183,12 +281,47 @@ function evaluateItineraryRules(
       issues.push(`Stop ${i + 1} is not from candidate list: ${stop.place_name}`);
     }
 
+    const candidate = candidateByName.get(normalized);
+
+    if (usedNames.has(normalized)) {
+      issues.push(`Repeated place name in itinerary: ${stop.place_name}`);
+    }
+    usedNames.add(normalized);
+
+    const suitability = moodNameSuitabilityIssue(stop.place_name, mood);
+    if (suitability) {
+      issues.push(`Stop ${i + 1} ${suitability}.`);
+    }
+
+    const weakShoppingIssue = weakShoppingOnlyIssue(stop.place_name, stop.place_type, candidate);
+    if (weakShoppingIssue) {
+      issues.push(`Stop ${i + 1} ${weakShoppingIssue}.`);
+    }
+
+    if (stop.place_type === 'restaurant' && /\b(hotel|banquet|family restaurant)\b/.test(normalizeText(stop.place_name))) {
+      const rating = candidate?.inferred_rating ?? stop.place_rating ?? 0;
+      if (rating < 4.2) {
+        issues.push(`Stop ${i + 1} feels too generic/formal for Gen Z hangout (${stop.place_name}).`);
+      }
+    }
+
     if (i > 0 && stop.place_type === plan.stops[i - 1].place_type) {
       issues.push(`Consecutive duplicate stop types at stops ${i} and ${i + 1}.`);
     }
 
-    if (stop.walk_from_previous_mins > 40) {
+    if (i > 0 && isFoodStop(stop) && isFoodStop(plan.stops[i - 1])) {
+      issues.push(`Back-to-back food-heavy flow at stops ${i} and ${i + 1}.`);
+    }
+
+    if (stop.walk_from_previous_mins > 35) {
       issues.push(`Stop ${i + 1} has excessive transfer time (${stop.walk_from_previous_mins} mins).`);
+    }
+
+    if (isFoodStop(stop)) {
+      foodStops += 1;
+    }
+    if (isHeavyMealStop(stop)) {
+      heavyMealStops += 1;
     }
 
     usedTypes.add(stop.place_type);
@@ -200,6 +333,36 @@ function evaluateItineraryRules(
 
   if (!usedTypes.has('restaurant') && !usedTypes.has('cafe')) {
     issues.push('Itinerary must include at least one food stop (cafe or restaurant).');
+  }
+
+  if (foodStops > MAX_FOOD_STOPS) {
+    issues.push(`Too many eating stops (${foodStops}); max allowed is ${MAX_FOOD_STOPS}.`);
+  }
+
+  if (heavyMealStops > MAX_HEAVY_MEAL_STOPS) {
+    issues.push(`Too many heavy meal stops (${heavyMealStops}); max allowed is ${MAX_HEAVY_MEAL_STOPS}.`);
+  }
+
+  const geoStops = plan.stops.filter(
+    (stop): stop is typeof stop & { lat: number; lng: number } =>
+      typeof stop.lat === 'number' &&
+      Number.isFinite(stop.lat) &&
+      typeof stop.lng === 'number' &&
+      Number.isFinite(stop.lng)
+  );
+
+  if (geoStops.length >= 3) {
+    const anchor = { lat: geoStops[0].lat, lng: geoStops[0].lng };
+    const farthest = geoStops.reduce((max, stop) => {
+      const dist = haversineDistance(anchor, { lat: stop.lat, lng: stop.lng });
+      return Math.max(max, dist);
+    }, 0);
+
+    if (farthest > MAX_ITINERARY_SPREAD_KM) {
+      issues.push(
+        `Stops are too spread out (${farthest.toFixed(1)}km); keep itinerary inside one local area.`
+      );
+    }
   }
 
   if (plan.total_cost_per_person > perPersonCap) {
@@ -241,6 +404,10 @@ async function runOverseerAudit(
                 profile,
                 per_person_cap: perPersonCap,
                 candidate_names: candidates.map((candidate) => candidate.name),
+                candidate_name_type_pairs: candidates.map((candidate) => ({
+                  name: candidate.name,
+                  type: candidate.type,
+                })),
               },
               null,
               2
@@ -287,10 +454,10 @@ async function runOverseerAudit(
     };
   } catch {
     return {
-      approved: true,
-      quality_score: 70,
-      issues: [],
-      summary: 'AI reviewer unavailable, keeping deterministic plan.',
+      approved: false,
+      quality_score: 0,
+      issues: ['AI reviewer unavailable or timed out'],
+      summary: 'AI reviewer unavailable.',
     };
   }
 }
@@ -308,14 +475,7 @@ export async function reviewDeterministicItineraryWithGroq(params: {
   corrected: boolean;
 }> {
   const finalizePlan = (input: AIItineraryResponse): AIItineraryResponse => {
-    let next = postProcessItinerary(
-      input,
-      params.candidates,
-      params.hub,
-      params.perPersonCap,
-      params.mood,
-      params.profile
-    );
+    let next = { ...input };
     if (next.total_cost_per_person > params.perPersonCap) {
       next = adjustBudget(next, params.perPersonCap);
     }
@@ -331,7 +491,7 @@ export async function reviewDeterministicItineraryWithGroq(params: {
     };
   }
 
-  const localGate = evaluateItineraryRules(basePlan, params.candidates, params.perPersonCap);
+  const localGateWithMood = evaluateItineraryRules(basePlan, params.candidates, params.perPersonCap, params.mood);
   const overseerGate = await runOverseerAudit(
     basePlan,
     params.candidates,
@@ -340,7 +500,7 @@ export async function reviewDeterministicItineraryWithGroq(params: {
     params.perPersonCap
   );
 
-  if (localGate.passed && overseerGate.approved) {
+  if (localGateWithMood.passed && overseerGate.approved) {
     return {
       plan: {
         ...basePlan,
@@ -351,7 +511,7 @@ export async function reviewDeterministicItineraryWithGroq(params: {
     };
   }
 
-  const reviewIssues = [...localGate.issues, ...overseerGate.issues]
+  const reviewIssues = [...localGateWithMood.issues, ...overseerGate.issues]
     .filter(Boolean)
     .slice(0, 8);
 
@@ -400,7 +560,8 @@ export async function reviewDeterministicItineraryWithGroq(params: {
     const correctedLocalGate = evaluateItineraryRules(
       correctedPlan,
       params.candidates,
-      params.perPersonCap
+      params.perPersonCap,
+      params.mood
     );
     const correctedOverseerGate = await runOverseerAudit(
       correctedPlan,
@@ -540,7 +701,7 @@ export async function generateItineraryForHub(
 
     if (generated) {
       const generatedPlan = finalizePlan(generated);
-      const localGate = evaluateItineraryRules(generatedPlan, topCandidates, perPersonCap);
+      const localGate = evaluateItineraryRules(generatedPlan, topCandidates, perPersonCap, mood);
       const overseerGate = await runOverseerAudit(generatedPlan, topCandidates, mood, profile, perPersonCap);
 
       // 2) Overseer agent: audit quality before acceptance.
@@ -588,7 +749,7 @@ export async function generateItineraryForHub(
     const regenerated = tryParseItinerary(retryText);
     if (regenerated) {
       const regeneratedPlan = finalizePlan(regenerated);
-      const retryLocalGate = evaluateItineraryRules(regeneratedPlan, topCandidates, perPersonCap);
+      const retryLocalGate = evaluateItineraryRules(regeneratedPlan, topCandidates, perPersonCap, mood);
       const retryOverseerGate = await runOverseerAudit(regeneratedPlan, topCandidates, mood, profile, perPersonCap);
 
       if (retryLocalGate.passed && retryOverseerGate.approved) {
@@ -754,22 +915,27 @@ function postProcessItinerary(
   mood: Mood,
   profile: ItineraryProfile
 ): AIItineraryResponse {
+  const moodSafeCandidates = candidates.filter(
+    (candidate) => !moodNameSuitabilityIssue(candidate.name, mood)
+  );
+  const safeCandidates = moodSafeCandidates.length >= 3 ? moodSafeCandidates : candidates;
+
   const used = new Set<string>();
   let previousPoint: { lat: number; lng: number } = { lat: hub.lat, lng: hub.lng };
   const desiredTypes = profileTypePlan(profile) || moodTypePlan(mood);
 
-  const affordablePlaces = candidates.filter((c) => c.estimated_cost === undefined || c.estimated_cost <= perPersonCap);
+  const affordablePlaces = safeCandidates.filter((c) => c.estimated_cost === undefined || c.estimated_cost <= perPersonCap);
   const budgetFirst = profile === 'budget_bites';
   const premiumFirst = profile === 'premium_dining';
 
   const primaryActivity =
     mood === 'adventure'
-      ? (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity' && isTicketedAdventurePlace(c))
-        || (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity')
-      : (budgetFirst ? affordablePlaces : candidates).find((c) => c.type === 'activity');
+      ? (budgetFirst ? affordablePlaces : safeCandidates).find((c) => c.type === 'activity' && isTicketedAdventurePlace(c))
+        || (budgetFirst ? affordablePlaces : safeCandidates).find((c) => c.type === 'activity')
+      : (budgetFirst ? affordablePlaces : safeCandidates).find((c) => c.type === 'activity');
   const primaryEateryPool = budgetFirst
     ? affordablePlaces
-    : candidates;
+    : safeCandidates;
   const primaryEatery =
     (premiumFirst
       ? primaryEateryPool.find((c) => isEatery(c.type) && (c.inferred_rating ?? 0) >= 4.3)
@@ -778,14 +944,14 @@ function postProcessItinerary(
 
   const stops = itinerary.stops.map((stop, index) => {
     const preferredType = desiredTypes[index] || stop.place_type;
-    let chosen = closestCandidateByName(stop.place_name, candidates, used);
+    let chosen = closestCandidateByName(stop.place_name, safeCandidates, used);
 
     if (!chosen || placeNameLooksGeneric(stop.place_name)) {
-      chosen = pickByType(preferredType, candidates, used) || pickFallbackCandidate(candidates, used);
+      chosen = pickByType(preferredType, safeCandidates, used) || pickFallbackCandidate(safeCandidates, used);
     }
 
-    if (!chosen && candidates.length > 0) {
-      chosen = candidates[index % candidates.length];
+    if (!chosen && safeCandidates.length > 0) {
+      chosen = safeCandidates[index % safeCandidates.length];
     }
 
     if (chosen) {
@@ -813,7 +979,7 @@ function postProcessItinerary(
       previousPoint = { lat: Number(chosen?.lat), lng: Number(chosen?.lng) };
     }
 
-    const safeName = chosen?.name || (candidates[index % candidates.length]?.name || stop.place_name);
+    const safeName = chosen?.name || (safeCandidates[index % safeCandidates.length]?.name || stop.place_name);
     const safeType = chosen?.type || preferredType;
 
     return {
@@ -900,11 +1066,46 @@ function tryParseItinerary(text: string): AIItineraryResponse | null {
     if (!jsonMatch) return null;
 
     const raw = JSON.parse(jsonMatch[0]);
-    const result = AIItineraryResponseSchema.safeParse(raw);
+    const objectCandidates: unknown[] = [];
+    const queue: unknown[] = [
+      raw,
+      raw?.plan,
+      raw?.itinerary,
+      raw?.response,
+      raw?.data,
+      raw?.corrected_itinerary,
+      raw?.result,
+      raw?.output,
+    ];
 
-    if (result.success) return result.data;
+    const seen = new Set<unknown>();
+    while (queue.length > 0 && objectCandidates.length < 80) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object') continue;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      objectCandidates.push(current);
 
-    console.warn('[AI] Zod validation failed:', result.error.issues);
+      if (Array.isArray(current)) {
+        for (const item of current) queue.push(item);
+        continue;
+      }
+
+      for (const value of Object.values(current)) {
+        if (value && typeof value === 'object') queue.push(value);
+      }
+    }
+
+    for (const candidate of objectCandidates) {
+      const parsed = AIItineraryResponseSchema.safeParse(candidate);
+      if (parsed.success) return parsed.data;
+    }
+
+    const firstAttempt = AIItineraryResponseSchema.safeParse(raw);
+    const compactIssuePreview = firstAttempt.success
+      ? 'unknown schema mismatch'
+      : firstAttempt.error.issues.slice(0, 2).map((issue) => issue.message).join(' | ');
+    console.warn(`[AI] Zod validation failed: ${compactIssuePreview}`);
     return null;
   } catch {
     return null;
