@@ -12,6 +12,7 @@ interface RankedPlace {
 interface MixState {
   foodStops: number;
   heavyMealStops: number;
+  typeCounts: Record<string, number>;
 }
 
 interface BudgetTotals {
@@ -585,7 +586,9 @@ function isHeavyMealCategory(category: string): boolean {
   return category === 'restaurant';
 }
 
-function canSelectCategory(category: string, mixState: MixState): boolean {
+function canSelectCategory(category: string, placeType: string, mixState: MixState): boolean {
+  if (mixState.typeCounts[placeType] >= 2) return false;
+
   if (!isFoodCategory(category)) return true;
   if (mixState.foodStops >= MAX_FOOD_STOPS) return false;
   if (isHeavyMealCategory(category) && mixState.heavyMealStops >= MAX_HEAVY_MEAL_STOPS) {
@@ -594,7 +597,8 @@ function canSelectCategory(category: string, mixState: MixState): boolean {
   return true;
 }
 
-function registerSelectedCategory(mixState: MixState, category: string): void {
+function registerSelectedCategory(mixState: MixState, category: string, placeType: string): void {
+  mixState.typeCounts[placeType] = (mixState.typeCounts[placeType] || 0) + 1;
   if (!isFoodCategory(category)) return;
   mixState.foodStops += 1;
   if (isHeavyMealCategory(category)) {
@@ -698,7 +702,8 @@ function enrichAndRankPlaces(
     const distFromHub = haversineDistance({ lat: hub.lat, lng: hub.lng }, { lat: Number(place.lat), lng: Number(place.lng) });
     // Travel-time-based filtering
     const travelMins = (distFromHub / MUMBAI_AVG_SPEED_KMH) * 60;
-    if (travelMins > MAX_STEP_TRAVEL_MINS) continue;
+    const maxTravel = place.type === 'activity' ? 40 : MAX_STEP_TRAVEL_MINS;
+    if (travelMins > maxTravel) continue;
 
     const category = inferCategoryLabel(place);
     if (category === 'movie' && !hasActionableMovieShowtime(place)) {
@@ -740,7 +745,7 @@ function pickForSlot(
 
       const entryCategory = inferCategoryLabel(entry.place);
       if (entryCategory !== category) continue;
-      if (!canSelectCategory(entryCategory, mixState)) continue;
+      if (!canSelectCategory(entryCategory, entry.place.type, mixState)) continue;
       if (previousPlaceType && entry.place.type === previousPlaceType) continue;
 
       if (previousCategory && isFoodCategory(previousCategory) && isFoodCategory(entryCategory)) {
@@ -759,7 +764,8 @@ function pickForSlot(
         const dist = haversineDistance(previousPoint, { lat: Number(entry.place.lat), lng: Number(entry.place.lng) });
         // Travel-time check instead of pure distance
         const stepTravel = (dist / MUMBAI_AVG_SPEED_KMH) * 60;
-        if (stepTravel > MAX_STEP_TRAVEL_MINS) continue;
+        const maxStepTravel = entry.place.type === 'activity' ? 40 : MAX_STEP_TRAVEL_MINS;
+        if (stepTravel > maxStepTravel) continue;
 
         // Zone check: don't jump between Mumbai zones
         const sameZone = Math.abs(previousPoint.lat - Number(entry.place.lat)) < 0.05 &&
@@ -814,6 +820,7 @@ export function generateGroundedItineraryForHub(params: {
   const mixState: MixState = {
     foodStops: 0,
     heavyMealStops: 0,
+    typeCounts: {},
   };
 
   let chainingPoint: { lat: number; lng: number } | undefined;
@@ -851,7 +858,7 @@ export function generateGroundedItineraryForHub(params: {
     if (!anchorPoint) anchorPoint = pickedPoint;
     previousCategory = pickedCategory;
     previousPlaceType = pickedType;
-    registerSelectedCategory(mixState, pickedCategory);
+    registerSelectedCategory(mixState, pickedCategory, pickedType);
   }
 
   // Ensure minimum stops.
@@ -862,7 +869,7 @@ export function generateGroundedItineraryForHub(params: {
       if (selected.length >= maxStops) break;
 
       const category = inferCategoryLabel(entry.place);
-      if (!canSelectCategory(category, mixState)) continue;
+      if (!canSelectCategory(category, entry.place.type, mixState)) continue;
 
       const last = selected[selected.length - 1];
       const lastCategory = last ? inferCategoryLabel(last.place) : undefined;
@@ -888,7 +895,7 @@ export function generateGroundedItineraryForHub(params: {
       chainingPoint = entryPoint;
       if (!anchorPoint) anchorPoint = entryPoint;
       previousPlaceType = entry.place.type;
-      registerSelectedCategory(mixState, category);
+      registerSelectedCategory(mixState, category, entry.place.type);
     }
   }
 
@@ -899,7 +906,7 @@ export function generateGroundedItineraryForHub(params: {
       if (used.has(key)) continue;
 
       const category = inferCategoryLabel(entry.place);
-      if (!canSelectCategory(category, mixState)) continue;
+      if (!canSelectCategory(category, entry.place.type, mixState)) continue;
 
       const last = selected[selected.length - 1];
       const lastCategory = last ? inferCategoryLabel(last.place) : undefined;
@@ -917,7 +924,7 @@ export function generateGroundedItineraryForHub(params: {
       selected.push(entry);
       used.add(key);
       previousPlaceType = entry.place.type;
-      registerSelectedCategory(mixState, category);
+      registerSelectedCategory(mixState, category, entry.place.type);
       if (selected.length >= minStops) break;
     }
   }

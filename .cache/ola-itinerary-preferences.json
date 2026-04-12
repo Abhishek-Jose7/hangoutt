@@ -1,0 +1,43 @@
+{
+  "moods": {
+    "fun": {
+      "totalSelections": 46,
+      "bucketCounts": {
+        "activity": 15,
+        "restaurant": 14,
+        "outdoor": 15,
+        "cafe": 2
+      }
+    },
+    "romantic": {
+      "totalSelections": 38,
+      "bucketCounts": {
+        "outdoor": 16,
+        "restaurant": 16,
+        "dessert": 6
+      }
+    },
+    "chill": {
+      "totalSelections": 15,
+      "bucketCounts": {
+        "activity": 2,
+        "cafe": 7,
+        "restaurant": 3,
+        "outdoor": 3
+      }
+    }
+  },
+  "profile_stats": {
+    "runs": 5,
+    "utilization_sum": 4.0600000000000005,
+    "tag_sums": {
+      "quiet": 5.65808,
+      "crowded": 3.2000000000000006,
+      "scenic": 5.594000000000001,
+      "aesthetic": 7.289060000000001,
+      "cozy": 2.973,
+      "lively": 3.6960000000000006
+    },
+    "tag_count": 16
+  }
+}

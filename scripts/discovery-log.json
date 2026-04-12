@@ -1,14 +1,32 @@
 {
-  "timestamp": "2026-04-10T07:24:10.195Z",
-  "mood": "fun",
+  "timestamp": "2026-04-10T08:50:58.094Z",
+  "mood": "chill",
   "results": [
     {
       "area": "Bandra",
+      "stored": 3,
+      "rejected": 367,
+      "geocoded": 3
+    },
+    {
+      "area": "Andheri",
+      "stored": 3,
+      "rejected": 348,
+      "geocoded": 3
+    },
+    {
+      "area": "Colaba",
+      "stored": 3,
+      "rejected": 321,
+      "geocoded": 3
+    },
+    {
+      "area": "Juhu",
       "stored": 2,
-      "rejected": 218,
+      "rejected": 347,
       "geocoded": 2
     }
   ],
-  "totalStored": 2,
-  "elapsed": "73.8s"
+  "totalStored": 11,
+  "elapsed": "330.2s"
 }

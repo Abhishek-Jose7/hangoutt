@@ -16,8 +16,9 @@
  *   node scripts/tavily-groq-discover.mjs "Malad" --dry-run
  *   node scripts/tavily-groq-discover.mjs --all           # Run for ALL areas
  */
-
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Config
@@ -32,16 +33,15 @@ const TS_PROTO = process.env.TYPESENSE_PROTOCOL || 'https';
 const TS_PORT = process.env.TYPESENSE_PORT || '443';
 const TS_COLLECTION = process.env.TYPESENSE_COLLECTION || 'venues';
 const TS_BASE = TS_HOST ? `${TS_PROTO}://${TS_HOST}:${TS_PORT}` : null;
+const MAPBOX_TOKEN = process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN;
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const RUN_ALL = process.argv.includes('--all');
 
-const MUMBAI_AREAS = [
-  'Bandra', 'Andheri', 'Borivali', 'Malad', 'Goregaon', 'Juhu',
-  'Powai', 'Lower Parel', 'Dadar', 'Kurla', 'Thane', 'Vashi',
-  'Ghatkopar', 'Chembur', 'Colaba', 'Fort', 'Worli', 'Kandivali',
-  'Khar', 'Versova', 'Santacruz', 'Vile Parle',
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const stationsData = JSON.parse(readFileSync(join(__dirname, '../src/lib/stations.json'), 'utf-8'));
+const MUMBAI_AREAS = stationsData.map(s => s.name);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Tavily queries — biased towards REAL venues
@@ -53,19 +53,26 @@ function buildTavilyQueries(area, mood = 'fun') {
     `Timezone Smaaash arcade bowling gaming zone near ${area} Mumbai`,
     `escape room mystery rooms breakout ${area} Mumbai`,
     `trampoline park go karting VR gaming ${area} Mumbai`,
-    // Cafes / social
+    // Emerging / Trendy activities
+    `VR arenas rage rooms break room smash room ${area} Mumbai`,
+    `mini golf hybrid interactive games workshops ${area} Mumbai`,
+    // Cafes / social / niche
     `popular trendy cafes for groups ${area} Mumbai with prices`,
     `best rated hangout spots ${area} Mumbai young crowd`,
+    `aesthetic rooftop cafes themed pet cafes ${area} Mumbai`,
     // Comedy / events
     `comedy shows live music events ${area} Mumbai`,
+    `night markets pop ups flea markets ${area} Mumbai`,
   ];
 
   if (mood === 'romantic') {
     base.push(`date night restaurants dessert cafes ${area} Mumbai`);
   } else if (mood === 'chill') {
     base.push(`quiet bookstore cafes board game spots ${area} Mumbai`);
+    base.push(`pottery painting art workshops ${area} Mumbai`);
   } else if (mood === 'adventure') {
     base.push(`adventure activities paintball laser tag ${area} Mumbai`);
+    base.push(`rock climbing bouldering ${area} Mumbai`);
   }
 
   return base;
@@ -170,8 +177,7 @@ const AREA_NAMES = new Set([
   'santacruz', 'vile parle', 'lower parel', 'fort', 'churchgate',
   'mahalaxmi', 'byculla', 'sion', 'wadala', 'vikhroli', 'matunga',
   'parel', 'prabhadevi', 'mahim', 'lokhandwala', 'oshiwara',
-  'hyderabad', 'delhi', 'bangalore', 'pune', 'chennai', 'kolkata',
-  'new delhi', 'ludhiana', 'chandigarh', 'gurgaon', 'noida',
+  ,
 ]);
 
 const AREA_SUFFIXES =
@@ -307,7 +313,7 @@ async function groqValidate(candidates, apiKey, passLabel) {
 
     console.log(`  [${passLabel}] Batch ${bi + 1}/${batches.length} — ${batch.length} candidates`);
 
-    for (let attempt = 0; attempt <= 2; attempt++) {
+    for (let attempt = 0; attempt <= 5; attempt++) {
       try {
         const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
@@ -324,12 +330,13 @@ async function groqValidate(candidates, apiKey, passLabel) {
         });
 
         if (!res.ok) {
-          const errText = await res.text();
           if (res.status === 429) {
-            console.log(`  [${passLabel}] Rate limited, waiting ${(attempt + 1) * 3}s...`);
-            await sleep((attempt + 1) * 3000);
+            console.log(`  [${passLabel}] Rate limited, waiting 15s...`);
+            await sleep(15000);
+            if (attempt === 5) throw new Error("Rate limited on all attempts");
             continue;
           }
+          const errText = await res.text();
           throw new Error(`Groq ${res.status}: ${errText.slice(0, 200)}`);
         }
 
@@ -357,8 +364,8 @@ async function groqValidate(candidates, apiKey, passLabel) {
         allResults.push(...parsed);
         break;
       } catch (err) {
-        if (attempt === 2) {
-          console.log(`  [${passLabel}] ❌ Failed after 3 attempts: ${err.message}`);
+        if (attempt === 5) {
+          console.log(`  [${passLabel}] ❌ Failed after 6 attempts: ${err.message}`);
         } else {
           await sleep(2000);
         }
@@ -377,26 +384,25 @@ async function groqValidate(candidates, apiKey, passLabel) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async function geocode(name, area) {
+  if (!MAPBOX_TOKEN) return null;
   const queries = [
-    `${name}, ${area}, Mumbai, India`,
-    `${name}, Mumbai, India`,
+    `${name}, ${area}, Mumbai`,
+    `${name}, Mumbai`,
   ];
 
   for (const q of queries) {
     try {
-      const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
-        q, format: 'json', limit: '1', countrycodes: 'in',
-      })}`;
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'hangout-discovery/1.0' },
-      });
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&limit=1&country=IN`;
+      const res = await fetch(url);
       if (!res.ok) continue;
       const data = await res.json();
-      if (data.length > 0) {
-        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
+      if (data.features && data.features.length > 0) {
+        // Mapbox returns coordinates as [lng, lat]
+        const [lng, lat] = data.features[0].geometry.coordinates;
+        return { lat, lng, display: data.features[0].place_name };
       }
     } catch { /* continue */ }
-    await sleep(1100); // Nominatim rate limit: 1 req/sec
+    await sleep(200); // Mapbox limit is much higher, so sleep less
   }
   return null;
 }
@@ -566,6 +572,7 @@ async function discoverForArea(area, mood = 'fun') {
       estimated_cost: place.estimated_cost,
       rating: Math.round(place.confidence * 5 * 10) / 10, // normalize to 5-star scale
       popularity: Math.round(place.confidence * 90),
+      updated_at: Date.now(),
       url: `https://www.google.com/maps/search/?api=1&query=${place.lat}%2C${place.lng}%20(${encodeURIComponent(place.name)})`,
     };
 

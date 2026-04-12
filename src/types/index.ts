@@ -280,6 +280,8 @@ export interface Place {
   };
   inferred_rating?: number;
   popularity?: number;
+  num_reviews?: number;
+  updated_at?: number;
   area?: string;
   tags?: string[];
   confidence_score?: number;

@@ -405,6 +405,41 @@ node scripts/tavily-groq-discover.mjs "Bandra" --dry-run
 
 ---
 
+## 🗺️ Ola Maps Ingestion & Demo Scripts
+
+This project includes a direct integration with **Ola Maps Places API** for high-reliability, zero-hallucination data discovery + generation.
+
+### 1. Ola to Typesense Ingestion Pipeline
+We built a hyper-focused ingestion script that sidesteps OSINT tools (like Tavily) and hits the Ola Maps Places API directly to populate Typesense:
+
+```bash
+node scripts/ola-to-typesense.mjs
+```
+**What this does:**
+1. Dynamically maps over all areas listed in `src/lib/stations.json`.
+2. Searches for experiential venues (VR, Go Karting, Arcades, Aesthetic Cafes) using the Ola Maps `textsearch` endpoint.
+3. Automatically classifies output, normalizes tags, and upserts natively into Typesense.
+
+*(Make sure your `.env.local` contains `OLA_MAPS_API_KEY`, `TYPESENSE_HOST`, and `TYPESENSE_API_KEY`)*
+
+### 2. Ola + Groq Interactive Itinerary Demo
+Test out the end-to-end AI Engine locally within your terminal using Ola Maps as the primary venue provider.
+
+```bash
+node scripts/ola-itinerary.mjs
+```
+Or with arguments:
+```bash
+node scripts/ola-itinerary.mjs "Bandra" "fun" 2500
+```
+**What this does:**
+1. Scrapes realtime venue objects directly via Ola Maps for your targeted Mood & Area.
+2. Cross-references constraints (Filters venues exceeding `BUDGET * 0.7`).
+3. Uses Typesense as a resilient fallback if the live API returns too few venues.
+4. Feeds the candidate array into **Groq LLaMA-3-70B** to stitch the structure into a beautiful, highly constrained cohesive hangout story.
+
+---
+
 ## 📜 License
 
 [MIT License](LICENSE)

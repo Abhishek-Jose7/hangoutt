@@ -1,0 +1,64 @@
+
+╔══════════════════════════════════════════════════════════╗
+║  Tavily + Groq Discovery Pipeline                      ║
+║  Areas: Churchgate, Marine Lines, Charni Road, Grant Road, Mumbai Central +109 more║
+║  Mood: fun   🔥 LIVE                                     ║
+╚══════════════════════════════════════════════════════════╝
+
+Pipeline: Tavily → Hard Filter → Groq Pass 1 → Groq Pass 2 → Geocode → Typesense
+
+
+════════════════════════════════════════════════════════════
+  📍 Discovering: Churchgate (mood: fun)
+════════════════════════════════════════════════════════════
+
+┌─ STAGE 1: Tavily Discovery
+│  Query: "Timezone Smaaash arcade bowling gaming zone near Churchgate Mumbai..."
+│  → 8 results
+│  Query: "escape room mystery rooms breakout Churchgate Mumbai..."
+│  → 8 results
+│  Query: "trampoline park go karting VR gaming Churchgate Mumbai..."
+│  → 8 results
+│  Query: "VR arenas rage rooms break room smash room Churchgate Mumbai..."
+│  → 8 results
+│  Query: "mini golf hybrid interactive games workshops Churchgate Mumbai..."
+│  → 8 results
+│  Query: "popular trendy cafes for groups Churchgate Mumbai with prices..."
+│  → 8 results
+│  Query: "best rated hangout spots Churchgate Mumbai young crowd..."
+│  → 8 results
+│  Query: "aesthetic rooftop cafes themed pet cafes Churchgate Mumbai..."
+│  → 8 results
+│  Query: "comedy shows live music events Churchgate Mumbai..."
+│  → 8 results
+│  Query: "night markets pop ups flea markets Churchgate Mumbai..."
+│  → 8 results
+└─ Total raw candidates extracted: 313
+
+┌─ STAGE 2: Hard Filter (rule-based)
+│  Passed: 191 / 313
+│  Rejected: 113
+│  Rejection breakdown: {"too_many_words":22,"invalid_chars":14,"single_word_junk":1,"bad_pattern":69,"road_name":5,"area_name":2}
+└─ 191 candidates passed to Groq
+
+┌─ STAGE 3: Groq Pass 1 (Key: GENERATOR)
+  [Pass 1] Batch 1/3 — 10 candidates
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] ❌ Failed after 6 attempts: Rate limited on all attempts
+  [Pass 1] Batch 2/3 — 10 candidates
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] ❌ Failed after 6 attempts: Rate limited on all attempts
+  [Pass 1] Batch 3/3 — 10 candidates
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
+  [Pass 1] Rate limited, waiting 15s...
