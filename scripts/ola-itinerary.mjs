@@ -130,10 +130,262 @@ function getUserProfile(memory) {
 }
 
 const OLA_KEY = process.env.OLA_MAPS_API_KEY;
+const MIN_CANDIDATE_THRESHOLD = 8;
+const PRIMARY_RADIUS_KM = 5;
+const SECONDARY_RADIUS_MULTIPLIER = 1.5;
+const TYPESENSE_TIMEOUT_MS = 7000;
 
 if (!OLA_KEY) {
   console.error("Missing OLA_MAPS_API_KEY");
   process.exit(1);
+}
+
+function getTypesenseConfig() {
+  const host = String(process.env.TYPESENSE_HOST || "").trim();
+  const apiKey = String(process.env.TYPESENSE_API_KEY || "").trim();
+  if (!host || !apiKey) return null;
+
+  const collection = String(process.env.TYPESENSE_COLLECTION || "venues").trim();
+  const queryBy = String(process.env.TYPESENSE_QUERY_BY || "name,description,tags,type,area,mood").trim();
+
+  let baseUrl = host;
+  if (!/^https?:\/\//i.test(baseUrl)) {
+    const protocol = String(process.env.TYPESENSE_PROTOCOL || "https").trim();
+    const port = String(process.env.TYPESENSE_PORT || "443").trim();
+    baseUrl = `${protocol}://${baseUrl}${port ? `:${port}` : ""}`;
+  }
+
+  return {
+    baseUrl: baseUrl.replace(/\/$/, ""),
+    apiKey,
+    collection,
+    queryBy,
+  };
+}
+
+function toNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function arrayifyStrings(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item : typeof item === "object" && item ? String(item.text || item.comment || item.snippet || "") : ""))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(/[|,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function amplifyReviewSignals(signals, factor = 2) {
+  const out = {};
+  for (const [key, value] of Object.entries(signals || {})) {
+    out[key] = clamp01((Number(value) || 0) * factor);
+  }
+  return out;
+}
+
+function mergeReviewSignals(primarySignals, secondarySignals = {}, secondaryWeight = 0.8) {
+  const keys = new Set([
+    ...Object.keys(primarySignals || {}),
+    ...Object.keys(secondarySignals || {}),
+  ]);
+
+  const merged = {};
+  for (const key of keys) {
+    const primary = Number(primarySignals?.[key] || 0);
+    const secondary = Number(secondarySignals?.[key] || 0);
+    merged[key] = clamp01(primary + secondary * secondaryWeight);
+  }
+  return merged;
+}
+
+function inferSemanticHintsFromText(rawText) {
+  const text = normalizeText(rawText);
+  if (!text) return {};
+  return {
+    romantic: /\b(romantic|date|couple|candle|intimate)\b/.test(text) ? 0.7 : 0,
+    crowded: /\b(crowded|packed|rush|busy|queue|line)\b/.test(text) ? 0.72 : 0,
+    peaceful: /\b(peaceful|calm|serene|quiet|relax)\b/.test(text) ? 0.66 : 0,
+    view: /\b(view|sunset|sea|waterfront|scenic)\b/.test(text) ? 0.7 : 0,
+    aesthetic: /\b(aesthetic|beautiful|pretty|ambience|decor|instagrammable)\b/.test(text) ? 0.68 : 0,
+    noisy: /\b(noisy|loud|chaotic|blaring)\b/.test(text) ? 0.62 : 0,
+    cozy: /\b(cozy|comfy|warm|snug)\b/.test(text) ? 0.62 : 0,
+    lively: /\b(lively|energetic|vibrant|party|happening)\b/.test(text) ? 0.65 : 0,
+  };
+}
+
+function bucketFromTypeHint(typeHint) {
+  const type = normalizeText(typeHint);
+  if (!type) return "other";
+  if (/\b(cafe|coffee|bakery|dessert)\b/.test(type)) return "cafe";
+  if (/\b(restaurant|dining|food|eatery|bistro)\b/.test(type)) return "restaurant";
+  if (/\b(outdoor|park|beach|promenade|garden|walk)\b/.test(type)) return "outdoor";
+  if (/\b(activity|arcade|gaming|bowling|escape|trampoline|experience|entertainment)\b/.test(type)) return "arcade";
+  return "other";
+}
+
+function estimateTypesenseCost(doc, bucket, flags, budget, mood, placeName) {
+  const directCost =
+    toNumber(doc.estimated_cost) ??
+    toNumber(doc.price_per_person) ??
+    toNumber(doc.avg_cost) ??
+    toNumber(doc.cost);
+  const costForTwo =
+    toNumber(doc.cost_for_two) ??
+    toNumber(doc.price_for_two) ??
+    toNumber(doc.avg_price_for_two);
+
+  let estimated = directCost;
+  if (!estimated && costForTwo) estimated = Math.round(costForTwo / 2);
+
+  if (estimated && estimated > 0) {
+    if (bucket === "outdoor") {
+      const outdoorModel = getOutdoorPricingModel(placeName, String(doc.address || doc.locality || doc.area || ""));
+      const [realisticMin, realisticMax] = clampRange(outdoorModel.rangeMin, outdoorModel.rangeMax);
+      const estimated_cost = Math.round((realisticMin + realisticMax) / 2);
+      const entry_cost = Math.round((outdoorModel.entryMin + outdoorModel.entryMax) / 2);
+      return {
+        entry_cost: Math.max(0, Math.min(entry_cost, estimated_cost)),
+        spend_cost: Math.max(0, estimated_cost - entry_cost),
+        estimated_cost,
+        realistic_cost_min: realisticMin,
+        realistic_cost_max: realisticMax,
+        pricing_confidence: outdoorModel.confidence || "medium",
+        cost_note: outdoorModel.note || "",
+      };
+    }
+
+    const likely = Math.max(0, Math.round(estimated));
+    const [realisticMin, realisticMax] = clampRange(likely * 0.78, likely * 1.28);
+
+    if (isActivityBucket(bucket)) {
+      const entry = Math.round(likely * 0.62);
+      return {
+        entry_cost: entry,
+        spend_cost: Math.max(0, likely - entry),
+        estimated_cost: likely,
+        realistic_cost_min: realisticMin,
+        realistic_cost_max: realisticMax,
+        pricing_confidence: directCost || costForTwo ? "high" : "medium",
+        cost_note: "",
+      };
+    }
+    return {
+      entry_cost: 0,
+      spend_cost: likely,
+      estimated_cost: likely,
+      realistic_cost_min: realisticMin,
+      realistic_cost_max: realisticMax,
+      pricing_confidence: directCost || costForTwo ? "high" : "medium",
+      cost_note: "",
+    };
+  }
+
+  return estimatePlaceCosts(bucket, flags, budget, placeName, mood, String(doc.address || doc.locality || doc.area || ""));
+}
+
+function buildSemanticQuery(mood, role, area) {
+  const areaText = normalizeText(area).replace(/\s+/g, " ");
+
+  if (mood === "romantic") {
+    if (role === "main_experience") return `romantic restaurant candle light rooftop ${areaText}`;
+    if (role === "dessert_finish") return `aesthetic dessert cozy cafe ${areaText}`;
+    if (role === "highlight") return `sea view sunset quiet place ${areaText}`;
+    if (role === "transition") return `quiet romantic cafe ${areaText}`;
+    return `romantic date place ${areaText}`;
+  }
+
+  if (mood === "fun") {
+    if (role === "activity_burst") return `arcade bowling gaming lively hangout ${areaText}`;
+    if (role === "food_anchor") return `fun restaurant social food ${areaText}`;
+    return `fun places lively activity ${areaText}`;
+  }
+
+  if (mood === "chill") {
+    if (role === "highlight") return `quiet scenic sunset place ${areaText}`;
+    return `quiet cafe peaceful bookstore relaxing ${areaText}`;
+  }
+
+  if (mood === "adventure") {
+    if (role === "activity_burst") return `adventure escape room trampoline arcade ${areaText}`;
+    return `adventure activity outdoor experience ${areaText}`;
+  }
+
+  return `places ${areaText}`;
+}
+
+function getTypesenseSemanticQueries(mood, mealWindow, area, broadened = false) {
+  const roles = getMoodRoleSequence(mood, mealWindow);
+  const base = roles.map((role) => buildSemanticQuery(mood, role, area));
+  base.push(`${area} best rated places`);
+  base.push(`${area} local favorites`);
+
+  if (broadened) {
+    base.push(`romantic cafe near ${area}`);
+    base.push(`quiet cafe ${area}`);
+    base.push(`best desserts ${area}`);
+    base.push(`${area} hidden gems`);
+    base.push(`${area} scenic sunset spots`);
+  }
+
+  return [...new Set(base)].slice(0, broadened ? 14 : 10);
+}
+
+async function fetchTypesenseResultsForQueries(config, queries, perPage = 8, concurrency = 3) {
+  if (!config || !queries.length) return [];
+
+  const collected = [];
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < queries.length) {
+      const index = cursor++;
+      const q = queries[index];
+      try {
+        const params = new URLSearchParams({
+          q,
+          query_by: config.queryBy,
+          per_page: String(perPage),
+          sort_by: "_text_match:desc,rating:desc",
+        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TYPESENSE_TIMEOUT_MS);
+        const url = `${config.baseUrl}/collections/${config.collection}/documents/search?${params.toString()}`;
+        const res = await fetch(url, {
+          headers: { "X-TYPESENSE-API-KEY": config.apiKey },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const hits = Array.isArray(data?.hits) ? data.hits : [];
+        for (const hit of hits) {
+          if (hit?.document && typeof hit.document === "object") {
+            collected.push({ ...hit.document, _text_match: Number(hit.text_match || 0) });
+          }
+        }
+      } catch {
+        // best effort; planner still runs without Typesense
+      }
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, queries.length) }, () => worker());
+  await Promise.all(workers);
+  return collected;
 }
 
 // Haversine distance in km
@@ -247,6 +499,18 @@ const COST_MAP = {
   restaurant: 600
 };
 
+const BASE_PRICE_RANGES = {
+  arcade: [240, 520],
+  bowling: [320, 720],
+  trampoline: [420, 920],
+  vr: [300, 620],
+  escape: [520, 1200],
+  outdoor: [0, 80],
+  cafe: [220, 480],
+  restaurant: [450, 1200],
+  other: [280, 760],
+};
+
 const TRENDY_MUMBAI_SPOTS = [
   "foo", "bastian", "gigi", "olive", "bayroute", "koko", "opa", "social",
   "yauatcha", "hakkasan", "izumi", "masque", "nho saigon", "veronicas",
@@ -266,8 +530,65 @@ const SCENIC_KEYWORDS = [
   "marine drive", "seaface", "sea face", "beach", "promenade", "sunset", "view point", "viewpoint"
 ];
 
+const PAID_OUTDOOR_KEYWORDS = [
+  "national park",
+  "sanjay gandhi",
+  "sgnp",
+  "ticket",
+  "entry fee",
+  "zoo",
+  "sanctuary",
+  "reserve",
+  "safari",
+  "park entry",
+];
+
+const FREE_OUTDOOR_KEYWORDS = [
+  "beach",
+  "promenade",
+  "seaface",
+  "sea face",
+  "marine drive",
+  "bandstand",
+  "waterfront",
+  "sunset point",
+  "viewpoint",
+  "view point",
+  "fort",
+  "jetty",
+];
+
+const CAFE_SUBTYPES = {
+  dessert_shop: ["cake", "dessert", "bakery", "pastry", "ice cream", "gelato", "sweet"],
+  coffee_cafe: ["coffee", "roasters", "espresso", "brew", "latte", "cappuccino", "third wave", "blue tokai"],
+  rooftop_cafe: ["rooftop", "lounge", "sky", "terrace", "view"],
+  casual_dining: ["bistro", "eatery", "kitchen", "brasserie", "diner"],
+};
+
 const FAST_FOOD_BRANDS = [
   "burger king", "kfc", "mcdonald", "mcdonalds", "mc donald", "subway", "dominos", "pizza hut"
+];
+
+const BLOCKED_SERVICE_KEYWORDS = [
+  "physio",
+  "physiotherapy",
+  "clinic",
+  "hospital",
+  "medical",
+  "diagnostic",
+  "pathology",
+  "doctor",
+  "dental",
+  "pharmacy",
+  "chemist",
+  "laboratory",
+  "lab",
+  "conference",
+  "banquet",
+  "accomodation",
+  "accommodation",
+  "group stay",
+  "meeting hall",
 ];
 
 const LANDMARKS_BY_AREA = {
@@ -307,10 +628,35 @@ const SCORE_WEIGHTS = {
   moment: 0.1,
   transition: 0.09,
   strategy: 0.07,
-  narrative: 0.08,
+  narrative: 0.1,
   budgetAlignment: 0.04,
   activity: 0.04,
   firstStop: 0.02,
+};
+
+const MIN_STRICT_VARIANT_POOL = 6;
+
+const PACE_CONFIG = {
+  romantic: { duration_multiplier: 1.2, max_travel_km_per_hop: 7.5 },
+  chill: { duration_multiplier: 1.2, max_travel_km_per_hop: 7 },
+  fun: { duration_multiplier: 1.0, max_travel_km_per_hop: 9 },
+  adventure: { duration_multiplier: 0.9, max_travel_km_per_hop: 10 },
+};
+
+const EXPERIENCE_INTENSITY = {
+  physical: 1.0,
+  social: 0.55,
+  relax: 0.25,
+  dessert: 0.12,
+  quick: 0.35,
+};
+
+const TRANSITION_SCORE_MATRIX = {
+  physical: { relax: 1.0, social: 0.9, dessert: 0.45, physical: 0.55, quick: 0.72 },
+  social: { dessert: 1.0, relax: 0.86, social: 0.72, physical: 0.5, quick: 0.66 },
+  relax: { social: 0.9, dessert: 0.82, relax: 0.72, physical: 0.56, quick: 0.62 },
+  dessert: { dessert: 0.2, social: 0.18, relax: 0.14, physical: 0.08, quick: 0.16 },
+  quick: { social: 0.74, relax: 0.62, dessert: 0.48, physical: 0.42, quick: 0.4 },
 };
 
 const MOOD_CONFIG = {
@@ -486,10 +832,90 @@ function getMoodRoleSequence(mood, mealWindow) {
 }
 
 function getMoodPaceMultiplier(mood) {
+  const cfg = PACE_CONFIG[mood];
+  if (cfg && typeof cfg.duration_multiplier === "number") return cfg.duration_multiplier;
   const pace = getMoodProfile(mood).pace;
   if (pace === "slow") return 1.2;
   if (pace === "fast") return 0.88;
   return 1;
+}
+
+function getMoodMaxTravelPerHopKm(mood) {
+  return Number(PACE_CONFIG[mood]?.max_travel_km_per_hop || 8);
+}
+
+function getExperienceType(place) {
+  if (!place) return "social";
+  if (place.subtype === "dessert_shop" || place.isDessert) return "dessert";
+  if (place.normalized_bucket === "activity") return "physical";
+  if (place.normalized_bucket === "outdoor") return "relax";
+  if (place.subtype === "fast_food_restaurant") return "quick";
+  return "social";
+}
+
+function getExperienceIntensity(place) {
+  return EXPERIENCE_INTENSITY[getExperienceType(place)] ?? 0.5;
+}
+
+function scoreExperienceTransitions(combo) {
+  if (!Array.isArray(combo) || combo.length < 2) return 0.5;
+  const types = combo.map((place) => getExperienceType(place));
+  let total = 0;
+  let hops = 0;
+
+  for (let i = 0; i < types.length - 1; i++) {
+    const from = types[i];
+    const to = types[i + 1];
+    const score = TRANSITION_SCORE_MATRIX[from]?.[to];
+    total += typeof score === "number" ? score : 0.5;
+    hops += 1;
+  }
+
+  return hops > 0 ? clamp01(total / hops) : 0.5;
+}
+
+function scoreIntensityProgression(combo, mood) {
+  if (!Array.isArray(combo) || combo.length < 2) return 0.5;
+
+  const intensities = combo.map((place) => getExperienceIntensity(place));
+  const deltas = [];
+  for (let i = 0; i < intensities.length - 1; i++) {
+    deltas.push(intensities[i] - intensities[i + 1]);
+  }
+
+  let score = 0.5;
+  for (const d of deltas) {
+    if (d >= 0.08) score += 0.18;
+    else if (d >= -0.04) score += 0.08;
+    else score -= 0.15;
+  }
+
+  if (mood === "fun" || mood === "adventure") {
+    // Fun/adventure can tolerate a stronger first hop before descending.
+    if (intensities[0] >= intensities[1] - 0.05) score += 0.06;
+  }
+
+  return clamp01(score);
+}
+
+function scoreRomanticCafeQuality(place) {
+  if (!place || place.normalized_bucket !== "cafe") return 0;
+  const tags = place.semantic_tags || {};
+
+  let score = 0.3;
+  score += getTagScore(tags, "aesthetic") * 0.24;
+  score += getTagScore(tags, "cozy") * 0.2;
+  score += getTagScore(tags, "quiet") * 0.14;
+  score += getTagScore(tags, "scenic") * 0.12;
+  score += getTagScore(tags, "rooftop") * 0.14;
+  score -= getTagScore(tags, "crowded") * 0.22;
+  score -= getTagScore(tags, "fast_food") * 0.24;
+
+  if (place.subtype === "coffee_cafe") score += 0.1;
+  if (place.subtype === "rooftop_cafe") score += 0.14;
+  if (place.subtype === "dessert_shop") score += 0.04;
+
+  return clamp01(score);
 }
 
 function getRoleFitScore(place, role) {
@@ -752,6 +1178,52 @@ function scoreNarrativeArc(combo, mood, mealWindow, startMins, hop1, hop2) {
   return clamp01(roleProgression * 0.38 + climaxStrength * 0.38 + pacingBalance * 0.24);
 }
 
+function scoreNarrativePlan(plan, mood, mealWindow, startMins) {
+  if (!Array.isArray(plan) || plan.length === 0) return 0;
+
+  const roles = getMoodRoleSequence(mood, mealWindow);
+  let currentTime = startMins;
+  let progressionSum = 0;
+  let travelPenalty = 0;
+  let hasMainExperience = false;
+
+  for (let i = 0; i < plan.length; i++) {
+    const place = plan[i];
+    const role = roles[Math.min(i, roles.length - 1)] || (i === plan.length - 1 ? "highlight" : "transition");
+    progressionSum += getRoleFitScore(place, role);
+    if (role === "main_experience" || role === "food_anchor") hasMainExperience = true;
+
+    currentTime += estimateStayMinutes(place, mood);
+
+    if (i < plan.length - 1) {
+      const next = plan[i + 1];
+      const hopKm = getDistanceInKm(place.lat, place.lng, next.lat, next.lng);
+      const hopMins = Math.max(5, Math.round((hopKm / 15) * 60));
+      if (hopMins > 35) travelPenalty += 0.18;
+      currentTime += hopMins;
+    }
+  }
+
+  const firstStop = plan[0];
+  const firstIsLight = firstStop.normalized_bucket === "outdoor" || firstStop.normalized_bucket === "cafe";
+  const firstScore = firstIsLight ? 1 : 0.55;
+
+  const highlightPlace = plan[plan.length - 1];
+  const highlightScore = getRoleMomentScore(highlightPlace, "highlight", mood, currentTime);
+
+  const progression = clamp01(progressionSum / plan.length);
+  const pacing = clamp01(1 - travelPenalty);
+  const mainExperienceScore = hasMainExperience ? 1 : 0.65;
+
+  return clamp01(
+    firstScore * 0.2 +
+    progression * 0.28 +
+    mainExperienceScore * 0.2 +
+    highlightScore * 0.22 +
+    pacing * 0.1
+  );
+}
+
 function isValidForMood(place, mood, mealWindow, role = "") {
   const tags = place.semantic_tags || {};
 
@@ -799,6 +1271,57 @@ function isDessertName(name) {
   return DESSERT_KEYWORDS.some((token) => lower.includes(token));
 }
 
+function getCafeSubtype(name, address = "", extra = "") {
+  const text = normalizeText(`${name} ${address} ${extra}`);
+  if (!text) return "generic_cafe";
+
+  const hasRooftop = CAFE_SUBTYPES.rooftop_cafe.some((token) => text.includes(token));
+  const hasCoffee = CAFE_SUBTYPES.coffee_cafe.some((token) => text.includes(token));
+  const hasDessert = CAFE_SUBTYPES.dessert_shop.some((token) => text.includes(token));
+
+  // Priority: rooftop ambience first, then dessert-first outlets, then coffee lounges.
+  if (hasRooftop) return "rooftop_cafe";
+  if (hasDessert && !hasCoffee) return "dessert_shop";
+  if (hasCoffee) return "coffee_cafe";
+  if (hasDessert) return "dessert_shop";
+  if (CAFE_SUBTYPES.casual_dining.some((token) => text.includes(token))) return "casual_dining";
+  return "generic_cafe";
+}
+
+function getPlaceSubtype({ normalized_bucket, name = "", address = "", isDessert = false, isFastFood = false, isScenic = false, isLandmark = false, extra = "" }) {
+  if (normalized_bucket === "cafe") {
+    const cafeSubtype = getCafeSubtype(name, address, extra);
+    if (isDessert && cafeSubtype === "generic_cafe") return "dessert_shop";
+    return cafeSubtype;
+  }
+  if (normalized_bucket === "restaurant") {
+    if (isFastFood) return "fast_food_restaurant";
+    return "sitdown_restaurant";
+  }
+  if (normalized_bucket === "activity") {
+    return getBucket(name);
+  }
+  if (normalized_bucket === "outdoor") {
+    if (isLandmark || isScenic) return "scenic_outdoor";
+    return "park_outdoor";
+  }
+  return normalized_bucket || "other";
+}
+
+function isDessertLikePlace(place) {
+  if (!place) return false;
+  return Boolean(
+    place.isDessert ||
+    place.subtype === "dessert_shop" ||
+    (place.normalized_bucket === "cafe" && place.semantic_tags?.dessert)
+  );
+}
+
+function isProperRomanticCafe(place) {
+  if (!place) return false;
+  return place.subtype === "coffee_cafe" || place.subtype === "rooftop_cafe";
+}
+
 function getMealWindow(startMins) {
   if (startMins >= 6 * 60 && startMins < 11 * 60) return "breakfast";
   if (startMins >= 11 * 60 && startMins < 16 * 60) return "lunch";
@@ -806,57 +1329,130 @@ function getMealWindow(startMins) {
   return "dinner";
 }
 
-function estimatePlaceCosts(bucket, flags, budget, placeName = "", mood = "fun") {
-  const varietyFactor = 0.82 + deterministicHash01(`${placeName}|${bucket}|${mood}`) * 0.42;
-  let spendBase = COST_MAP[bucket] ?? 400;
-  let entryCost = 0;
+function clampRange(min, max) {
+  const lo = Math.max(0, Math.round(Math.min(min, max)));
+  const hi = Math.max(lo, Math.round(Math.max(min, max)));
+  return [lo, hi];
+}
 
-  if (bucket === "restaurant") {
-    const target = mood === "romantic" ? budget * 0.54 : budget * 0.46;
-    spendBase = Math.max(spendBase, Math.round(target));
+function getOutdoorPricingModel(placeName = "", address = "") {
+  const text = normalizeText(`${placeName} ${address}`);
+  const paid = PAID_OUTDOOR_KEYWORDS.some((token) => text.includes(token));
+  const free = FREE_OUTDOOR_KEYWORDS.some((token) => text.includes(token));
+  const mixed = /\b(park|garden|lake|trail|forest)\b/.test(text);
+
+  if (paid) {
+    return {
+      rangeMin: 95,
+      rangeMax: 170,
+      entryMin: 85,
+      entryMax: 150,
+      confidence: "high",
+      note: "Likely paid outdoor entry (ticketed park / reserve).",
+    };
   }
 
-  if (bucket === "cafe") {
-    const cafeBase = mood === "romantic" ? budget * 0.24 : budget * 0.2;
-    spendBase = Math.max(spendBase, Math.round(cafeBase));
+  if (free) {
+    return {
+      rangeMin: 0,
+      rangeMax: 30,
+      entryMin: 0,
+      entryMax: 20,
+      confidence: "high",
+      note: "Mostly free outdoor stop; minor incidental charges possible.",
+    };
   }
 
-  if (flags.isDessert) spendBase = Math.max(spendBase, 220);
+  if (mixed) {
+    return {
+      rangeMin: 0,
+      rangeMax: 70,
+      entryMin: 0,
+      entryMax: 50,
+      confidence: "medium",
+      note: "Outdoor pricing uncertain; some parks may charge entry.",
+    };
+  }
+
+  return {
+    rangeMin: 0,
+    rangeMax: 60,
+    entryMin: 0,
+    entryMax: 40,
+    confidence: "low",
+    note: "Outdoor location may include entry fees.",
+  };
+}
+
+function getBasePriceRange(bucket, flags, placeName = "", mood = "fun", address = "") {
+  if (bucket === "outdoor") {
+    return getOutdoorPricingModel(placeName, address);
+  }
+
+  let [rangeMin, rangeMax] = BASE_PRICE_RANGES[bucket] || BASE_PRICE_RANGES.other;
+
+  if (flags.isDessert) {
+    rangeMin = Math.max(rangeMin, 180);
+    rangeMax = Math.max(rangeMax, 380);
+  }
+
   if (flags.isCheapChain && (bucket === "restaurant" || bucket === "cafe")) {
-    spendBase = Math.round(Math.max(220, Math.min(340, budget * 0.24)));
+    rangeMin = Math.round(rangeMin * 0.78);
+    rangeMax = Math.round(rangeMax * 0.88);
   }
 
   if (flags.isTrendy && (bucket === "restaurant" || bucket === "cafe")) {
-    spendBase = Math.round(Math.max(spendBase, budget * 0.48));
+    rangeMin = Math.round(rangeMin * 1.12);
+    rangeMax = Math.round(rangeMax * 1.26);
   }
 
-  if (bucket !== "outdoor") {
-    spendBase = Math.round(spendBase * varietyFactor);
+  if (mood === "romantic" && bucket === "restaurant") {
+    rangeMin = Math.round(rangeMin * 1.08);
+    rangeMax = Math.round(rangeMax * 1.12);
   }
 
-  if (isActivityBucket(bucket)) {
-    const activityFloor = budget >= 1200
-      ? budget * (0.22 + deterministicHash01(`${placeName}|activity_floor`) * 0.16)
-      : budget * (0.18 + deterministicHash01(`${placeName}|activity_floor`) * 0.12);
-    const targetTotal = Math.round(Math.max(spendBase, activityFloor));
-    entryCost = Math.round(targetTotal * 0.65);
-    spendBase = Math.max(80, targetTotal - entryCost);
+  return {
+    rangeMin,
+    rangeMax,
+    entryMin: isActivityBucket(bucket) ? Math.round(rangeMin * 0.55) : 0,
+    entryMax: isActivityBucket(bucket) ? Math.round(rangeMax * 0.7) : 0,
+    confidence: flags.isTrendy || flags.isCheapChain ? "high" : "medium",
+    note: "",
+  };
+}
+
+function estimatePlaceCosts(bucket, flags, budget, placeName = "", mood = "fun", address = "") {
+  const base = getBasePriceRange(bucket, flags, placeName, mood, address);
+  const jitter = 0.94 + deterministicHash01(`${placeName}|${bucket}|${mood}|price_range`) * 0.14;
+
+  let [realisticMin, realisticMax] = clampRange(
+    base.rangeMin * jitter,
+    base.rangeMax * jitter
+  );
+
+  if (realisticMin === 0 && realisticMax === 0 && bucket !== "outdoor") {
+    realisticMax = COST_MAP[bucket] || 400;
   }
 
-  // Outdoor is always free in core itinerary pricing.
+  const estimated_cost = Math.round((realisticMin + realisticMax) / 2);
+
+  let entry_cost = 0;
   if (bucket === "outdoor") {
-    entryCost = 0;
-    spendBase = 0;
+    const entryLikely = Math.round((Number(base.entryMin || 0) + Number(base.entryMax || 0)) / 2);
+    entry_cost = Math.max(0, Math.min(entryLikely, estimated_cost));
+  } else if (isActivityBucket(bucket)) {
+    entry_cost = Math.round(estimated_cost * 0.62);
   }
-
-  const spend_cost = Math.max(0, Math.min(spendBase, budget));
-  const entry_cost = Math.max(0, Math.min(entryCost, budget));
-  const estimated_cost = Math.max(0, Math.min(entry_cost + spend_cost, budget));
+  const spend_cost = Math.max(0, estimated_cost - entry_cost);
 
   return {
     entry_cost,
     spend_cost,
     estimated_cost,
+    realistic_cost_min: realisticMin,
+    realistic_cost_max: realisticMax,
+    pricing_confidence: base.confidence || "medium",
+    cost_note: base.note || "",
   };
 }
 
@@ -874,6 +1470,43 @@ function formatOptionalAddOns(addOns) {
   const parking = Number(addOns.parking || 0);
   const transport = Number(addOns.transport || 0);
   return `snacks ₹${snacks}, parking ₹${parking}, transport ₹${transport}`;
+}
+
+function getPlaceCostRange(place) {
+  const min = Math.max(0, Number(place.realistic_cost_min ?? place.estimated_cost ?? 0));
+  const max = Math.max(min, Number(place.realistic_cost_max ?? place.estimated_cost ?? min));
+  return { min: Math.round(min), max: Math.round(max) };
+}
+
+function formatPlaceCostRange(place) {
+  const range = getPlaceCostRange(place);
+  if (range.min === range.max) return `₹${range.min}`;
+  return `₹${range.min}-₹${range.max}`;
+}
+
+function summarizePlanCosts(stops) {
+  return stops.reduce(
+    (acc, stop) => {
+      const range = getPlaceCostRange(stop);
+      acc.min += range.min;
+      acc.max += range.max;
+      acc.likely += Math.max(0, Number(stop.estimated_cost || 0));
+      return acc;
+    },
+    { min: 0, max: 0, likely: 0 }
+  );
+}
+
+function budgetRiskLabel(costSummary, budget) {
+  if (!budget || budget <= 0) return "unknown";
+  if (costSummary.max <= budget) return "low";
+  if (costSummary.min > budget) return "high";
+  return "moderate";
+}
+
+function isPlaceClearlyUnaffordable(costs, budget) {
+  const minCost = Math.max(0, Number(costs?.realistic_cost_min ?? costs?.estimated_cost ?? 0));
+  return minCost > Math.max(budget * 1.2, budget + 120);
 }
 
 function buildTimelineExtensions({
@@ -906,13 +1539,23 @@ function buildTimelineExtensions({
     : null);
 
   if (sunsetSpot) {
+    const outdoorPricing = getOutdoorPricingModel(sunsetSpot.name, sunsetSpot.address || `${area}, Mumbai`);
+    const sunsetMin = Math.max(0, Math.round(outdoorPricing.rangeMin));
+    const sunsetMax = Math.max(sunsetMin, Math.round(outdoorPricing.rangeMax));
+    const sunsetLikely = Math.round((sunsetMin + sunsetMax) / 2);
+    const sunsetEntry = Math.round((outdoorPricing.entryMin + outdoorPricing.entryMax) / 2);
+
     extensions.push({
       name: `Sunset at ${sunsetSpot.name} (intentional revisit)`,
       bucket: "outdoor",
       normalized_bucket: "outdoor",
-      estimated_cost: 0,
-      entry_cost: 0,
-      spend_cost: 0,
+      estimated_cost: sunsetLikely,
+      entry_cost: Math.max(0, Math.min(sunsetEntry, sunsetLikely)),
+      spend_cost: Math.max(0, sunsetLikely - sunsetEntry),
+      realistic_cost_min: sunsetMin,
+      realistic_cost_max: sunsetMax,
+      pricing_confidence: outdoorPricing.confidence,
+      cost_note: outdoorPricing.note,
       optional_costs: getOutdoorOptionalAddOns(budget, mood),
       address: sunsetSpot.address || `${area}, Mumbai`,
       lat: sunsetSpot.lat,
@@ -949,19 +1592,28 @@ function buildTimelineExtensions({
     extensionBudget -= Math.max(0, Math.round(cafeCost));
   }
 
-  const chaiCost = Math.max(40, Math.min(100, Math.round(budget * 0.04)));
-  if (extensionBudget >= chaiCost) {
+  const dessertBreak = allValid
+    .filter((p) => (p.isDessert || p.semantic_tags?.dessert) && !existingNames.has(normalizeText(p.name)))
+    .sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0))[0];
+
+  if (dessertBreak && extensionBudget >= 120) {
+    const dessertCost = Math.min(
+      dessertBreak.spend_cost || dessertBreak.estimated_cost || 180,
+      Math.max(120, Math.round(extensionBudget * 0.3)),
+      extensionBudget
+    );
+
     extensions.push({
-      name: `Street-side chai + walk`,
-      bucket: "cafe",
-      normalized_bucket: "cafe",
-      estimated_cost: chaiCost,
+      ...dessertBreak,
+      name: `Dessert pause: ${dessertBreak.name}`,
+      estimated_cost: Math.max(0, Math.round(dessertCost)),
       entry_cost: 0,
-      spend_cost: chaiCost,
-      address: `Near ${area}, Mumbai`,
+      spend_cost: Math.max(0, Math.round(dessertCost)),
       duration: 25,
       is_extension: true,
     });
+
+    extensionBudget -= Math.max(0, Math.round(dessertCost));
   }
 
   return extensions.slice(0, 3);
@@ -982,24 +1634,18 @@ function pickWeightedPlanVariant(variants) {
   return variants[variants.length - 1];
 }
 
-function applyLivePriceVariation(itinerary, budget) {
+function applyLivePriceVariation(itinerary) {
   const varied = itinerary.map((place) => {
-    if (place.normalized_bucket === "outdoor") {
-      return { ...place, estimated_cost: 0, entry_cost: 0, spend_cost: 0 };
-    }
-
-    const base = Math.max(0, Number(place.estimated_cost || 0));
-    if (base === 0) return place;
-
+    const range = getPlaceCostRange(place);
+    const base = Math.max(range.min, Math.min(range.max, Number(place.estimated_cost || 0)));
     const quality = clamp01(place.quality_score || 0.5);
-    const deterministic = 0.95 + deterministicHash01(`${place.name}|${place.bucket}|price`) * 0.08;
-    const qualityLift = 0.95 + quality * 0.1;
-    const marketNoise = 0.98 + Math.random() * 0.04;
-    const factor = deterministic * qualityLift * marketNoise;
-    const next = Math.max(60, Math.round(base * factor));
+    const deterministic = 0.96 + deterministicHash01(`${place.name}|${place.bucket}|price`) * 0.08;
+    const qualityLift = 0.98 + quality * 0.06;
+    const next = Math.round(Math.max(range.min, Math.min(range.max, base * deterministic * qualityLift)));
     const entryRatio = base > 0 ? (place.entry_cost || 0) / base : 0;
-    const entry = Math.max(0, Math.round(next * entryRatio));
+    const entry = Math.max(0, Math.min(next, Math.round(next * entryRatio)));
     const spend = Math.max(0, next - entry);
+
     return {
       ...place,
       estimated_cost: next,
@@ -1008,30 +1654,7 @@ function applyLivePriceVariation(itinerary, budget) {
     };
   });
 
-  const total = varied.reduce((sum, place) => sum + (place.estimated_cost || 0), 0);
-  if (total <= budget) return varied;
-
-  const paidTotal = varied
-    .filter((place) => place.normalized_bucket !== "outdoor")
-    .reduce((sum, place) => sum + (place.estimated_cost || 0), 0);
-  if (paidTotal <= 0) return varied;
-
-  const overflow = total - budget;
-  const scale = Math.max(0.78, (paidTotal - overflow) / paidTotal);
-
-  return varied.map((place) => {
-    if (place.normalized_bucket === "outdoor") return place;
-    const scaled = Math.max(60, Math.round((place.estimated_cost || 0) * scale));
-    const entryRatio = (place.estimated_cost || 0) > 0 ? (place.entry_cost || 0) / place.estimated_cost : 0;
-    const entry = Math.max(0, Math.round(scaled * entryRatio));
-    const spend = Math.max(0, scaled - entry);
-    return {
-      ...place,
-      estimated_cost: scaled,
-      entry_cost: entry,
-      spend_cost: spend,
-    };
-  });
+  return varied;
 }
 
 function applyAdaptiveBudgetReallocation(itinerary, mood, mealWindow, budget) {
@@ -1295,6 +1918,11 @@ function isFastFoodName(name) {
   const lower = normalizeText(name);
   if (/\bmc\s*donald'?s?\b/.test(lower)) return true;
   return FAST_FOOD_BRANDS.some((token) => lower.includes(token));
+}
+
+function isBlockedServiceListing(name, address = "") {
+  const text = normalizeText(`${name} ${address}`);
+  return BLOCKED_SERVICE_KEYWORDS.some((token) => text.includes(token));
 }
 
 function inferSemanticTags(place) {
@@ -1621,6 +2249,9 @@ function getSecondaryQueries(mood, mealWindow, area) {
     `${area} best rated spots`,
     `${area} local favorites`,
     `${area} top places near me`,
+    `romantic cafe near ${area}`,
+    `quiet cafe ${area}`,
+    `best desserts ${area}`,
   ];
 
   if (mood === "romantic") {
@@ -1733,8 +2364,38 @@ async function run() {
   const seenNames = new Set();
   const rejectedByQuality = {};
 
-  console.log(`┌─ Fetching + Filtering tight geographic radius places from Ola Maps...`);
+  console.log(`┌─ Fetching geo-accurate Ola places + semantic Typesense candidates...`);
   const rawResults = await fetchOlaResultsForQueries(queries, AREA, 4);
+  const typesenseConfig = getTypesenseConfig();
+  let typesensePrimaryResults = [];
+  let typesenseExpandedResults = [];
+
+  function pushCandidate(place) {
+    place.semantic_tags = inferSemanticTags(place);
+
+    if (!isValidForMood(place, MOOD, mealWindow)) {
+      rejectedByQuality.mood_hard_filter = (rejectedByQuality.mood_hard_filter || 0) + 1;
+      return false;
+    }
+
+    const quality = computePlaceQuality(place, MOOD);
+    if (quality.reject) {
+      const reason = quality.reason || "low_quality";
+      rejectedByQuality[reason] = (rejectedByQuality[reason] || 0) + 1;
+      return false;
+    }
+
+    const qualityPenalty = quality.qualityScore < 0.34
+      ? clamp01((0.34 - quality.qualityScore) / 0.34)
+      : 0;
+
+    rawCandidates.push({
+      ...place,
+      quality_score: quality.qualityScore,
+      quality_penalty: qualityPenalty,
+    });
+    return true;
+  }
 
   function ingestCandidateResult(r, maxRadiusKm) {
     if (!r.geometry || !r.geometry.location) return;
@@ -1746,6 +2407,7 @@ async function run() {
 
     const rawName = r.name || (r.structured_formatting && r.structured_formatting.main_text) || r.description;
     if (!rawName) return;
+    if (isBlockedServiceListing(rawName, String(r.description || ""))) return;
 
     if (/(parking|car park|motor|garage)/i.test(rawName) || /(parking|car park)/i.test(r.description || "")) return;
     if (/\bveg\b/i.test(rawName) && !/non(\s|-)?veg/i.test(rawName)) return;
@@ -1757,8 +2419,6 @@ async function run() {
     const bucket = getBucket(clean);
     if (bucket === "other") return;
 
-    seenNames.add(key);
-
     const isTrendy = TRENDY_MUMBAI_SPOTS.some((v) => key.includes(v));
     const isCheapChain = FAMOUS_CHAINS.some((v) => key.includes(v));
     const isDessert = isDessertName(clean);
@@ -1767,8 +2427,15 @@ async function run() {
     const isFastFood = isFastFoodName(clean);
 
     const normalized_bucket = isActivityBucket(bucket) ? "activity" : bucket;
-    const costs = estimatePlaceCosts(bucket, { isTrendy, isCheapChain, isDessert, isScenic }, BUDGET, clean, MOOD);
-    if (costs.estimated_cost > BUDGET) return;
+    const costs = estimatePlaceCosts(
+      bucket,
+      { isTrendy, isCheapChain, isDessert, isScenic },
+      BUDGET,
+      clean,
+      MOOD,
+      String(r.description || "")
+    );
+    if (isPlaceClearlyUnaffordable(costs, BUDGET)) return;
 
     const rating = Number.parseFloat(String(r.rating ?? r.user_rating ?? r.score ?? "0")) || 0;
     const review_count = Number.parseInt(String(r.user_ratings_total ?? r.review_count ?? r.num_reviews ?? "0"), 10) || 0;
@@ -1786,7 +2453,9 @@ async function run() {
       reviewTextParts.push(String(r.editorial_summary.overview || ""));
     }
     reviewTextParts.push(String(r.description || ""));
-    const review_keyword_scores = extractReviewKeywordSignals(reviewTextParts.join(" "));
+    const baseSignals = extractReviewKeywordSignals(reviewTextParts.join(" "));
+    const semanticHints = inferSemanticHintsFromText(`${r.description || ""} ${rawName}`);
+    const review_keyword_scores = mergeReviewSignals(amplifyReviewSignals(baseSignals, 2), semanticHints, 0.9);
 
     const place = {
       name: clean,
@@ -1801,6 +2470,10 @@ async function run() {
       estimated_cost: costs.estimated_cost,
       entry_cost: costs.entry_cost,
       spend_cost: costs.spend_cost,
+      realistic_cost_min: costs.realistic_cost_min,
+      realistic_cost_max: costs.realistic_cost_max,
+      pricing_confidence: costs.pricing_confidence,
+      cost_note: costs.cost_note,
       rating,
       review_count,
       review_keyword_scores,
@@ -1809,38 +2482,161 @@ async function run() {
       address: (r.description || clean).replace(/,\s*Mumbai Suburban.*$/, ''),
       lat,
       lng,
+      source: "ola",
     };
-    place.semantic_tags = inferSemanticTags(place);
-
-    if (!isValidForMood(place, MOOD, mealWindow)) {
-      rejectedByQuality.mood_hard_filter = (rejectedByQuality.mood_hard_filter || 0) + 1;
-      return;
-    }
-
-    const quality = computePlaceQuality(place, MOOD);
-    if (quality.reject) {
-      const reason = quality.reason || "low_quality";
-      rejectedByQuality[reason] = (rejectedByQuality[reason] || 0) + 1;
-      return;
-    }
-
-    const qualityPenalty = quality.qualityScore < 0.34
-      ? clamp01((0.34 - quality.qualityScore) / 0.34)
-      : 0;
-
-    rawCandidates.push({
-      ...place,
-      quality_score: quality.qualityScore,
-      quality_penalty: qualityPenalty,
+    place.subtype = getPlaceSubtype({
+      normalized_bucket,
+      name: clean,
+      address: place.address,
+      isDessert,
+      isFastFood,
+      isScenic,
+      isLandmark,
+      extra: r.description || "",
     });
+    place.experience_type = getExperienceType(place);
+    if (pushCandidate(place)) {
+      seenNames.add(key);
+    }
   }
 
-  for (const r of rawResults) ingestCandidateResult(r, 5.0);
+  function ingestTypesenseResult(doc, maxRadiusKm) {
+    if (!doc || typeof doc !== "object") return;
 
-  if (rawCandidates.length < 9) {
+    const loc = doc.location;
+    const locLat = Array.isArray(loc) ? toNumber(loc[0]) : null;
+    const locLng = Array.isArray(loc) ? toNumber(loc[1]) : null;
+    const lat =
+      toNumber(doc.lat) ??
+      toNumber(doc.latitude) ??
+      locLat;
+    const lng =
+      toNumber(doc.lng) ??
+      toNumber(doc.lon) ??
+      toNumber(doc.longitude) ??
+      locLng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const rawName = String(doc.name || doc.title || "").trim();
+    if (!rawName) return;
+    if (isBlockedServiceListing(rawName, String(doc.address || doc.locality || doc.area || ""))) return;
+    if (/(parking|car park|motor|garage)/i.test(rawName)) return;
+
+    const clean = cleanName(rawName);
+    const key = normalizeText(clean);
+    if (!key || seenNames.has(key)) return;
+
+    let bucket = getBucket(clean);
+    if (bucket === "other") {
+      const tagsText = arrayifyStrings(doc.tags).join(" ");
+      bucket = bucketFromTypeHint(`${doc.type || ""} ${doc.category || ""} ${tagsText}`);
+    }
+    if (bucket === "other") return;
+
+    const dist = getDistanceInKm(centerLat, centerLng, lat, lng);
+    if (dist > maxRadiusKm) return;
+
+    const isTrendy = TRENDY_MUMBAI_SPOTS.some((v) => key.includes(v));
+    const isCheapChain = FAMOUS_CHAINS.some((v) => key.includes(v));
+    const isDessert = isDessertName(clean);
+    const isLandmark = landmarksForArea.some((token) => key.includes(normalizeText(token)));
+    const isScenic = isScenicName(clean);
+    const isFastFood = isFastFoodName(clean);
+    const normalized_bucket = isActivityBucket(bucket) ? "activity" : bucket;
+
+    const costs = estimateTypesenseCost(
+      doc,
+      bucket,
+      { isTrendy, isCheapChain, isDessert, isScenic },
+      BUDGET,
+      MOOD,
+      clean
+    );
+    if (isPlaceClearlyUnaffordable(costs, BUDGET)) return;
+
+    const rating = toNumber(doc.rating) ?? toNumber(doc.google_rating) ?? toNumber(doc.aggregate_rating) ?? 0;
+    const review_count =
+      toNumber(doc.review_count) ??
+      toNumber(doc.user_ratings_total) ??
+      toNumber(doc.num_reviews) ??
+      toNumber(doc.popularity) ??
+      0;
+
+    const tagParts = arrayifyStrings(doc.tags);
+    const reviewTextParts = [
+      ...arrayifyStrings(doc.reviews),
+      ...arrayifyStrings(doc.review_snippets),
+      ...arrayifyStrings(doc.highlights),
+      ...tagParts,
+      String(doc.description || ""),
+      String(doc.summary || ""),
+    ];
+    const baseSignals = extractReviewKeywordSignals(reviewTextParts.join(" "));
+    const semanticHints = inferSemanticHintsFromText(`${tagParts.join(" ")} ${String(doc.description || "")}`);
+    const review_keyword_scores = mergeReviewSignals(amplifyReviewSignals(baseSignals, 2), semanticHints, 1);
+
+    const place = {
+      name: clean,
+      bucket,
+      normalized_bucket,
+      isTrendy,
+      isCheapChain,
+      isDessert,
+      isLandmark,
+      isScenic,
+      isFastFood,
+      estimated_cost: costs.estimated_cost,
+      entry_cost: costs.entry_cost,
+      spend_cost: costs.spend_cost,
+      realistic_cost_min: costs.realistic_cost_min,
+      realistic_cost_max: costs.realistic_cost_max,
+      pricing_confidence: costs.pricing_confidence,
+      cost_note: costs.cost_note,
+      rating,
+      review_count,
+      review_keyword_scores,
+      distance_from_area_km: dist,
+      optional_costs: normalized_bucket === "outdoor" ? getOutdoorOptionalAddOns(BUDGET, MOOD) : null,
+      address: String(doc.address || doc.locality || doc.area || `${AREA}, Mumbai`),
+      lat,
+      lng,
+      source: "typesense",
+    };
+    place.subtype = getPlaceSubtype({
+      normalized_bucket,
+      name: clean,
+      address: place.address,
+      isDessert,
+      isFastFood,
+      isScenic,
+      isLandmark,
+      extra: `${String(doc.description || "")} ${tagParts.join(" ")}`,
+    });
+    place.experience_type = getExperienceType(place);
+    if (pushCandidate(place)) {
+      seenNames.add(key);
+    }
+  }
+
+  for (const r of rawResults) ingestCandidateResult(r, PRIMARY_RADIUS_KM);
+
+  if (typesenseConfig) {
+    const typesenseQueries = getTypesenseSemanticQueries(MOOD, mealWindow, AREA);
+    typesensePrimaryResults = await fetchTypesenseResultsForQueries(typesenseConfig, typesenseQueries, 8, 3);
+    for (const doc of typesensePrimaryResults) ingestTypesenseResult(doc, PRIMARY_RADIUS_KM);
+  }
+
+  if (rawCandidates.length < MIN_CANDIDATE_THRESHOLD) {
+    const expandedRadiusKm = PRIMARY_RADIUS_KM * SECONDARY_RADIUS_MULTIPLIER;
     const secondaryQueries = getSecondaryQueries(MOOD, mealWindow, AREA);
     const secondaryResults = await fetchOlaResultsForQueries(secondaryQueries, AREA, 3);
-    for (const r of secondaryResults) ingestCandidateResult(r, 8.0);
+    for (const r of secondaryResults) ingestCandidateResult(r, expandedRadiusKm);
+
+    if (typesenseConfig) {
+      const expandedTsQueries = getTypesenseSemanticQueries(MOOD, mealWindow, AREA, true);
+      typesenseExpandedResults = await fetchTypesenseResultsForQueries(typesenseConfig, expandedTsQueries, 10, 3);
+      for (const doc of typesenseExpandedResults) ingestTypesenseResult(doc, expandedRadiusKm);
+    }
   }
 
   const hasLandmarkCandidate = rawCandidates.some((place) => place.isLandmark || place.isScenic);
@@ -1863,6 +2659,10 @@ async function run() {
           estimated_cost: 0,
           entry_cost: 0,
           spend_cost: 0,
+          realistic_cost_min: 0,
+          realistic_cost_max: 30,
+          pricing_confidence: "medium",
+          cost_note: "Mostly free outdoor stop; minor incidental charges possible.",
           optional_costs: getOutdoorOptionalAddOns(BUDGET, MOOD),
           address: fallbackLandmark.address,
           lat: fallbackLandmark.lat,
@@ -1870,6 +2670,8 @@ async function run() {
           rating: 4.5,
           review_count: 1200,
           distance_from_area_km: dist,
+          subtype: "scenic_outdoor",
+          experience_type: "relax",
           semantic_tags: {
             sea_view: true,
             rooftop: false,
@@ -1893,7 +2695,9 @@ async function run() {
     }
   }
 
-  console.log(`│  Queries: ${queries.length} | Raw hits: ${rawResults.length} | Candidates kept: ${rawCandidates.length}`);
+  console.log(
+    `│  Ola queries: ${queries.length} | Ola hits: ${rawResults.length} | Typesense primary: ${typesensePrimaryResults.length} | Typesense expanded: ${typesenseExpandedResults.length} | Candidates kept: ${rawCandidates.length}`
+  );
   if (Object.keys(rejectedByQuality).length) {
     console.log(`│  Quality rejects: ${JSON.stringify(rejectedByQuality)}`);
   }
@@ -1906,7 +2710,7 @@ async function run() {
   const TARGET_UTILIZATION = (BUDGET >= 1500 ? 0.94 : BUDGET >= 1000 ? 0.9 : 0.85) * BUDGET;
   const MIN_UTILIZATION = BUDGET >= 1500 ? 0.88 : BUDGET >= 1000 ? 0.82 : 0.72;
   const MIN_ACTIVITY_COUNT = BUDGET >= 2200 ? 2 : BUDGET >= 1200 ? 1 : 0;
-  const MAX_TRAVEL_PER_HOP_KM = 8;
+  const MAX_TRAVEL_PER_HOP_KM = getMoodMaxTravelPerHopKm(MOOD);
 
   const distanceMatrix = Array.from({ length: allValid.length }, () => Array(allValid.length).fill(0));
   for (let i = 0; i < allValid.length; i++) {
@@ -1928,7 +2732,9 @@ async function run() {
     item._idx = idx;
   });
 
-  function pickBestItinerary(minActivityCount, minUtilization) {
+  function pickBestItinerary(minActivityCount, minUtilization, plannerOptions = {}) {
+    const relaxSubtypeConstraint = Boolean(plannerOptions.relaxSubtypeConstraint);
+    const relaxRoleConstraint = Boolean(plannerOptions.relaxRoleConstraint);
     const variants = [];
 
     for (let i = 0; i < allValid.length - 2; i++) {
@@ -1950,11 +2756,23 @@ async function run() {
             const roles = getMoodRoleSequence(MOOD, mealWindow);
 
             let roleHardReject = false;
+            let roleConstraintPenalty = 0;
             for (let idx = 0; idx < combo.length; idx++) {
               const role = roles[Math.min(idx, roles.length - 1)] || "transition";
               if (!isValidForMood(combo[idx], MOOD, mealWindow, role)) {
                 roleHardReject = true;
                 break;
+              }
+
+              if (role === "main_experience" || role === "food_anchor") {
+                const fit = getRoleFitScore(combo[idx], role);
+                if (!relaxRoleConstraint && fit < 0.34) {
+                  roleHardReject = true;
+                  break;
+                }
+                if (fit < 0.5) {
+                  roleConstraintPenalty += (0.5 - fit) * 0.24;
+                }
               }
             }
             if (roleHardReject) continue;
@@ -1964,13 +2782,40 @@ async function run() {
 
             const activityCount = normalizedBuckets.filter((b) => b === "activity").length;
             const restaurantCount = normalizedBuckets.filter((b) => b === "restaurant").length;
-            const dessertLikeCount = [c1, c2, c3].filter((p) => p.isDessert || (p.normalized_bucket === "cafe" && p.semantic_tags?.dessert)).length;
+            const dessertLikeCount = [c1, c2, c3].filter((p) => isDessertLikePlace(p)).length;
+            const comboSubtypes = [c1, c2, c3].map((p) => p.subtype || (p.isDessert ? "dessert_shop" : p.normalized_bucket));
+            const subtypeCounts = {};
+            for (const subtype of comboSubtypes) {
+              subtypeCounts[subtype] = (subtypeCounts[subtype] || 0) + 1;
+            }
+            const repeatedSubtypeCount = Object.values(subtypeCounts).reduce(
+              (sum, count) => sum + Math.max(0, Number(count) - 1),
+              0
+            );
+            const dessertShopCount = comboSubtypes.filter((s) => s === "dessert_shop").length;
+            const hasProperRomanticCafe = [c1, c2, c3].some((p) => isProperRomanticCafe(p));
+            const romanticCafeScore = MOOD === "romantic"
+              ? Math.max(0, scoreRomanticCafeQuality(c1), scoreRomanticCafeQuality(c2), scoreRomanticCafeQuality(c3))
+              : 0;
             const desiredActivities = Math.max(minActivityCount, desiredActivityCount(MOOD, BUDGET));
 
-            const totalCost = c1.estimated_cost + c2.estimated_cost + c3.estimated_cost;
-            const utilization = totalCost / BUDGET;
-            if (totalCost > BUDGET) continue;
-            if (utilization < 0.55) continue;
+            if (MOOD === "romantic" && !relaxSubtypeConstraint && dessertLikeCount >= 2) continue;
+            if (MOOD === "romantic" && !relaxSubtypeConstraint && dessertShopCount >= 2) continue;
+            if (MOOD === "romantic" && !relaxSubtypeConstraint && romanticCafeScore < 0.38) continue;
+            if (MOOD === "romantic" && !relaxSubtypeConstraint) {
+              const earlyDessert = [c1, c2].some((p) => isDessertLikePlace(p));
+              if (earlyDessert) continue;
+            }
+
+            const comboMinCost = [c1, c2, c3].reduce((sum, p) => sum + Number(p.realistic_cost_min ?? p.estimated_cost ?? 0), 0);
+            const comboLikelyCost = [c1, c2, c3].reduce((sum, p) => sum + Number(p.estimated_cost || 0), 0);
+            const comboMaxCost = [c1, c2, c3].reduce((sum, p) => sum + Number(p.realistic_cost_max ?? p.estimated_cost ?? 0), 0);
+            const utilization = comboLikelyCost / BUDGET;
+
+            // Hard budget guard uses realistic lower bound, not compressed per-place prices.
+            if (comboMinCost > BUDGET) continue;
+            if (comboLikelyCost > BUDGET * 1.12) continue;
+            if (utilization < 0.5) continue;
 
             const hop1 = hopDistance(c1, c2);
             const hop2 = hopDistance(c2, c3);
@@ -1990,6 +2835,9 @@ async function run() {
             const distanceScore = clamp01(1 - avgHop / MAX_TRAVEL_PER_HOP_KM);
 
             const flowScore = flowScoreNormalized(combo, MOOD, mealWindow);
+            const transitionMatrixScore = scoreExperienceTransitions(combo);
+            const intensityScore = scoreIntensityProgression(combo, MOOD);
+            const flowComposite = clamp01(flowScore * 0.72 + intensityScore * 0.28);
 
             const moodRaw = (
               placeMoodScore(c1, MOOD, preferenceMemory) +
@@ -2002,8 +2850,11 @@ async function run() {
             const momentScore = scoreMomentQuality(combo, MOOD, startMins, hop1, hop2);
             const crowdPenalty = scoreCrowdPenalty(combo, MOOD, startMins, hop1, hop2);
             const transitionScore = scoreTransitionContinuity(combo, MOOD, hop1, hop2, mealWindow);
-            const adaptiveBudget = scoreAdaptiveBudgetStrategy(combo, MOOD, totalCost, mealWindow);
-            const narrativeScore = scoreNarrativeArc(combo, MOOD, mealWindow, startMins, hop1, hop2);
+            const transitionComposite = clamp01(transitionScore * 0.55 + transitionMatrixScore * 0.45);
+            const adaptiveBudget = scoreAdaptiveBudgetStrategy(combo, MOOD, comboLikelyCost, mealWindow);
+            const localNarrative = scoreNarrativeArc(combo, MOOD, mealWindow, startMins, hop1, hop2);
+            const globalNarrative = scoreNarrativePlan(combo, MOOD, mealWindow, startMins);
+            const narrativeScore = clamp01(localNarrative * 0.55 + globalNarrative * 0.45);
 
             const roleTimes = estimateComboStartTimes(combo, startMins, hop1, hop2, MOOD);
             let roleDominancePenalty = 0;
@@ -2028,12 +2879,18 @@ async function run() {
             const targetUtilRatio = TARGET_UTILIZATION / Math.max(BUDGET, 1);
             const budgetCloseness = clamp01(1 - Math.abs(utilization - targetUtilRatio) / Math.max(targetUtilRatio, 0.01));
             const underUtilPenalty = utilization < minUtilization ? (minUtilization - utilization) / Math.max(minUtilization, 0.01) : 0;
-            const budgetScore = clamp01(budgetCloseness - underUtilPenalty * 0.7);
+            const budgetOverrunPenalty = comboLikelyCost > BUDGET
+              ? (comboLikelyCost - BUDGET) / Math.max(BUDGET, 1)
+              : 0;
+            const budgetScore = clamp01(budgetCloseness - underUtilPenalty * 0.65 - budgetOverrunPenalty * 0.8);
 
-            const allocationScore = budgetAlignmentScore(combo, MOOD, totalCost);
+            const allocationScore = budgetAlignmentScore(combo, MOOD, comboLikelyCost);
             const activityScore = desiredActivities > 0
               ? clamp01(activityCount / desiredActivities)
               : clamp01(1 - Math.max(0, activityCount - 1) * 0.25);
+            const diversityScore = clamp01(1 - repeatedSubtypeCount / 2);
+            const coupledMoodFlow = clamp01(moodScore * flowComposite);
+            const coupledDiversityTransition = clamp01(diversityScore * transitionComposite);
 
             let softPenalty = 0;
             if (!hasMeal) softPenalty += 0.25;
@@ -2065,24 +2922,48 @@ async function run() {
             if (MOOD === "romantic" && (c1.isFastFood || c2.isFastFood || c3.isFastFood)) {
               softPenalty += 0.45;
             }
+            if (repeatedSubtypeCount > 0) {
+              softPenalty += (relaxSubtypeConstraint ? 0.14 : 0.28) * repeatedSubtypeCount;
+            }
+            if (MOOD === "romantic") {
+              if (!hasProperRomanticCafe) {
+                softPenalty += relaxSubtypeConstraint ? 0.14 : 0.28;
+              }
+              if (romanticCafeScore < 0.58) {
+                softPenalty += (0.58 - romanticCafeScore) * 0.42;
+              }
+            }
+            for (let idx = 0; idx < combo.length - 1; idx++) {
+              const place = combo[idx];
+              if (isDessertLikePlace(place)) {
+                // Dessert-first sequencing makes plans feel repetitive and shallow.
+                softPenalty += relaxSubtypeConstraint ? 0.16 : 0.32;
+              }
+            }
+            softPenalty += roleConstraintPenalty;
             if (c1.isDessert) softPenalty += 0.18;
             if (c1.normalized_bucket === "outdoor" && !c1.isScenic && !c1.isLandmark) softPenalty += 0.2;
             if (normalizedBuckets.filter((b) => b === "cafe").length === 3) softPenalty += 0.12;
+            if (comboMaxCost > BUDGET) {
+              softPenalty += Math.min(0.24, ((comboMaxCost - BUDGET) / Math.max(BUDGET, 1)) * 0.4);
+            }
 
             const weightedScore =
               SCORE_WEIGHTS.budget * budgetScore +
               SCORE_WEIGHTS.quality * qualityScore +
               SCORE_WEIGHTS.distance * distanceScore +
-              SCORE_WEIGHTS.flow * flowScore +
+              SCORE_WEIGHTS.flow * flowComposite +
               SCORE_WEIGHTS.mood * moodScore +
               SCORE_WEIGHTS.role * roleScore +
               SCORE_WEIGHTS.moment * momentScore +
-              SCORE_WEIGHTS.transition * transitionScore +
+              SCORE_WEIGHTS.transition * transitionComposite +
               SCORE_WEIGHTS.strategy * adaptiveBudget.score +
               SCORE_WEIGHTS.narrative * narrativeScore +
               SCORE_WEIGHTS.budgetAlignment * allocationScore +
               SCORE_WEIGHTS.activity * activityScore +
-              SCORE_WEIGHTS.firstStop * firstStopScore;
+              SCORE_WEIGHTS.firstStop * firstStopScore +
+              0.06 * coupledMoodFlow +
+              0.05 * coupledDiversityTransition;
 
             const landmarkBoost = (c1.isLandmark || c2.isLandmark || c3.isLandmark) ? 0.06 : 0;
             const scenicBoost = (c1.isScenic || c2.isScenic || c3.isScenic) ? 0.04 : 0;
@@ -2099,7 +2980,24 @@ async function run() {
       }
     }
 
-    if (!variants.length) return [];
+    if (!variants.length) {
+      if (!relaxSubtypeConstraint) {
+        return pickBestItinerary(minActivityCount, minUtilization, {
+          ...plannerOptions,
+          relaxSubtypeConstraint: true,
+          relaxRoleConstraint: true,
+        });
+      }
+      return [];
+    }
+
+    if (variants.length < MIN_STRICT_VARIANT_POOL && !relaxSubtypeConstraint) {
+      return pickBestItinerary(minActivityCount, minUtilization, {
+        ...plannerOptions,
+        relaxSubtypeConstraint: true,
+        relaxRoleConstraint: true,
+      });
+    }
     variants.sort((a, b) => b.score - a.score);
 
     const bestScore = variants[0].score;
@@ -2258,6 +3156,12 @@ async function run() {
 
       const expectedRole = targetRoles[Math.min(out.length, targetRoles.length - 1)] || "transition";
       if (getRoleFitScore(place, expectedRole) < 0.46) continue;
+      if (MOOD === "romantic") {
+        const dessertLike = isDessertLikePlace(place);
+        const existingDessertLike = out.some((p) => isDessertLikePlace(p));
+        if (dessertLike && out.length < 2) continue;
+        if (dessertLike && existingDessertLike) continue;
+      }
       if ((MOOD === "romantic" || MOOD === "chill") && place.normalized_bucket === "restaurant") {
         const existingRestaurants = out.filter((p) => p.normalized_bucket === "restaurant").length;
         if (existingRestaurants >= 1) continue;
@@ -2271,13 +3175,20 @@ async function run() {
             entry_cost: 0,
             spend_cost: budgetLeft,
             estimated_cost: budgetLeft,
+            realistic_cost_min: Math.min(candidate.realistic_cost_min ?? budgetLeft, budgetLeft),
+            realistic_cost_max: candidate.realistic_cost_max ?? candidate.estimated_cost ?? budgetLeft,
           };
         } else if (candidate.normalized_bucket === "outdoor") {
+          const outdoorMin = Number(candidate.realistic_cost_min ?? candidate.estimated_cost ?? 0);
+          if (outdoorMin > budgetLeft) continue;
+          const outdoorLikely = Math.min(Number(candidate.estimated_cost || outdoorMin), budgetLeft);
+          const entry = Math.min(Number(candidate.entry_cost || 0), outdoorLikely);
           candidate = {
             ...candidate,
-            entry_cost: 0,
-            spend_cost: 0,
-            estimated_cost: 0,
+            entry_cost: Math.max(0, Math.round(entry)),
+            spend_cost: Math.max(0, Math.round(outdoorLikely - entry)),
+            estimated_cost: Math.max(0, Math.round(outdoorLikely)),
+            realistic_cost_max: candidate.realistic_cost_max ?? candidate.estimated_cost ?? outdoorLikely,
           };
         } else {
           continue;
@@ -2296,28 +3207,85 @@ async function run() {
   if (itinerary.length === 0) {
     // Graceful fallback: dynamically build a diverse list under budget
     const sorted = [...rawCandidates].sort((a, b) => {
-      const aScore = (a.isTrendy ? 2 : 0) + (a.normalized_bucket === "activity" ? 2 : 0) + (a.isDessert ? 0.5 : 0);
-      const bScore = (b.isTrendy ? 2 : 0) + (b.normalized_bucket === "activity" ? 2 : 0) + (b.isDessert ? 0.5 : 0);
+      const aMin = Number(a.realistic_cost_min ?? a.estimated_cost ?? 0);
+      const bMin = Number(b.realistic_cost_min ?? b.estimated_cost ?? 0);
+      const aMood = clamp01((placeMoodScore(a, MOOD, preferenceMemory) + 1.8) / 3.6);
+      const bMood = clamp01((placeMoodScore(b, MOOD, preferenceMemory) + 1.8) / 3.6);
+      const aAfford = clamp01(1 - aMin / Math.max(BUDGET, 1));
+      const bAfford = clamp01(1 - bMin / Math.max(BUDGET, 1));
+
+      let aScore = (a.quality_score || 0) * 0.52 + aMood * 0.66 + aAfford * 0.42 + (a.isScenic ? 0.1 : 0);
+      let bScore = (b.quality_score || 0) * 0.52 + bMood * 0.66 + bAfford * 0.42 + (b.isScenic ? 0.1 : 0);
+
+      if (MOOD === "romantic") {
+        if (isProperRomanticCafe(a)) aScore += 0.16;
+        if (isProperRomanticCafe(b)) bScore += 0.16;
+        if (a.normalized_bucket === "activity") aScore -= 0.22;
+        if (b.normalized_bucket === "activity") bScore -= 0.22;
+      }
+
+      if (a.isTrendy) aScore += 0.08;
+      if (b.isTrendy) bScore += 0.08;
+
       if (bScore !== aScore) return bScore - aScore;
-      return b.estimated_cost - a.estimated_cost;
+      return aMin - bMin;
     });
     
     // Assemble only what fits!
     let currentCost = 0;
     const fallbackBuckets = new Set();
+    const fallbackSubtypes = new Set();
     let outdoorCount = 0;
     
     for (const c of sorted) {
        if (c.normalized_bucket === "outdoor" && outdoorCount >= 1) continue;
        // Only allow duplicate cafes, max 1 of other buckets to force diversity.
        if (fallbackBuckets.has(c.normalized_bucket) && c.normalized_bucket !== "cafe") continue;
+
+       if (MOOD === "romantic") {
+         if (itinerary.length === 0 && c.normalized_bucket === "activity") continue;
+         if (itinerary.length === 1 && c.normalized_bucket === "activity") continue;
+       }
+
+       const subtype = c.subtype || (c.isDessert ? "dessert_shop" : c.normalized_bucket);
+       if (fallbackSubtypes.has(subtype) && subtype !== "generic_cafe") continue;
+
+       if (MOOD === "romantic") {
+         const dessertLike = isDessertLikePlace(c);
+         const existingDessertLike = itinerary.some((p) => isDessertLikePlace(p));
+         if (dessertLike && itinerary.length < 2) continue;
+         if (dessertLike && existingDessertLike) continue;
+       }
+
+       const minCost = Number(c.realistic_cost_min ?? c.estimated_cost ?? 0);
        
-       if (currentCost + c.estimated_cost <= BUDGET && itinerary.length < 3) {
+       if (currentCost + minCost <= BUDGET && itinerary.length < 3) {
            itinerary.push(c);
            fallbackBuckets.add(c.normalized_bucket);
+           fallbackSubtypes.add(subtype);
            if (c.normalized_bucket === "outdoor") outdoorCount += 1;
-           currentCost += c.estimated_cost;
+           currentCost += minCost;
        }
+    }
+
+    if (MOOD === "romantic" && itinerary.length === 3 && !itinerary.some((p) => isProperRomanticCafe(p))) {
+      const usedNames = new Set(itinerary.map((p) => normalizeText(p.name)));
+      const properCafe = sorted.find((p) => {
+        if (!isProperRomanticCafe(p)) return false;
+        if (usedNames.has(normalizeText(p.name))) return false;
+        if (isDessertLikePlace(p)) return false;
+        const minCost = Number(p.realistic_cost_min ?? p.estimated_cost ?? 0);
+        const currentMin = itinerary.reduce((sum, s) => sum + Number(s.realistic_cost_min ?? s.estimated_cost ?? 0), 0);
+        const replaceIdx = itinerary.findIndex((s, idx) => idx < 2 && isDessertLikePlace(s));
+        if (replaceIdx < 0) return false;
+        const nextMin = currentMin - Number(itinerary[replaceIdx].realistic_cost_min ?? itinerary[replaceIdx].estimated_cost ?? 0) + minCost;
+        return nextMin <= BUDGET;
+      });
+
+      const replaceIdx = itinerary.findIndex((s, idx) => idx < 2 && isDessertLikePlace(s));
+      if (properCafe && replaceIdx >= 0) {
+        itinerary[replaceIdx] = properCafe;
+      }
     }
   }
 
@@ -2334,8 +3302,7 @@ async function run() {
     console.log("⚠️ Limited real POIs found after expansion; returning best available real stops.");
   }
 
-  itinerary = applyAdaptiveBudgetReallocation(itinerary, MOOD, mealWindow, BUDGET);
-  itinerary = applyLivePriceVariation(itinerary, BUDGET);
+  itinerary = applyLivePriceVariation(itinerary);
 
   updatePreferenceMemory(preferenceMemory, MOOD, itinerary, BUDGET);
   savePreferenceMemory(preferenceMemory);
@@ -2344,9 +3311,19 @@ async function run() {
   console.log(`└─ Compiled & Deduplicated Itinerary Blueprint.\n`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`# Final Plan Overview`);
-  
-  let totalComputedCost = itinerary.reduce((acc, curr) => acc + curr.estimated_cost, 0);
-  console.log(`Total estimated cost: ₹${totalComputedCost}\n`);
+
+  const baseCostSummary = summarizePlanCosts(itinerary);
+  const finalNarrativeScore = scoreNarrativePlan(itinerary, MOOD, mealWindow, startMins);
+  console.log(`Total estimated spend: ₹${baseCostSummary.min}-₹${baseCostSummary.max} (likely ₹${baseCostSummary.likely})\n`);
+  const baseBudgetRisk = budgetRiskLabel(baseCostSummary, BUDGET);
+  console.log(`Budget confidence: ${baseBudgetRisk}`);
+  if (baseCostSummary.min > BUDGET) {
+    console.log(`⚠️ Even best-case spend (₹${baseCostSummary.min}) exceeds budget ₹${BUDGET}.`);
+  } else if (baseCostSummary.max > BUDGET) {
+    console.log(`⚠️ Real-world spend may exceed budget ₹${BUDGET}; consider swapping one stop for a cheaper option.`);
+  }
+  console.log();
+  console.log(`Narrative coherence: ${Math.round(finalNarrativeScore * 100)}/100\n`);
   
   let currentTime = parseTime(START_TIME);
   
@@ -2357,7 +3334,14 @@ async function run() {
     const duration = place.bucket === "outdoor" ? 45 : 75;
 
     console.log(`🕒 ${formatTime(currentTime)} — ${place.name} (${place.bucket})`);
-    console.log(`    💰 Price: ₹${place.estimated_cost}`);
+    console.log(`    💰 Estimated: ${formatPlaceCostRange(place)} (${place.pricing_confidence || "medium"} confidence)`);
+    console.log(`    ↳ Likely spend: ₹${Math.round(place.estimated_cost || 0)}`);
+    if ((place.entry_cost || 0) > 0) {
+      console.log(`    🎟️ Entry fee component: ₹${Math.round(place.entry_cost || 0)}`);
+    }
+    if (place.cost_note) {
+      console.log(`    ⚠️ ${place.cost_note}`);
+    }
     if (place.normalized_bucket === "outdoor" && place.optional_costs) {
       console.log(`    ➕ Optional: ${formatOptionalAddOns(place.optional_costs)}`);
     }
@@ -2379,7 +3363,7 @@ async function run() {
     }
   }
 
-  const budgetRemaining = Math.max(0, BUDGET - totalComputedCost);
+  const budgetRemaining = Math.max(0, BUDGET - baseCostSummary.likely);
   const areaKey = getAreaKey(AREA);
   const extensionStops = buildTimelineExtensions({
     mood: MOOD,
@@ -2397,7 +3381,9 @@ async function run() {
     console.log(`# Optional Timeline Extension`);
     console.log(`Budget remaining before extension: ₹${budgetRemaining}`);
 
-    let extensionSpend = 0;
+    let extensionSpendLikely = 0;
+    let extensionSpendMin = 0;
+    let extensionSpendMax = 0;
     let previousStop = itinerary[itinerary.length - 1] || null;
 
     for (let i = 0; i < extensionStops.length; i++) {
@@ -2417,20 +3403,38 @@ async function run() {
       }
 
       console.log(`🕒 ${formatTime(currentTime)} — ${ext.name} (${ext.bucket})`);
-      console.log(`    💰 Price: ₹${ext.estimated_cost}`);
+      console.log(`    💰 Estimated: ${formatPlaceCostRange(ext)} (${ext.pricing_confidence || "medium"} confidence)`);
+      console.log(`    ↳ Likely spend: ₹${Math.round(ext.estimated_cost || 0)}`);
+      if ((ext.entry_cost || 0) > 0) {
+        console.log(`    🎟️ Entry fee component: ₹${Math.round(ext.entry_cost || 0)}`);
+      }
+      if (ext.cost_note) {
+        console.log(`    ⚠️ ${ext.cost_note}`);
+      }
       if (ext.normalized_bucket === "outdoor" && ext.optional_costs) {
         console.log(`    ➕ Optional: ${formatOptionalAddOns(ext.optional_costs)}`);
       }
       console.log(`    📍 Location: ${ext.address || `Near ${AREA}, Mumbai`}`);
 
-      extensionSpend += ext.estimated_cost || 0;
+      const extRange = getPlaceCostRange(ext);
+      extensionSpendLikely += ext.estimated_cost || 0;
+      extensionSpendMin += extRange.min;
+      extensionSpendMax += extRange.max;
       currentTime += ext.duration || 30;
       previousStop = ext;
       console.log();
     }
 
-    if (extensionSpend > 0) {
-      console.log(`Projected total with extension: ₹${totalComputedCost + extensionSpend}`);
+    if (extensionSpendLikely > 0) {
+      const projectedLikely = baseCostSummary.likely + extensionSpendLikely;
+      const projectedMin = baseCostSummary.min + extensionSpendMin;
+      const projectedMax = baseCostSummary.max + extensionSpendMax;
+      console.log(`Projected total with extension: ₹${projectedMin}-₹${projectedMax} (likely ₹${projectedLikely})`);
+      if (projectedMin > BUDGET) {
+        console.log(`⚠️ Extension exceeds budget even in best case.`);
+      } else if (projectedMax > BUDGET) {
+        console.log(`⚠️ Extension may exceed budget in real-world spend.`);
+      }
     }
   }
 

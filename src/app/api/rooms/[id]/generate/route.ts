@@ -19,13 +19,27 @@ interface InsertItineraryRow {
   hub_lat: number;
   hub_lng: number;
   hub_strategy: string;
-  plan: unknown;
+  plan: AIItineraryResponse;
   total_cost_estimate: number;
   max_travel_time_mins: number;
   avg_travel_time_mins: number;
   travel_fairness_score: number;
   generation_method: 'ai' | 'rule_based_fallback';
   ai_model_version: string | null;
+}
+
+interface GenerationMember {
+  user_id: string;
+  display_name: string | null;
+  budget: number | null;
+  nearest_station: string | null;
+}
+
+interface HubGenerationCandidate {
+  row: InsertItineraryRow;
+  hub: HubCandidate;
+  profile: ItineraryProfile;
+  verifiedPlaces: Place[];
 }
 
 interface GenerationJobStatus {
@@ -65,6 +79,7 @@ const OPTION_PROFILES: ItineraryProfile[] = [
   'premium_dining',
   'budget_bites',
 ];
+const MAX_FINAL_OPTIONS = 4;
 
 const HUB_GENERATION_TIMEOUT_MS = 65000;
 
@@ -225,22 +240,25 @@ function optionSimilarity(a: AIItineraryResponse, b: AIItineraryResponse): numbe
   return clamp01(nameJaccard * 0.52 + typeSeqMatch * 0.28 + (1 - vibeGap) * 0.12 + profileMatch * 0.08);
 }
 
-function rankItinerariesWithDiversity(itineraries: InsertItineraryRow[]): InsertItineraryRow[] {
-  const remaining = [...itineraries];
-  const selected: InsertItineraryRow[] = [];
+function rankCandidatesWithDiversity(
+  candidates: HubGenerationCandidate[],
+  maxCount: number
+): HubGenerationCandidate[] {
+  const remaining = [...candidates];
+  const selected: HubGenerationCandidate[] = [];
 
-  while (remaining.length > 0) {
+  while (remaining.length > 0 && selected.length < maxCount) {
     let bestIndex = 0;
     let bestAdjustedScore = Number.NEGATIVE_INFINITY;
 
     for (let i = 0; i < remaining.length; i += 1) {
       const candidate = remaining[i];
-      const candidatePlan = candidate.plan as AIItineraryResponse;
+      const candidatePlan = candidate.row.plan;
       const baseScore = Number(candidatePlan.score_breakdown?.total_score || 0);
 
       const maxSimilarity = selected.length
         ? Math.max(
-            ...selected.map((picked) => optionSimilarity(candidatePlan, picked.plan as AIItineraryResponse))
+            ...selected.map((picked) => optionSimilarity(candidatePlan, picked.row.plan))
           )
         : 0;
 
@@ -254,9 +272,12 @@ function rankItinerariesWithDiversity(itineraries: InsertItineraryRow[]): Insert
     selected.push(remaining.splice(bestIndex, 1)[0]);
   }
 
-  return selected.map((row, index) => ({
-    ...row,
-    option_number: index + 1,
+  return selected.map((candidate, index) => ({
+    ...candidate,
+    row: {
+      ...candidate.row,
+      option_number: index + 1,
+    },
   }));
 }
 
@@ -351,11 +372,7 @@ function buildEmergencyFallbackPlan(params: {
 
 function buildMemberTravelInsights(params: {
   plan: AIItineraryResponse;
-  membersWithLocations: Array<{
-    user_id: string;
-    display_name: string | null;
-    budget: number | null;
-  }>;
+  membersWithLocations: GenerationMember[];
   hubTravelTimes: number[];
   perPersonCap: number;
   fairnessScore: number;
@@ -398,6 +415,91 @@ function buildMemberTravelInsights(params: {
       max_total_travel_mins: max,
       fairness_indicator: fairnessLabel,
     },
+  };
+}
+
+function buildEnrichedPlan(params: {
+  plan: AIItineraryResponse;
+  verifiedPlaces: Place[];
+  hub: HubCandidate;
+  mood: Mood;
+  profile: ItineraryProfile;
+  perPersonCap: number;
+  meetupStartTime: string;
+  membersWithLocations: GenerationMember[];
+}): AIItineraryResponse {
+  const { plan, verifiedPlaces, hub, mood, profile, perPersonCap, meetupStartTime, membersWithLocations } = params;
+
+  const firstStopTime = plan.stops?.[0]?.start_time || meetupStartTime;
+  const firstStopMins = toMinutes(firstStopTime);
+  const stationGuidance = membersWithLocations.map((member, memberIndex) => {
+    const travelMins = Math.max(5, Math.round(hub.travelTimes[memberIndex] ?? 45));
+    const bufferMins = 8;
+    const reachStationBy = toHHMM(firstStopMins - travelMins - bufferMins);
+    const arriveHubBy = toHHMM(firstStopMins - 2);
+    return {
+      member_name: member.display_name || member.user_id,
+      station: member.nearest_station || 'Nearest station',
+      train_travel_mins: travelMins,
+      reach_station_by: reachStationBy,
+      arrive_hub_by: arriveHubBy,
+    };
+  });
+
+  const durationTotalMins = calcDurationMins(plan);
+  const averagePlaceRating = calcAveragePlaceRating(plan, verifiedPlaces);
+  const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
+  const budgetMatch = calcBudgetMatch(plan.total_cost_per_person, perPersonCap);
+  const vibeMatch = calcVibeMatch(plan, mood, profile);
+  const placeQualityScore = calcPlaceQualityScore(plan, verifiedPlaces, averagePlaceRating);
+  const penalty = calcHardPenalty({
+    avgTravelMins: Math.round(hub.avgTravelTime),
+    maxTravelMins: Math.round(hub.maxTravelTime),
+    totalCost: plan.total_cost_per_person,
+    perPersonCap,
+  });
+  const totalScore = calcWeightedOptionScore({
+    distanceScore,
+    budgetMatch,
+    vibeMatch,
+    placeQualityScore,
+    penalty,
+  });
+  const travelInsights = buildMemberTravelInsights({
+    plan,
+    membersWithLocations,
+    hubTravelTimes: hub.travelTimes,
+    perPersonCap,
+    fairnessScore: hub.fairnessScore,
+  });
+
+  return {
+    ...plan,
+    meetup_start_time: meetupStartTime,
+    station_guidance: stationGuidance,
+    area: plan.area || hub.name,
+    profile,
+    flow_summary: plan.flow_summary || buildFlowSummary(plan),
+    duration_total_mins: durationTotalMins,
+    average_place_rating: averagePlaceRating,
+    score_breakdown: {
+      distance_score: Math.round(distanceScore * 100) / 100,
+      budget_match: Math.round(budgetMatch * 100) / 100,
+      vibe_match: Math.round(vibeMatch * 100) / 100,
+      rating_score: Math.round(placeQualityScore * 100) / 100,
+      total_score: Math.round(totalScore * 100) / 100,
+    },
+    dominant_vibe_match_pct: Math.round(vibeMatch * 100),
+    budget_breakdown: {
+      stop_cost_total: plan.total_cost_per_person,
+      contingency_buffer: plan.contingency_buffer,
+      total_with_contingency: plan.total_cost_per_person + plan.contingency_buffer,
+      cap_per_person: perPersonCap,
+      within_cap: plan.total_cost_per_person <= perPersonCap,
+    },
+    member_travel_breakdown: travelInsights.member_travel_breakdown,
+    travel_summary: travelInsights.travel_summary,
+    why_this_option: plan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
   };
 }
 
@@ -455,130 +557,72 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
     const hubs = generateHubCandidates(memberLocations, memberStations, mood);
 
-    const results = await Promise.allSettled<InsertItineraryRow>(
+    const results = await Promise.allSettled<HubGenerationCandidate[]>(
       hubs.map((hub, index) =>
         withTimeout(
           (async () => {
-            const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+            const groupSize = members.length;
+            const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
+            const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
+            const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
+            if (verifiedPlaces.length < 3) {
+              throw new Error(`Insufficient verified places for hub ${hub.name}`);
+            }
 
-        // Data stage: real nearby venues from OSM/Typesense pipeline.
-        const groupSize = members.length;
-        const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
-        const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
-        const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
-        if (verifiedPlaces.length < 3) {
-          throw new Error(`Insufficient verified places for hub ${hub.name}`);
-        }
+            const hubCandidates: HubGenerationCandidate[] = [];
+            for (const profile of OPTION_PROFILES) {
+              try {
+                const { plan, method, model } = generateGroundedItineraryForHub({
+                  hub,
+                  places: verifiedPlaces,
+                  mood,
+                  perPersonCap,
+                  profile,
+                  meetupStartTime,
+                  groupSize,
+                });
 
-        // Logic stage: deterministic grounded itinerary (no AI-invented stops).
-        const { plan, method, model } = generateGroundedItineraryForHub({
-          hub,
-          places: verifiedPlaces,
-          mood,
-          perPersonCap,
-          profile,
-          meetupStartTime,
-          groupSize,
-        });
+                const enrichedPlan = buildEnrichedPlan({
+                  plan,
+                  verifiedPlaces,
+                  hub,
+                  mood,
+                  profile,
+                  perPersonCap,
+                  meetupStartTime,
+                  membersWithLocations,
+                });
 
-        const reviewed = await reviewDeterministicItineraryWithGroq({
-          plan,
-          candidates: verifiedPlaces,
-          hub,
-          mood,
-          profile,
-          perPersonCap,
-        });
+                hubCandidates.push({
+                  row: {
+                    room_id: roomId,
+                    option_number: 0,
+                    hub_name: hub.name,
+                    hub_lat: hub.lat,
+                    hub_lng: hub.lng,
+                    hub_strategy: hub.strategy,
+                    plan: enrichedPlan,
+                    total_cost_estimate: enrichedPlan.total_cost_per_person,
+                    max_travel_time_mins: Math.round(hub.maxTravelTime),
+                    avg_travel_time_mins: Math.round(hub.avgTravelTime),
+                    travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+                    generation_method: method,
+                    ai_model_version: model,
+                  },
+                  hub,
+                  profile,
+                  verifiedPlaces,
+                });
+              } catch {
+                // Skip weak profile fit for this hub, keep remaining profiles.
+              }
+            }
 
-        const reviewedPlan = reviewed.plan;
+            if (!hubCandidates.length) {
+              throw new Error(`No viable itinerary variants for hub ${hub.name}`);
+            }
 
-        const firstStopTime = reviewedPlan.stops?.[0]?.start_time || meetupStartTime;
-        const firstStopMins = toMinutes(firstStopTime);
-        const stationGuidance = membersWithLocations.map((member, memberIndex) => {
-          const travelMins = Math.max(5, Math.round(hub.travelTimes[memberIndex] ?? 45));
-          const bufferMins = 8;
-          const reachStationBy = toHHMM(firstStopMins - travelMins - bufferMins);
-          const arriveHubBy = toHHMM(firstStopMins - 2);
-          return {
-            member_name: member.display_name || member.user_id,
-            station: member.nearest_station || 'Nearest station',
-            train_travel_mins: travelMins,
-            reach_station_by: reachStationBy,
-            arrive_hub_by: arriveHubBy,
-          };
-        });
-
-        const durationTotalMins = calcDurationMins(reviewedPlan);
-        const averagePlaceRating = calcAveragePlaceRating(reviewedPlan, verifiedPlaces);
-        const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
-        const budgetMatch = calcBudgetMatch(reviewedPlan.total_cost_per_person, perPersonCap);
-        const vibeMatch = calcVibeMatch(reviewedPlan, mood, profile);
-        const placeQualityScore = calcPlaceQualityScore(reviewedPlan, verifiedPlaces, averagePlaceRating);
-        const penalty = calcHardPenalty({
-          avgTravelMins: Math.round(hub.avgTravelTime),
-          maxTravelMins: Math.round(hub.maxTravelTime),
-          totalCost: reviewedPlan.total_cost_per_person,
-          perPersonCap,
-        });
-        const totalScore = calcWeightedOptionScore({
-          distanceScore,
-          budgetMatch,
-          vibeMatch,
-          placeQualityScore,
-          penalty,
-        });
-        const travelInsights = buildMemberTravelInsights({
-          plan: reviewedPlan,
-          membersWithLocations,
-          hubTravelTimes: hub.travelTimes,
-          perPersonCap,
-          fairnessScore: hub.fairnessScore,
-        });
-
-        const enrichedPlan = {
-          ...reviewedPlan,
-          meetup_start_time: meetupStartTime,
-          station_guidance: stationGuidance,
-          area: reviewedPlan.area || hub.name,
-          profile,
-          flow_summary: reviewedPlan.flow_summary || buildFlowSummary(reviewedPlan),
-          duration_total_mins: durationTotalMins,
-          average_place_rating: averagePlaceRating,
-          score_breakdown: {
-            distance_score: Math.round(distanceScore * 100) / 100,
-            budget_match: Math.round(budgetMatch * 100) / 100,
-            vibe_match: Math.round(vibeMatch * 100) / 100,
-            rating_score: Math.round(placeQualityScore * 100) / 100,
-            total_score: Math.round(totalScore * 100) / 100,
-          },
-          dominant_vibe_match_pct: Math.round(vibeMatch * 100),
-          budget_breakdown: {
-            stop_cost_total: reviewedPlan.total_cost_per_person,
-            contingency_buffer: reviewedPlan.contingency_buffer,
-            total_with_contingency: reviewedPlan.total_cost_per_person + reviewedPlan.contingency_buffer,
-            cap_per_person: perPersonCap,
-            within_cap: reviewedPlan.total_cost_per_person <= perPersonCap,
-          },
-          member_travel_breakdown: travelInsights.member_travel_breakdown,
-          travel_summary: travelInsights.travel_summary,
-          why_this_option: reviewedPlan.why_this_option || whyThisOption(profile, budgetMatch, distanceScore),
-        };
-
-            return {
-              room_id: roomId,
-              option_number: index + 1,
-              hub_name: hub.name,
-              hub_lat: hub.lat,
-              hub_lng: hub.lng,
-              hub_strategy: hub.strategy,
-              plan: enrichedPlan,
-              total_cost_estimate: reviewedPlan.total_cost_per_person,
-              max_travel_time_mins: Math.round(hub.maxTravelTime),
-              avg_travel_time_mins: Math.round(hub.avgTravelTime),
-              travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
-              generation_method: method,
-              ai_model_version: reviewed.model || model,
-            };
+            return hubCandidates;
           })(),
           HUB_GENERATION_TIMEOUT_MS,
           `Hub ${hub.name} generation`
@@ -592,83 +636,49 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             meetupStartTime,
             reason,
           });
-
-          const averagePlaceRating = calcAveragePlaceRating(fallbackPlan, []);
-          const distanceScore = calcDistanceScore(Math.round(hub.avgTravelTime));
-          const budgetMatch = calcBudgetMatch(fallbackPlan.total_cost_per_person, perPersonCap);
-          const vibeMatch = calcVibeMatch(fallbackPlan, mood, profile);
-          const placeQualityScore = calcPlaceQualityScore(fallbackPlan, [], averagePlaceRating);
-          const penalty = calcHardPenalty({
-            avgTravelMins: Math.round(hub.avgTravelTime),
-            maxTravelMins: Math.round(hub.maxTravelTime),
-            totalCost: fallbackPlan.total_cost_per_person,
-            perPersonCap,
-          });
-          const totalScore = calcWeightedOptionScore({
-            distanceScore,
-            budgetMatch,
-            vibeMatch,
-            placeQualityScore,
-            penalty,
-          });
-          const travelInsights = buildMemberTravelInsights({
-            plan: fallbackPlan,
-            membersWithLocations,
-            hubTravelTimes: hub.travelTimes,
-            perPersonCap,
-            fairnessScore: hub.fairnessScore,
-          });
-
           const enrichedPlan = {
-            ...fallbackPlan,
-            profile,
-            flow_summary: fallbackPlan.flow_summary || buildFlowSummary(fallbackPlan),
-            duration_total_mins: calcDurationMins(fallbackPlan),
-            average_place_rating: averagePlaceRating,
-            score_breakdown: {
-              distance_score: Math.round(distanceScore * 100) / 100,
-              budget_match: Math.round(budgetMatch * 100) / 100,
-              vibe_match: Math.round(vibeMatch * 100) / 100,
-              rating_score: Math.round(placeQualityScore * 100) / 100,
-              total_score: Math.round(totalScore * 100) / 100,
-            },
-            dominant_vibe_match_pct: Math.round(vibeMatch * 100),
-            budget_breakdown: {
-              stop_cost_total: fallbackPlan.total_cost_per_person,
-              contingency_buffer: fallbackPlan.contingency_buffer,
-              total_with_contingency: fallbackPlan.total_cost_per_person + fallbackPlan.contingency_buffer,
-              cap_per_person: perPersonCap,
-              within_cap: fallbackPlan.total_cost_per_person <= perPersonCap,
-            },
-            member_travel_breakdown: travelInsights.member_travel_breakdown,
-            travel_summary: travelInsights.travel_summary,
+            ...buildEnrichedPlan({
+              plan: fallbackPlan,
+              verifiedPlaces: [],
+              hub,
+              mood,
+              profile,
+              perPersonCap,
+              meetupStartTime,
+              membersWithLocations,
+            }),
             why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
           };
 
-          return {
-            room_id: roomId,
-            option_number: index + 1,
-            hub_name: hub.name,
-            hub_lat: hub.lat,
-            hub_lng: hub.lng,
-            hub_strategy: hub.strategy,
-            plan: enrichedPlan,
-            total_cost_estimate: fallbackPlan.total_cost_per_person,
-            max_travel_time_mins: Math.round(hub.maxTravelTime),
-            avg_travel_time_mins: Math.round(hub.avgTravelTime),
-            travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
-            generation_method: 'rule_based_fallback',
-            ai_model_version: null,
-          };
+          return [{
+            row: {
+              room_id: roomId,
+              option_number: 0,
+              hub_name: hub.name,
+              hub_lat: hub.lat,
+              hub_lng: hub.lng,
+              hub_strategy: hub.strategy,
+              plan: enrichedPlan,
+              total_cost_estimate: fallbackPlan.total_cost_per_person,
+              max_travel_time_mins: Math.round(hub.maxTravelTime),
+              avg_travel_time_mins: Math.round(hub.avgTravelTime),
+              travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+              generation_method: 'rule_based_fallback',
+              ai_model_version: null,
+            },
+            hub,
+            profile,
+            verifiedPlaces: [],
+          }];
         })
       )
     );
 
-    const itineraries = results
-      .filter((result): result is PromiseFulfilledResult<InsertItineraryRow> => result.status === 'fulfilled')
-      .map((result) => result.value);
+    const candidatePool = results
+      .filter((result): result is PromiseFulfilledResult<HubGenerationCandidate[]> => result.status === 'fulfilled')
+      .flatMap((result) => result.value);
 
-    if (itineraries.length === 0) {
+    if (candidatePool.length === 0) {
       const reasons = results
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
         .map((result) => (result.reason instanceof Error ? result.reason.message : String(result.reason)))
@@ -679,7 +689,74 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
     await supabase.from('itinerary_options').delete().eq('room_id', roomId);
 
-    const rankedItineraries = rankItinerariesWithDiversity(itineraries);
+    const shortlisted = rankCandidatesWithDiversity(candidatePool, MAX_FINAL_OPTIONS);
+    const finalized = await Promise.all(
+      shortlisted.map(async (candidate, idx) => {
+        const shouldReview =
+          candidate.row.generation_method === 'ai' &&
+          candidate.verifiedPlaces.length >= 2;
+
+        if (!shouldReview) {
+          return {
+            ...candidate,
+            row: {
+              ...candidate.row,
+              option_number: idx + 1,
+            },
+          };
+        }
+
+        try {
+          const reviewed = await reviewDeterministicItineraryWithGroq({
+            plan: candidate.row.plan,
+            candidates: candidate.verifiedPlaces,
+            hub: candidate.hub,
+            mood,
+            profile: candidate.profile,
+            perPersonCap,
+          });
+
+          const reviewedPlan = buildEnrichedPlan({
+            plan: reviewed.plan,
+            verifiedPlaces: candidate.verifiedPlaces,
+            hub: candidate.hub,
+            mood,
+            profile: candidate.profile,
+            perPersonCap,
+            meetupStartTime,
+            membersWithLocations,
+          });
+
+          return {
+            ...candidate,
+            row: {
+              ...candidate.row,
+              option_number: idx + 1,
+              plan: reviewedPlan,
+              total_cost_estimate: reviewedPlan.total_cost_per_person,
+              ai_model_version: reviewed.model || candidate.row.ai_model_version,
+            },
+          };
+        } catch (error: unknown) {
+          const reason = error instanceof Error ? error.message : 'review_failed';
+          return {
+            ...candidate,
+            row: {
+              ...candidate.row,
+              option_number: idx + 1,
+              plan: {
+                ...candidate.row.plan,
+                why_this_option:
+                  candidate.row.plan.why_this_option ||
+                  `Deterministic itinerary selected without AI review (${reason}).`,
+              },
+            },
+          };
+        }
+      })
+    );
+
+    const rankedItineraries = finalized.map((candidate) => candidate.row);
 
     const { error: insertError } = await supabase
       .from('itinerary_options')
