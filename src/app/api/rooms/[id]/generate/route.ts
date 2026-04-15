@@ -80,6 +80,10 @@ const OPTION_PROFILES: ItineraryProfile[] = [
   'budget_bites',
 ];
 const MAX_FINAL_OPTIONS = 4;
+const OLA_RESCUE_TIMEOUT_MS = 4500;
+const OLA_RESCUE_RADIUS_KM = 7;
+const RELAXED_PLACE_CONFIDENCE = 0.28;
+const RELAXED_PLACE_DISTANCE_KM = 6.5;
 
 const HUB_GENERATION_TIMEOUT_MS = 65000;
 
@@ -503,6 +507,248 @@ function buildEnrichedPlan(params: {
   };
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function distanceInKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const left =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(left), Math.sqrt(1 - left));
+}
+
+function inferOlaPlaceType(name: string, description: string): Place['type'] {
+  const text = normalizeSearchText(`${name} ${description}`);
+  if (/\b(cafe|coffee|bakery|dessert|patisserie|tea|roastery)\b/.test(text)) return 'cafe';
+  if (/\b(restaurant|dining|kitchen|eatery|bistro|bar|grill|dhaba)\b/.test(text)) return 'restaurant';
+  if (/\b(park|beach|garden|promenade|lake|waterfront|fort|viewpoint|seaface|sea face)\b/.test(text)) return 'outdoor';
+  return 'activity';
+}
+
+function fallbackCostForType(type: Place['type'], cap: number): number {
+  const anchor = Math.max(220, cap);
+  if (type === 'cafe') return Math.round(Math.max(160, anchor * 0.25));
+  if (type === 'restaurant') return Math.round(Math.max(260, anchor * 0.4));
+  if (type === 'outdoor') return Math.round(Math.max(60, anchor * 0.1));
+  return Math.round(Math.max(220, anchor * 0.36));
+}
+
+function buildRelaxedPlacePool(
+  places: Place[],
+  hub: { lat: number; lng: number }
+): Place[] {
+  const seen = new Set<string>();
+
+  return places
+    .filter((place) => Boolean(place.name && place.name.trim().length > 3))
+    .filter((place) => typeof place.lat === 'number' && Number.isFinite(place.lat))
+    .filter((place) => typeof place.lng === 'number' && Number.isFinite(place.lng))
+    .filter((place) => Boolean(place.type))
+    .filter((place) => (place.confidence_score || 0.35) >= RELAXED_PLACE_CONFIDENCE)
+    .filter((place) => {
+      const dist = distanceInKm(hub, { lat: Number(place.lat), lng: Number(place.lng) });
+      return dist <= RELAXED_PLACE_DISTANCE_KM;
+    })
+    .filter((place) => {
+      const key = normalizeSearchText(place.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function pickDiverseRealPlaces(places: Place[]): Place[] {
+  const sorted = [...places].sort((a, b) => {
+    const left = (b.confidence_score || 0.35) + (b.relevance_score || 0.4) * 0.6;
+    const right = (a.confidence_score || 0.35) + (a.relevance_score || 0.4) * 0.6;
+    return left - right;
+  });
+
+  const selected: Place[] = [];
+  const usedTypes = new Set<Place['type']>();
+  for (const place of sorted) {
+    if (selected.length >= 3) break;
+    if (!usedTypes.has(place.type)) {
+      selected.push(place);
+      usedTypes.add(place.type);
+    }
+  }
+
+  for (const place of sorted) {
+    if (selected.length >= 3) break;
+    const exists = selected.some((item) => normalizeSearchText(item.name) === normalizeSearchText(place.name));
+    if (!exists) selected.push(place);
+  }
+
+  return selected;
+}
+
+async function fetchOlaRescuePlaces(params: {
+  hubName: string;
+  hubLocation: { lat: number; lng: number };
+  mood: Mood;
+  perPersonCap: number;
+}): Promise<Place[]> {
+  const apiKey = process.env.OLA_MAPS_API_KEY?.trim();
+  if (!apiKey) return [];
+
+  const moodQueries: Record<Mood, string[]> = {
+    fun: ['arcade', 'bowling', 'cafe', 'restaurant'],
+    chill: ['cafe', 'promenade', 'park', 'restaurant'],
+    romantic: ['romantic cafe', 'restaurant', 'dessert', 'sunset point'],
+    adventure: ['activity', 'escape room', 'outdoor', 'restaurant'],
+  };
+
+  const queries = moodQueries[params.mood] || moodQueries.fun;
+  const collected: Place[] = [];
+  const seen = new Set<string>();
+
+  await Promise.all(
+    queries.map(async (query) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), OLA_RESCUE_TIMEOUT_MS);
+
+      try {
+        const url = `https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(`${query} ${params.hubName} Mumbai`)}&api_key=${apiKey}`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        const results = Array.isArray(data?.predictions)
+          ? data.predictions
+          : Array.isArray(data?.results)
+          ? data.results
+          : [];
+
+        for (const result of results) {
+          const name = String(result?.name || result?.structured_formatting?.main_text || result?.description || '').trim();
+          const lat = Number(result?.geometry?.location?.lat);
+          const lng = Number(result?.geometry?.location?.lng);
+          if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+          const key = normalizeSearchText(name);
+          if (!key || seen.has(key)) continue;
+
+          const dist = distanceInKm(params.hubLocation, { lat, lng });
+          if (dist > OLA_RESCUE_RADIUS_KM) continue;
+
+          seen.add(key);
+          const description = String(result?.description || `${query} near ${params.hubName}`);
+          const type = inferOlaPlaceType(name, description);
+          const estimated = fallbackCostForType(type, params.perPersonCap);
+
+          collected.push({
+            name,
+            type,
+            lat,
+            lng,
+            description: `${description} (Ola Maps discovery)`,
+            estimated_cost: estimated,
+            cost_range: {
+              min: Math.round(Math.max(40, estimated * 0.75)),
+              max: Math.round(Math.max(80, estimated * 1.3)),
+            },
+            area: params.hubName,
+            tags: ['ola_rescue'],
+            source: 'osm_fallback',
+            confidence_score: 0.42,
+            relevance_score: Math.round(Math.max(0.35, 1 - dist / OLA_RESCUE_RADIUS_KM) * 100) / 100,
+          });
+        }
+      } catch {
+        // Best effort rescue path; ignore per-query failures.
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+
+  return collected.slice(0, 16);
+}
+
+function buildRealPlacesFallbackPlan(params: {
+  places: Place[];
+  hub: { name: string; lat: number; lng: number };
+  mood: Mood;
+  perPersonCap: number;
+  meetupStartTime: string;
+  reason: string;
+}): AIItineraryResponse | null {
+  const candidates = pickDiverseRealPlaces(params.places);
+  if (candidates.length < 2) return null;
+
+  const durationByType: Record<Place['type'], number> = {
+    cafe: 65,
+    activity: 90,
+    restaurant: 85,
+    outdoor: 55,
+  };
+
+  let cursor = toMinutes(params.meetupStartTime);
+  let previous = { lat: params.hub.lat, lng: params.hub.lng };
+
+  const stops = candidates.slice(0, 3).map((place, index) => {
+    const lat = Number(place.lat);
+    const lng = Number(place.lng);
+    const distKm = distanceInKm(previous, { lat, lng });
+    const transferMins = index === 0
+      ? Math.max(6, Math.min(20, Math.round((distKm / 0.5) * 6)))
+      : Math.max(5, Math.min(28, Math.round((distKm / 4.8) * 60)));
+    const start = toHHMM(cursor);
+    const duration = durationByType[place.type] || 70;
+    const estimatedCost =
+      typeof place.estimated_cost === 'number' && place.estimated_cost > 0
+        ? Math.round(place.estimated_cost)
+        : fallbackCostForType(place.type, params.perPersonCap);
+
+    previous = { lat, lng };
+    cursor += duration + transferMins;
+
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}(${encodeURIComponent(place.name)})`;
+
+    return {
+      stop_number: index + 1,
+      place_name: place.name,
+      place_type: place.type,
+      category_label: place.type,
+      lat,
+      lng,
+      start_time: start,
+      duration_mins: duration,
+      estimated_cost_per_person: estimatedCost,
+      place_rating: place.inferred_rating,
+      walk_from_previous_mins: transferMins,
+      distance_from_previous_km: Math.round(distKm * 10) / 10,
+      vibe_note: `${params.mood} compatible real place from rescue pool`,
+      map_url: mapUrl,
+      google_maps_url: mapUrl,
+      osm_maps_url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`,
+      source_url: place.url,
+    };
+  });
+
+  const total = stops.reduce((sum, stop) => sum + stop.estimated_cost_per_person, 0);
+
+  return {
+    stops,
+    total_cost_per_person: total,
+    contingency_buffer: Math.round(total * 0.12),
+    day_summary: `Real-place recovery itinerary for ${params.hub.name} (reason: ${params.reason}).`,
+    short_title: `${params.hub.name} - Real nearby recovery plan`,
+    area: params.hub.name,
+    vibe_tags: [params.mood, 'real-places', 'ola-rescue'],
+    meetup_start_time: params.meetupStartTime,
+  };
+}
+
 async function runGenerationJob(roomId: string, meetupStartTime: string): Promise<void> {
   const supabase = getSupabaseServer();
 
@@ -603,8 +849,28 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           const groupSize = members.length;
           const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
           const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
-          const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
-          if (verifiedPlaces.length < 3) {
+          const strictVerifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
+          let candidatePlaces = strictVerifiedPlaces;
+
+          if (candidatePlaces.length < 3) {
+            const olaRescuePlaces = await fetchOlaRescuePlaces({
+              hubName: hub.name,
+              hubLocation: { lat: hub.lat, lng: hub.lng },
+              mood,
+              perPersonCap,
+            });
+
+            const relaxedPool = buildRelaxedPlacePool(
+              [...preValidatedPlaces, ...olaRescuePlaces],
+              { lat: hub.lat, lng: hub.lng }
+            );
+
+            if (relaxedPool.length >= 2) {
+              candidatePlaces = relaxedPool;
+            }
+          }
+
+          if (candidatePlaces.length < 2) {
             throw new Error(`Insufficient verified places for hub ${hub.name}`);
           }
 
@@ -614,7 +880,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             try {
               const { plan, method, model } = generateGroundedItineraryForHub({
                 hub,
-                places: verifiedPlaces,
+                places: candidatePlaces,
                 mood,
                 perPersonCap,
                 profile,
@@ -624,7 +890,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
               const enrichedPlan = buildEnrichedPlan({
                 plan,
-                verifiedPlaces,
+                verifiedPlaces: candidatePlaces,
                 hub,
                 mood,
                 profile,
@@ -651,7 +917,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
                 },
                 hub,
                 profile,
-                verifiedPlaces,
+                verifiedPlaces: candidatePlaces,
               });
             } catch {
               // Skip weak profile fit for this hub.
@@ -665,7 +931,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
               try {
                 const { plan, method, model } = generateGroundedItineraryForHub({
                   hub,
-                  places: verifiedPlaces,
+                  places: candidatePlaces,
                   mood,
                   perPersonCap: relaxedCap,
                   profile,
@@ -676,7 +942,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
                 const enrichedPlan = {
                   ...buildEnrichedPlan({
                     plan,
-                    verifiedPlaces,
+                    verifiedPlaces: candidatePlaces,
                     hub,
                     mood,
                     profile,
@@ -707,7 +973,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
                   },
                   hub,
                   profile,
-                  verifiedPlaces,
+                  verifiedPlaces: candidatePlaces,
                 });
               } catch {
                 // Continue trying other profiles.
@@ -782,17 +1048,35 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
 
         const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
         const reason = error instanceof Error ? error.message : 'unknown_generation_error';
-        const fallbackPlan = buildEmergencyFallbackPlan({
+
+        const olaRescuePlaces = await fetchOlaRescuePlaces({
+          hubName: hub.name,
+          hubLocation: { lat: hub.lat, lng: hub.lng },
+          mood,
+          perPersonCap,
+        });
+
+        const realFallback = buildRealPlacesFallbackPlan({
+          places: olaRescuePlaces,
+          hub: { name: hub.name, lat: hub.lat, lng: hub.lng },
+          mood,
+          perPersonCap,
+          meetupStartTime,
+          reason,
+        });
+
+        const fallbackPlan = realFallback || buildEmergencyFallbackPlan({
           hub,
           mood,
           perPersonCap,
           meetupStartTime,
           reason,
         });
+
         const enrichedPlan = {
           ...buildEnrichedPlan({
             plan: fallbackPlan,
-            verifiedPlaces: [],
+            verifiedPlaces: olaRescuePlaces,
             hub,
             mood,
             profile,
@@ -800,7 +1084,9 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             meetupStartTime,
             membersWithLocations,
           }),
-          why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
+          why_this_option: realFallback
+            ? `Real-place recovery option generated from Ola Maps after strict generation failed: ${reason}`
+            : `Reliable fallback option generated because primary pipeline failed: ${reason}`,
         };
 
         const fallbackCandidate: HubGenerationCandidate = {
@@ -821,7 +1107,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           },
           hub,
           profile,
-          verifiedPlaces: [],
+          verifiedPlaces: olaRescuePlaces,
         };
 
         await insertOption(fallbackCandidate);
