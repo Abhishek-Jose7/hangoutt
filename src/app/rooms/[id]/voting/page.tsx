@@ -35,6 +35,8 @@ const strategyLabels: Record<string, string> = {
   cultural_hub: 'Vibe Match',
 };
 
+const TARGET_ITINERARY_OPTIONS = 4;
+
 function getFairnessClass(score: number): string {
   if (score >= 0.85) return 'fairness-high';
   if (score >= 0.65) return 'fairness-medium';
@@ -104,6 +106,8 @@ export default function VotingPage() {
   const topOptionIds = votesData?.top_option_ids || [];
   const isTie = votesData?.is_tie || false;
   const typedItineraries = itineraries as ItineraryOption[] | undefined;
+  const readyOptionsCount = typedItineraries?.length || 0;
+  const loadingMoreOptions = readyOptionsCount > 0 && readyOptionsCount < TARGET_ITINERARY_OPTIONS;
   const voteProgress = votesData && votesData.total_members > 0
     ? Math.round((votesData.total_votes / votesData.total_members) * 100)
     : 0;
@@ -145,10 +149,20 @@ export default function VotingPage() {
               <div className="saas-kpi"><p className="saas-kpi-label">Votes</p><p className="saas-kpi-value">{votesData?.total_votes || 0}</p></div>
               <div className="saas-kpi"><p className="saas-kpi-label">Members</p><p className="saas-kpi-value">{votesData?.total_members || 0}</p></div>
               <div className="saas-kpi"><p className="saas-kpi-label">Progress</p><p className="saas-kpi-value">{voteProgress}%</p></div>
-              <div className="saas-kpi"><p className="saas-kpi-label">Options</p><p className="saas-kpi-value">{typedItineraries?.length || 0}</p></div>
+              <div className="saas-kpi">
+                <p className="saas-kpi-label">Options</p>
+                <p className="saas-kpi-value">{readyOptionsCount}/{TARGET_ITINERARY_OPTIONS}</p>
+              </div>
             </div>
           </div>
         </WebsiteHero>
+
+        {loadingMoreOptions ? (
+          <div className="panel p-4 border-[rgba(59,130,246,0.35)] bg-[rgba(59,130,246,0.08)] text-sm text-[var(--color-info)] inline-flex items-center gap-2">
+            <Clock3 className="h-4 w-4" />
+            Itineraries are streaming in live: {readyOptionsCount}/{TARGET_ITINERARY_OPTIONS} ready. More options will appear automatically.
+          </div>
+        ) : null}
 
         {isAdmin && !allVoted ? (
           <div className="panel p-4 border-[rgba(255,193,7,0.3)] bg-[rgba(255,193,7,0.08)] text-sm text-[var(--color-warning)] inline-flex items-center gap-2">

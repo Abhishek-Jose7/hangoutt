@@ -554,44 +554,140 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
     const budgets = members.map((member) => (member.budget ? Number(member.budget) : null));
     const perPersonCap = calculatePerPersonCap(budgets);
     const mood = room.mood as Mood;
+    const generationStartedAt = new Date().toISOString();
 
     const hubs = generateHubCandidates(memberLocations, memberStations, mood);
+    await supabase.from('itinerary_options').delete().eq('room_id', roomId);
 
-    const results = await Promise.allSettled<HubGenerationCandidate[]>(
-      hubs.map((hub, index) =>
-        withTimeout(
-          (async () => {
-            const groupSize = members.length;
-            const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
-            const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
-            const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
-            if (verifiedPlaces.length < 3) {
-              throw new Error(`Insufficient verified places for hub ${hub.name}`);
+    let nextOptionNumber = 1;
+    let insertedCount = 0;
+    let switchedToVoting = false;
+
+    const insertOption = async (candidate: HubGenerationCandidate) => {
+      if (nextOptionNumber > MAX_FINAL_OPTIONS) return;
+
+      const optionNumber = nextOptionNumber;
+      nextOptionNumber += 1;
+
+      const row: InsertItineraryRow = {
+        ...candidate.row,
+        option_number: optionNumber,
+      };
+
+      const { error: insertError } = await supabase
+        .from('itinerary_options')
+        .insert([row]);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      insertedCount += 1;
+
+      if (!switchedToVoting) {
+        await supabase.from('rooms').update({ status: 'voting' }).eq('id', roomId);
+        switchedToVoting = true;
+      }
+
+      await cacheSet(getJobKey(roomId), {
+        state: 'in_progress',
+        started_at: generationStartedAt,
+        options_count: insertedCount,
+      } satisfies GenerationJobStatus, 3600);
+    };
+
+    const hubTasks = hubs.map((hub, index) =>
+      withTimeout(
+        (async () => {
+          const preferredProfile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+          const groupSize = members.length;
+          const places = await searchPlaces(hub.name, { lat: hub.lat, lng: hub.lng }, mood, perPersonCap, groupSize);
+          const preValidatedPlaces = finalValidatePlacesBeforeEngine(places);
+          const verifiedPlaces = validateGroundedPlaces(preValidatedPlaces, { lat: hub.lat, lng: hub.lng });
+          if (verifiedPlaces.length < 3) {
+            throw new Error(`Insufficient verified places for hub ${hub.name}`);
+          }
+
+          const hubCandidates: HubGenerationCandidate[] = [];
+
+          for (const profile of OPTION_PROFILES) {
+            try {
+              const { plan, method, model } = generateGroundedItineraryForHub({
+                hub,
+                places: verifiedPlaces,
+                mood,
+                perPersonCap,
+                profile,
+                meetupStartTime,
+                groupSize,
+              });
+
+              const enrichedPlan = buildEnrichedPlan({
+                plan,
+                verifiedPlaces,
+                hub,
+                mood,
+                profile,
+                perPersonCap,
+                meetupStartTime,
+                membersWithLocations,
+              });
+
+              hubCandidates.push({
+                row: {
+                  room_id: roomId,
+                  option_number: 0,
+                  hub_name: hub.name,
+                  hub_lat: hub.lat,
+                  hub_lng: hub.lng,
+                  hub_strategy: hub.strategy,
+                  plan: enrichedPlan,
+                  total_cost_estimate: enrichedPlan.total_cost_per_person,
+                  max_travel_time_mins: Math.round(hub.maxTravelTime),
+                  avg_travel_time_mins: Math.round(hub.avgTravelTime),
+                  travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+                  generation_method: method,
+                  ai_model_version: model,
+                },
+                hub,
+                profile,
+                verifiedPlaces,
+              });
+            } catch {
+              // Skip weak profile fit for this hub.
             }
+          }
 
-            const hubCandidates: HubGenerationCandidate[] = [];
+          // Recovery pass: allow slightly relaxed budget cap to avoid synthetic fallback on sparse/strict hubs.
+          if (!hubCandidates.length) {
+            const relaxedCap = Math.round(perPersonCap * 1.25);
             for (const profile of OPTION_PROFILES) {
               try {
                 const { plan, method, model } = generateGroundedItineraryForHub({
                   hub,
                   places: verifiedPlaces,
                   mood,
-                  perPersonCap,
+                  perPersonCap: relaxedCap,
                   profile,
                   meetupStartTime,
                   groupSize,
                 });
 
-                const enrichedPlan = buildEnrichedPlan({
-                  plan,
-                  verifiedPlaces,
-                  hub,
-                  mood,
-                  profile,
-                  perPersonCap,
-                  meetupStartTime,
-                  membersWithLocations,
-                });
+                const enrichedPlan = {
+                  ...buildEnrichedPlan({
+                    plan,
+                    verifiedPlaces,
+                    hub,
+                    mood,
+                    profile,
+                    perPersonCap,
+                    meetupStartTime,
+                    membersWithLocations,
+                  }),
+                  why_this_option:
+                    plan.why_this_option ||
+                    'Recovery mode: relaxed budget-fit constraints used to keep real nearby places.',
+                };
 
                 hubCandidates.push({
                   row: {
@@ -607,174 +703,142 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
                     avg_travel_time_mins: Math.round(hub.avgTravelTime),
                     travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
                     generation_method: method,
-                    ai_model_version: model,
+                    ai_model_version: `${model}-recovery`,
                   },
                   hub,
                   profile,
                   verifiedPlaces,
                 });
               } catch {
-                // Skip weak profile fit for this hub, keep remaining profiles.
+                // Continue trying other profiles.
               }
             }
+          }
 
-            if (!hubCandidates.length) {
-              throw new Error(`No viable itinerary variants for hub ${hub.name}`);
+          if (!hubCandidates.length) {
+            throw new Error(`No viable itinerary variants for hub ${hub.name}`);
+          }
+
+          const bestByDiversity = rankCandidatesWithDiversity(hubCandidates, 1);
+          const bestCandidate = bestByDiversity[0] || hubCandidates[0];
+
+          const shouldReview =
+            bestCandidate.row.generation_method === 'ai' &&
+            bestCandidate.verifiedPlaces.length >= 2;
+
+          let finalCandidate = bestCandidate;
+          if (shouldReview) {
+            try {
+              const reviewed = await reviewDeterministicItineraryWithGroq({
+                plan: bestCandidate.row.plan,
+                candidates: bestCandidate.verifiedPlaces,
+                hub: bestCandidate.hub,
+                mood,
+                profile: bestCandidate.profile,
+                perPersonCap,
+              });
+
+              const reviewedPlan = buildEnrichedPlan({
+                plan: reviewed.plan,
+                verifiedPlaces: bestCandidate.verifiedPlaces,
+                hub: bestCandidate.hub,
+                mood,
+                profile: bestCandidate.profile,
+                perPersonCap,
+                meetupStartTime,
+                membersWithLocations,
+              });
+
+              finalCandidate = {
+                ...bestCandidate,
+                row: {
+                  ...bestCandidate.row,
+                  plan: reviewedPlan,
+                  total_cost_estimate: reviewedPlan.total_cost_per_person,
+                  ai_model_version: reviewed.model || bestCandidate.row.ai_model_version,
+                },
+              };
+            } catch {
+              // Keep deterministic version if AI review times out/fails.
             }
+          }
 
-            return hubCandidates;
-          })(),
-          HUB_GENERATION_TIMEOUT_MS,
-          `Hub ${hub.name} generation`
-        ).catch((error: unknown): HubGenerationCandidate[] => {
-          const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
-          const reason = error instanceof Error ? error.message : 'unknown_generation_error';
-          const fallbackPlan = buildEmergencyFallbackPlan({
-            hub,
-            mood,
-            perPersonCap,
-            meetupStartTime,
-            reason,
-          });
-          const enrichedPlan = {
-            ...buildEnrichedPlan({
-              plan: fallbackPlan,
-              verifiedPlaces: [],
-              hub,
-              mood,
-              profile,
-              perPersonCap,
-              meetupStartTime,
-              membersWithLocations,
-            }),
-            why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
-          };
+          // Prefer the profile tied to this hub strategy unless score gap is meaningful.
+          if (finalCandidate.profile !== preferredProfile) {
+            const preferred = hubCandidates.find((candidate) => candidate.profile === preferredProfile);
+            const currentScore = Number(finalCandidate.row.plan.score_breakdown?.total_score || 0);
+            const preferredScore = Number(preferred?.row.plan.score_breakdown?.total_score || 0);
+            if (preferred && preferredScore >= currentScore - 0.08) {
+              finalCandidate = preferred;
+            }
+          }
 
-          const fallbackCandidate: HubGenerationCandidate = {
-            row: {
-              room_id: roomId,
-              option_number: 0,
-              hub_name: hub.name,
-              hub_lat: hub.lat,
-              hub_lng: hub.lng,
-              hub_strategy: hub.strategy,
-              plan: enrichedPlan,
-              total_cost_estimate: fallbackPlan.total_cost_per_person,
-              max_travel_time_mins: Math.round(hub.maxTravelTime),
-              avg_travel_time_mins: Math.round(hub.avgTravelTime),
-              travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
-              generation_method: 'rule_based_fallback',
-              ai_model_version: null,
-            },
-            hub,
-            profile,
+          await insertOption(finalCandidate);
+        })(),
+        HUB_GENERATION_TIMEOUT_MS,
+        `Hub ${hub.name} generation`
+      ).catch(async (error: unknown) => {
+        if (nextOptionNumber > MAX_FINAL_OPTIONS) return;
+
+        const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
+        const reason = error instanceof Error ? error.message : 'unknown_generation_error';
+        const fallbackPlan = buildEmergencyFallbackPlan({
+          hub,
+          mood,
+          perPersonCap,
+          meetupStartTime,
+          reason,
+        });
+        const enrichedPlan = {
+          ...buildEnrichedPlan({
+            plan: fallbackPlan,
             verifiedPlaces: [],
-          };
-
-          return [fallbackCandidate];
-        })
-      )
-    );
-
-    const candidatePool = results
-      .filter((result): result is PromiseFulfilledResult<HubGenerationCandidate[]> => result.status === 'fulfilled')
-      .flatMap((result) => result.value);
-
-    if (candidatePool.length === 0) {
-      const reasons = results
-        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-        .map((result) => (result.reason instanceof Error ? result.reason.message : String(result.reason)))
-        .slice(0, 3)
-        .join(' | ');
-      throw new Error(`All itinerary generations failed. ${reasons || 'Please try again.'}`);
-    }
-
-    await supabase.from('itinerary_options').delete().eq('room_id', roomId);
-
-    const shortlisted = rankCandidatesWithDiversity(candidatePool, MAX_FINAL_OPTIONS);
-    const finalized = await Promise.all(
-      shortlisted.map(async (candidate, idx) => {
-        const shouldReview =
-          candidate.row.generation_method === 'ai' &&
-          candidate.verifiedPlaces.length >= 2;
-
-        if (!shouldReview) {
-          return {
-            ...candidate,
-            row: {
-              ...candidate.row,
-              option_number: idx + 1,
-            },
-          };
-        }
-
-        try {
-          const reviewed = await reviewDeterministicItineraryWithGroq({
-            plan: candidate.row.plan,
-            candidates: candidate.verifiedPlaces,
-            hub: candidate.hub,
+            hub,
             mood,
-            profile: candidate.profile,
-            perPersonCap,
-          });
-
-          const reviewedPlan = buildEnrichedPlan({
-            plan: reviewed.plan,
-            verifiedPlaces: candidate.verifiedPlaces,
-            hub: candidate.hub,
-            mood,
-            profile: candidate.profile,
+            profile,
             perPersonCap,
             meetupStartTime,
             membersWithLocations,
-          });
+          }),
+          why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
+        };
 
-          return {
-            ...candidate,
-            row: {
-              ...candidate.row,
-              option_number: idx + 1,
-              plan: reviewedPlan,
-              total_cost_estimate: reviewedPlan.total_cost_per_person,
-              ai_model_version: reviewed.model || candidate.row.ai_model_version,
-            },
-          };
-        } catch (error: unknown) {
-          const reason = error instanceof Error ? error.message : 'review_failed';
-          return {
-            ...candidate,
-            row: {
-              ...candidate.row,
-              option_number: idx + 1,
-              plan: {
-                ...candidate.row.plan,
-                why_this_option:
-                  candidate.row.plan.why_this_option ||
-                  `Deterministic itinerary selected without AI review (${reason}).`,
-              },
-            },
-          };
-        }
+        const fallbackCandidate: HubGenerationCandidate = {
+          row: {
+            room_id: roomId,
+            option_number: 0,
+            hub_name: hub.name,
+            hub_lat: hub.lat,
+            hub_lng: hub.lng,
+            hub_strategy: hub.strategy,
+            plan: enrichedPlan,
+            total_cost_estimate: fallbackPlan.total_cost_per_person,
+            max_travel_time_mins: Math.round(hub.maxTravelTime),
+            avg_travel_time_mins: Math.round(hub.avgTravelTime),
+            travel_fairness_score: Math.round(hub.fairnessScore * 100) / 100,
+            generation_method: 'rule_based_fallback',
+            ai_model_version: null,
+          },
+          hub,
+          profile,
+          verifiedPlaces: [],
+        };
+
+        await insertOption(fallbackCandidate);
       })
     );
 
-    const rankedItineraries = finalized.map((candidate) => candidate.row);
+    await Promise.allSettled(hubTasks);
 
-    const { error: insertError } = await supabase
-      .from('itinerary_options')
-      .insert(rankedItineraries);
-
-    if (insertError) {
-      throw new Error(insertError.message);
+    if (insertedCount === 0) {
+      throw new Error('All itinerary generations failed. Please try again.');
     }
-
-    await supabase.from('rooms').update({ status: 'voting' }).eq('id', roomId);
 
     await cacheSet(getJobKey(roomId), {
       state: 'completed',
-      started_at: new Date().toISOString(),
+      started_at: generationStartedAt,
       completed_at: new Date().toISOString(),
-      options_count: rankedItineraries.length,
+      options_count: insertedCount,
     } satisfies GenerationJobStatus, 3600);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Generation failed';
