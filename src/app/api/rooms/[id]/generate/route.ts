@@ -9,7 +9,7 @@ import { reviewDeterministicItineraryWithGroq } from '@/lib/ai/generate-itinerar
 import { calculatePerPersonCap } from '@/lib/budget';
 import { cacheGet, cacheIncr, cacheSet } from '@/lib/redis';
 import { finalValidatePlacesBeforeEngine, validateGroundedPlaces } from '@/lib/place-validation';
-import type { Mood, LatLng, ItineraryProfile, Place, AIItineraryResponse } from '@/types';
+import type { Mood, LatLng, ItineraryProfile, Place, AIItineraryResponse, HubCandidate } from '@/types';
 import { z } from 'zod';
 
 interface InsertItineraryRow {
@@ -626,7 +626,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
           })(),
           HUB_GENERATION_TIMEOUT_MS,
           `Hub ${hub.name} generation`
-        ).catch((error: unknown) => {
+        ).catch((error: unknown): HubGenerationCandidate[] => {
           const profile = OPTION_PROFILES[index % OPTION_PROFILES.length];
           const reason = error instanceof Error ? error.message : 'unknown_generation_error';
           const fallbackPlan = buildEmergencyFallbackPlan({
@@ -650,7 +650,7 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             why_this_option: `Reliable fallback option generated because primary pipeline failed: ${reason}`,
           };
 
-          return [{
+          const fallbackCandidate: HubGenerationCandidate = {
             row: {
               room_id: roomId,
               option_number: 0,
@@ -669,7 +669,9 @@ async function runGenerationJob(roomId: string, meetupStartTime: string): Promis
             hub,
             profile,
             verifiedPlaces: [],
-          }];
+          };
+
+          return [fallbackCandidate];
         })
       )
     );
