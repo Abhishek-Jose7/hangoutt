@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hangout (v2.0) — Experience-First Outing Planner
 
-## Getting Started
+Hangout is a collaborative group planning platform designed to coordinate and optimize group outings. The platform collects participant location, budget, and activity preferences, calculates geographic midpoints, and utilizes Groq (llama-3.3-70b-versatile) to generate personalized, narrative-driven 3-4 day itineraries matching three distinct budget tiers.
 
-First, run the development server:
+---
 
+## 🛠️ Technology Stack
+
+* **Framework**: Next.js 16 App Router (React 19)
+* **Authentication**: Clerk (with internal database user sync webhooks)
+* **Database**: Cloudflare D1 (SQLite)
+* **ORM**: Drizzle ORM
+* **Maps Integration**: Ola Maps Places & Geocoding API
+* **AI Engine**: Groq SDK (`llama-3.3-70b-versatile` in JSON mode)
+* **Validation**: Zod (all entry inputs & AI schema outputs)
+
+---
+
+## 🚀 Getting Started
+
+### 1. Install Dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Run Local Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) to view the application locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🗄️ Database Management & Migrations
 
-## Learn More
+We use **Drizzle ORM** with **Drizzle Kit** to manage schema migrations. The database falls back to a local SQLite file (`./local.db`) during Next.js standalone runs, and binds to **Cloudflare D1** in Pages/Workers environments.
 
-To learn more about Next.js, take a look at the following resources:
+For complete, detailed instructions on schemas, environments, query recipes, and gotchas, see the dedicated 📂 [Drizzle Database Guide](file:///c:/Users/abhis/Documents/GitHub/hangoutt/drizzle/README.md).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Quick Commands Cheat Sheet
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Task | Command | Target Database |
+| :--- | :--- | :--- |
+| **Modify Schema** | Edit [schema.ts](file:///c:/Users/abhis/Documents/GitHub/hangoutt/src/lib/db/schema.ts) | — |
+| **Generate Migration** | `npm run db:generate` | Diff snapshot and create SQL migration |
+| **Apply to Local SQLite** | `npm run db:migrate` | Local next dev database (`./local.db`) |
+| **Apply to Local D1** | `npm run db:d1:local` | Wrangler local emulator D1 sandbox |
+| **Apply to Remote D1** | `npm run db:d1:remote` | Live Cloudflare production database |
+| **Visual DB Inspector** | `npm run db:studio` | Drizzle Studio web inspector (port `4983`) |
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🔍 Direct CLI SQL Queries
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+You can execute raw SQL commands directly from your terminal using Wrangler's CLI.
+
+* **Local D1 Sandbox**:
+  ```bash
+  npx wrangler d1 execute hangout-dev --local --command "SELECT * FROM users LIMIT 5;"
+  ```
+* **Remote Production D1**:
+  ```bash
+  npx wrangler d1 execute hangout-dev --remote --command "SELECT * FROM users LIMIT 5;"
+  ```
+
+
+---
+
+## 📂 Project Architecture
+
+```
+src/
+  app/              ← Next.js App Router (Pages, layouts, API Route Handlers)
+  actions/          ← Server Actions (Delegated to Service Layer; handles revalidation)
+  lib/
+    auth/           ← requireAuth and getCurrentUser Clerk helper functions
+    db/             ← schema, migration scripts, and Drizzle Client instances
+    groq/           ← Groq Client and Itinerary prompt templates
+    maps/           ← Ola Maps HTTP proxies
+    algorithms/     ← Coordinate midpointing and scoring (Venues + Experiences)
+    validators/     ← Zod validation schemas
+    repositories/   ← Repository Layer (CRUD and direct database transactions)
+    services/       ← Service Layer (Orchestration, aggregate calculators, permissions)
+```
