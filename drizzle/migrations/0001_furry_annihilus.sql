@@ -1,0 +1,1 @@
+ALTER TABLE `groups` ADD `voting_status` text DEFAULT 'CLOSED' NOT NULL;
