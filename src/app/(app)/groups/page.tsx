@@ -31,20 +31,20 @@ export default function GroupsPage() {
       title="Outing Groups"
       subtitle="Find your planning groups or start a new outing workspace."
       actions={
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex gap-2 w-full sm:w-auto font-sans text-xs">
           <Button
             size="sm"
             onClick={() => setIsJoinOpen(true)}
             variant="outline"
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
           >
-            <LogIn className="h-4 w-4" />
+            <LogIn className="h-4 w-4 text-primary" />
             Join Group
           </Button>
           <Button
             size="sm"
             onClick={() => setIsCreateOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center gap-1.5"
+            className="bg-primary hover:bg-primary/95 text-primary-foreground flex items-center gap-1.5 rounded-lg font-semibold tracking-wide"
           >
             <Plus className="h-4 w-4" />
             New Group
@@ -52,22 +52,23 @@ export default function GroupsPage() {
         </div>
       }
     >
-      <div className="space-y-6">
+      <div className="space-y-6 font-sans text-sm">
+        
         {/* Search & Filter Controls */}
-        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-white p-4 rounded-xl border border-slate-200">
+        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-card p-4 rounded-xl border border-border">
           <div className="w-full md:max-w-md">
             <SearchBar value={search} onChange={setSearch} placeholder="Search groups..." />
           </div>
           
-          <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+          <div className="flex rounded-lg border border-border p-0.5 bg-black">
             {(['ALL', 'ACTIVE', 'ARCHIVED'] as const).map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
                   filter === type
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {type.charAt(0) + type.slice(1).toLowerCase()}
@@ -80,55 +81,56 @@ export default function GroupsPage() {
         {filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredGroups.map((group) => (
-              <Card key={group.id} className="hover:shadow-md transition-shadow relative overflow-hidden flex flex-col justify-between">
+              <Card key={group.id} className="relative overflow-hidden flex flex-col justify-between rounded-xl border border-border bg-card hover:border-primary/50 transition-all shadow-sm">
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start gap-2">
-                    <CardTitle className="text-lg font-bold">{group.name}</CardTitle>
+                    <CardTitle className="text-base font-bold text-foreground font-heading tracking-wide uppercase">{group.name}</CardTitle>
                     {group.status === 'ARCHIVED' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground border border-border">
                         <FolderArchive className="h-3 w-3" />
                         Archived
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-700/10">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-primary border border-primary/20">
                         <Activity className="h-3 w-3" />
                         Active
                       </span>
                     )}
                   </div>
-                  <CardDescription className="line-clamp-2 text-xs text-slate-500 mt-2 min-h-[32px]">
+                  <CardDescription className="line-clamp-2 text-xs text-muted-foreground mt-2 min-h-[32px] font-light">
                     {group.description || 'No description provided.'}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="text-sm text-slate-600 space-y-1.5 pb-4">
-                  <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
-                    <Users className="h-4 w-4 text-slate-400" />
+                <CardContent className="text-xs text-muted-foreground space-y-1.5 pb-4">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-3.5 w-3.5 text-primary" />
                     <span>{group.memberCount} Members joined</span>
                   </div>
-                  <div className="text-xs text-slate-400">
-                    Invite Code: <span className="font-mono font-bold text-slate-600">{group.inviteCode}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Invite Code:</span>
+                    <span className="font-mono text-foreground font-bold">{group.inviteCode}</span>
                   </div>
                 </CardContent>
-                <CardFooter className="pt-3 border-t border-slate-100 flex justify-end">
+                <CardFooter className="pt-3 border-t border-border flex justify-end">
                   <Link
                     href={`/groups/${group.id}`}
                     className={buttonVariants({
                       variant: 'ghost',
                       size: 'sm',
-                      className: 'text-indigo-600 hover:text-indigo-700 font-bold p-0 hover:bg-transparent',
+                      className: 'text-primary hover:underline font-bold p-0 hover:bg-transparent text-xs tracking-wide',
                     })}
                   >
-                    Open Workspace <ArrowRight className="h-4 w-4" />
+                    Open Workspace <ArrowRight className="h-3.5 w-3.5 ml-1" />
                   </Link>
                 </CardFooter>
               </Card>
             ))}
           </div>
         ) : (
-          <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
-            <Users className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-slate-800">No Groups Found</h3>
-            <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1">
+          <div className="text-center py-16 bg-card rounded-xl border border-border">
+            <Users className="h-8 w-8 text-primary mx-auto mb-3" />
+            <h3 className="text-base font-bold text-foreground">No Groups Found</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1 font-light">
               Create a group or enter an invite code to start collaborating with friends.
             </p>
           </div>

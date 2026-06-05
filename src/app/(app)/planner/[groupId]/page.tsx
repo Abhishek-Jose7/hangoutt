@@ -39,7 +39,6 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
         planId: planId,
       });
 
-      // Since we are mocking the database rows for votes, we handle the local display state
       if (!res.success) {
         toast.error(res.error.message || 'Failed to submit vote');
         setIsCasting(false);
@@ -88,10 +87,13 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
   return (
     <PageContainer
       title="Itinerary Planner"
-      subtitle={`Outing options generated for ${group.name}`}
+      subtitle={`Outing choices generated automatically for ${group.name}`}
       actions={
-        <div className="flex gap-2">
-          <Link href={`/groups/${group.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+        <div className="flex gap-2 font-sans text-xs">
+          <Link 
+            href={`/groups/${group.id}`} 
+            className={buttonVariants({ variant: 'outline', size: 'sm', className: 'rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide' })}
+          >
             Back to Group
           </Link>
           {votingStatus === 'OPEN' && (
@@ -100,7 +102,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
               variant="destructive"
               onClick={handleCloseVoting}
               disabled={isClosing}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1.5 rounded-lg font-semibold tracking-wide font-sans text-xs"
             >
               <Calendar className="h-4 w-4" />
               Close Voting
@@ -109,17 +111,17 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
         </div>
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans text-sm">
         
         {/* Navigation / List Panel */}
         <div className="space-y-4">
           <div className="flex justify-between items-center px-1">
-            <h2 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-indigo-600" />
+            <h2 className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-primary" />
               Itinerary Choices
             </h2>
-            <Badge variant="outline" className={votingStatus === 'OPEN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500'}>
-              Voting: {votingStatus}
+            <Badge variant="outline" className={votingStatus === 'OPEN' ? 'bg-primary/10 text-primary border-primary/20 rounded-full font-semibold uppercase py-0.5 px-2.5 text-[9px]' : 'bg-muted text-muted-foreground border border-border rounded-full font-semibold uppercase py-0.5 px-2.5 text-[9px]'}>
+              Voting: {votingStatus.toLowerCase()}
             </Badge>
           </div>
 
@@ -133,37 +135,37 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                 <Card 
                   key={plan.id}
                   onClick={() => setActivePlanId(plan.id)}
-                  className={`cursor-pointer transition border hover:border-indigo-200 ${
-                    isActive ? 'border-2 border-indigo-600 shadow-sm bg-indigo-50/10' : 'border-slate-200'
+                  className={`cursor-pointer transition border rounded-xl bg-card shadow-sm hover:border-primary/50 ${
+                    isActive ? 'border-primary' : 'border-border'
                   }`}
                 >
                   <CardHeader className="p-4 pb-2">
                     <div className="flex justify-between items-start gap-1">
-                      <CardTitle className="text-sm font-extrabold text-slate-800">{plan.name}</CardTitle>
-                      <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-1">
-                        <Vote className="h-3 w-3" />
-                        {voteCount}
+                      <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wide">{plan.name}</CardTitle>
+                      <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 hover:text-primary rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2">
+                        <Vote className="h-2.5 w-2.5" />
+                        {voteCount} votes
                       </Badge>
                     </div>
-                    <CardDescription className="text-xs line-clamp-1">{plan.tagline}</CardDescription>
+                    <CardDescription className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{plan.tagline}</CardDescription>
                   </CardHeader>
-                  <CardContent className="p-4 pt-0 text-xs text-slate-500 flex justify-between">
+                  <CardContent className="p-4 pt-0 text-[10px] text-muted-foreground flex justify-between font-medium">
                     <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-slate-400" />
+                      <Clock className="h-3.5 w-3.5 text-primary" />
                       {Math.round(plan.totalDurationMinutes / 60)}h {plan.totalDurationMinutes % 60}m
                     </span>
-                    <span className="flex items-center gap-0.5 font-bold text-slate-700">
+                    <span className="font-bold text-foreground">
                       ₹{plan.totalEstimatedCostPerHead} / head
                     </span>
                   </CardContent>
-                  <CardFooter className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium">
-                      {plan.slots.length} Slots scheduled
+                  <CardFooter className="p-3 bg-black/40 border-t border-border flex items-center justify-between text-[10px] text-muted-foreground rounded-b-xl">
+                    <span>
+                      {plan.slots.length} Activities scheduled
                     </span>
                     {hasUserVoted && (
-                      <span className="text-emerald-600 font-bold flex items-center gap-0.5">
-                        <Check className="h-3.5 w-3.5" />
-                        My Vote
+                      <span className="text-primary font-bold flex items-center gap-0.5 uppercase">
+                        <Check className="h-3 w-3" />
+                        Voted
                       </span>
                     )}
                   </CardFooter>
@@ -175,27 +177,27 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
 
         {/* Detailed Timeline View Panel */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3 border-b border-slate-100">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <Card className="border border-border rounded-xl bg-card shadow-sm">
+            <CardHeader className="pb-3 border-b border-border">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <CardTitle className="text-lg font-bold text-slate-900">{selectedPlan.name}</CardTitle>
-                  <CardDescription className="text-sm text-slate-500 mt-1">{selectedPlan.tagline}</CardDescription>
+                  <CardTitle className="text-base font-bold text-foreground uppercase font-heading tracking-wide">{selectedPlan.name}</CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground font-light mt-1">{selectedPlan.tagline}</CardDescription>
                 </div>
                 {votingStatus === 'OPEN' && (
                   <Button 
                     size="sm"
                     disabled={isCasting || userVotedPlanId === selectedPlan.id}
                     onClick={() => handleVoteCast(selectedPlan.id)}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow"
+                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold rounded-lg uppercase tracking-wider text-[10px] px-5 py-2 shadow-sm"
                   >
                     {userVotedPlanId === selectedPlan.id ? (
                       <>
-                        <Check className="mr-1 h-4 w-4" /> Voted
+                        <Check className="mr-1 h-3.5 w-3.5" /> Voted
                       </>
                     ) : (
                       <>
-                        <Vote className="mr-1 h-4 w-4" /> Vote for Plan
+                        <Vote className="mr-1 h-3.5 w-3.5" /> Vote for Plan
                       </>
                     )}
                   </Button>
@@ -205,51 +207,51 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
             <CardContent className="pt-6 space-y-6">
               
               {/* Cost & Duration Banner */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-xl text-center">
+              <div className="grid grid-cols-2 gap-4 bg-primary/10 border border-primary/20 p-4 rounded-xl text-center">
                 <div>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Estimated Budget</p>
-                  <p className="text-xl font-extrabold text-slate-800 mt-1">₹{selectedPlan.totalEstimatedCostPerHead} <span className="text-xs text-slate-400 font-medium">/head</span></p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Estimated Budget</p>
+                  <p className="text-lg font-extrabold text-foreground mt-1">₹{selectedPlan.totalEstimatedCostPerHead} <span className="text-[10px] text-muted-foreground font-light">/ head</span></p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Duration</p>
-                  <p className="text-xl font-extrabold text-slate-800 mt-1">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Total Duration</p>
+                  <p className="text-lg font-extrabold text-foreground mt-1">
                     {Math.floor(selectedPlan.totalDurationMinutes / 60)}h {selectedPlan.totalDurationMinutes % 60}m
                   </p>
                 </div>
               </div>
 
               {/* Timeline slots */}
-              <div className="relative border-l border-slate-200 pl-6 ml-3 space-y-6">
+              <div className="relative border-l border-border pl-6 ml-3 space-y-6">
                 {selectedPlan.slots.map((slot, index) => {
                   return (
                     <div key={index} className="relative">
                       {/* Timeline point */}
-                      <span className="absolute -left-9 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 ring-4 ring-white text-indigo-700 text-xs font-bold">
+                      <span className="absolute -left-[35px] top-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold shadow-sm">
                         {slot.order}
                       </span>
                       
-                      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                      <div className="bg-black border border-border rounded-xl p-4 shadow-sm space-y-2 text-xs">
                         <div className="flex justify-between items-start gap-2">
                           <div>
-                            <h4 className="text-sm font-bold text-slate-900">{slot.venueName}</h4>
-                            <span className="inline-block mt-0.5 px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase">
-                              {slot.category}
+                            <h4 className="text-sm font-bold text-foreground uppercase tracking-wide">{slot.venueName}</h4>
+                            <span className="inline-block mt-1 px-2.5 py-0.5 bg-muted text-muted-foreground border border-border rounded-full text-[9px] font-bold uppercase tracking-wider font-sans">
+                              {slot.category.toLowerCase()}
                             </span>
                           </div>
-                          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                          <span className="text-[10px] font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full font-mono">
                             {slot.arrivalTime} ({slot.durationMinutes}m)
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        <p className="text-xs text-muted-foreground leading-relaxed font-light mt-2">
                           {slot.note}
                         </p>
-                        <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs text-slate-400">
+                        <div className="pt-2 border-t border-border flex justify-between items-center text-[10px] font-medium text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <DollarSign className="h-3.5 w-3.5" />
+                            <DollarSign className="h-3 w-3 text-primary" />
                             Estimated: ₹{slot.estimatedCostPerHead}
                           </span>
                           {slot.travelToNextMinutes !== null && (
-                            <span className="text-indigo-500 font-bold flex items-center gap-1">
+                            <span className="text-primary font-bold flex items-center gap-1 uppercase text-[9px]">
                               Travel Next: {slot.travelToNextMinutes} mins
                             </span>
                           )}
@@ -263,7 +265,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
             </CardContent>
           </Card>
         </div>
-
+ 
       </div>
     </PageContainer>
   );

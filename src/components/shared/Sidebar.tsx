@@ -17,9 +17,9 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:pt-16 border-r border-slate-200 bg-white">
+    <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:pt-16 border-r border-border bg-background">
       <div className="flex flex-col flex-grow pt-5 pb-4 overflow-y-auto px-4 gap-4">
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-grow space-y-1">
           {navigation.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
@@ -28,15 +28,15 @@ export default function Sidebar() {
                 href={item.href}
                 className={cn(
                   isActive
-                    ? 'bg-slate-100 text-indigo-600 font-semibold'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-                  'group flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors gap-3'
+                    ? 'bg-primary/10 text-primary font-bold'
+                    : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
+                  'group flex items-center px-4 py-2.5 text-xs font-sans font-semibold tracking-wide rounded-lg transition-colors gap-3'
                 )}
               >
                 <item.icon
                   className={cn(
-                    isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500',
-                    'flex-shrink-0 h-5 w-5'
+                    isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
+                    'flex-shrink-0 h-4.5 w-4.5'
                   )}
                   aria-hidden="true"
                 />

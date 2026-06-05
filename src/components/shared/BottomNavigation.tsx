@@ -17,7 +17,7 @@ export default function BottomNavigation() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-md md:hidden safe-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background md:hidden safe-bottom">
       <div className="flex h-16 items-center justify-around px-2">
         {navigation.map((item) => {
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
@@ -26,14 +26,14 @@ export default function BottomNavigation() {
               key={item.name}
               href={item.href}
               className={cn(
-                'flex flex-col items-center justify-center flex-1 h-full py-1 gap-1 text-[10px] font-medium transition-colors',
-                isActive ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+                'flex flex-col items-center justify-center flex-1 h-full py-1 gap-1 text-[9px] font-sans font-semibold uppercase tracking-wider transition-colors',
+                isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <item.icon
                 className={cn(
                   'h-5 w-5',
-                  isActive ? 'text-indigo-600' : 'text-slate-400'
+                  isActive ? 'text-primary' : 'text-muted-foreground'
                 )}
                 aria-hidden="true"
               />

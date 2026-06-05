@@ -148,18 +148,23 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   return (
     <PageContainer
       title={group.name}
-      subtitle={group.description || 'Coordinating outing plans.'}
+      subtitle={`Lobby Status: Active coordination / Outing category: ${group.groupType.toLowerCase()}`}
       actions={
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleShareCode} className="flex items-center gap-1">
-            <Share2 className="h-4 w-4" />
+        <div className="flex gap-2 font-sans text-xs">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleShareCode} 
+            className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
+          >
+            <Share2 className="h-4 w-4 text-primary" />
             Share Code
           </Button>
           <Button
             size="sm"
             onClick={handlePlanGeneration}
             disabled={isGenerating}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center gap-1.5"
+            className="bg-primary hover:bg-primary/95 text-primary-foreground flex items-center gap-1.5 rounded-lg font-semibold tracking-wide shadow-sm"
           >
             <Sparkles className="h-4 w-4" />
             Generate Plans
@@ -167,47 +172,50 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
         </div>
       }
     >
-      <div className="space-y-6">
+      <div className="space-y-6 font-sans text-sm">
+        
         {/* Workspace Quick Information */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="bg-indigo-50 border-indigo-100 flex items-center p-4 gap-3 shadow-sm">
-            <div className="p-3 bg-indigo-100 rounded-full text-indigo-700">
-              <Users className="h-5 w-5" />
-            </div>
+          
+          <Card className="bg-card border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
+            <Users className="h-5 w-5 text-primary flex-shrink-0" />
             <div>
-              <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Group Code</p>
-              <p className="text-lg font-mono font-extrabold text-indigo-900">{group.inviteCode}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Group Code</p>
+              <p className="text-base font-mono font-extrabold text-foreground">{group.inviteCode}</p>
             </div>
           </Card>
 
-          <Card className="bg-emerald-50 border-emerald-100 flex items-center p-4 gap-3 shadow-sm">
-            <div className="p-3 bg-emerald-100 rounded-full text-emerald-700">
-              <DollarSign className="h-5 w-5" />
-            </div>
+          <Card className="bg-card border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
+            <DollarSign className="h-5 w-5 text-primary flex-shrink-0" />
             <div>
-              <p className="text-xs text-emerald-600 font-bold uppercase tracking-wider">Group Budget (Avg)</p>
-              <p className="text-lg font-extrabold text-emerald-900">₹{budgetSummary.avg}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Budget Ceiling (Avg)</p>
+              <p className="text-base font-extrabold text-foreground">₹{budgetSummary.avg}</p>
             </div>
           </Card>
 
-          <Card className="bg-sky-50 border-sky-100 flex items-center p-4 gap-3 shadow-sm">
-            <div className="p-3 bg-sky-100 rounded-full text-sky-700">
-              <MapPin className="h-5 w-5" />
-            </div>
+          <Card className="bg-card border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
+            <MapPin className="h-5 w-5 text-primary flex-shrink-0" />
             <div>
-              <p className="text-xs text-sky-600 font-bold uppercase tracking-wider">Midpoint Coordinates</p>
-              <p className="text-sm font-bold text-slate-700">Calculated near Koramangala</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Midpoint Location</p>
+              <p className="text-sm font-semibold text-foreground">Calculated Near Lobby</p>
             </div>
           </Card>
+
         </div>
 
         {/* Content Tabs */}
         <Tabs defaultValue="workspace" className="space-y-6">
-          <TabsList className="bg-white border border-slate-200 p-1 w-full max-w-md justify-start grid grid-cols-2">
-            <TabsTrigger value="workspace" className="font-semibold text-xs py-2 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-600">
+          <TabsList className="bg-black border border-border p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-lg font-sans">
+            <TabsTrigger 
+              value="workspace" 
+              className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+            >
               Workspace Overview
             </TabsTrigger>
-            <TabsTrigger value="inputs" className="font-semibold text-xs py-2 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-600">
+            <TabsTrigger 
+              value="inputs" 
+              className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+            >
               Submit My Details
             </TabsTrigger>
           </TabsList>
@@ -217,14 +225,14 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             
             {/* Members List */}
             <div className="lg:col-span-2 space-y-6">
-              <Card>
+              <Card className="border border-border rounded-xl bg-card shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base font-bold flex items-center gap-2">
-                    <Users className="h-4 w-4 text-slate-400" />
-                    Members List ({group.memberCount})
+                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    Members Lobby ({group.memberCount})
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="divide-y divide-slate-100 p-0 px-6 pb-6">
+                <CardContent className="divide-y divide-border p-0 px-6 pb-6">
                   {MOCK_USERS.map((user, idx) => {
                     const isOwner = idx === 0;
                     return (
@@ -233,25 +241,25 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           <img
                             src={user.imageUrl}
                             alt={user.name}
-                            className="h-10 w-10 rounded-full object-cover border border-slate-200"
+                            className="h-9 w-9 rounded-full object-cover border border-border"
                           />
                           <div>
-                            <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                            <p className="text-sm font-bold text-foreground flex items-center gap-2">
                               {user.name}
                               {isOwner && (
-                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold py-0 flex items-center gap-0.5">
+                                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[9px] font-semibold uppercase rounded-full py-0.5 px-2.5 flex items-center gap-0.5">
                                   <Shield className="h-2.5 w-2.5" />
                                   Owner
                                 </Badge>
                               )}
                             </p>
-                            <p className="text-xs text-slate-400">{user.email}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="flex items-center text-xs text-slate-500 font-medium">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 mr-1.5" />
+                          <span className="flex items-center text-[10px] uppercase text-primary font-bold">
+                            <span className="h-2 w-2 rounded-full bg-primary mr-1.5" />
                             Active
                           </span>
                         </div>
@@ -262,29 +270,29 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               </Card>
 
               {/* Locations List */}
-              <Card>
+              <Card className="border border-border rounded-xl bg-card shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-base font-bold flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-slate-400" />
-                    Coordinates Registered
+                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    Geographic Registry
                   </CardTitle>
-                  <CardDescription>
-                    Map pins submitted by participants. Locations are shared privately.
+                  <CardDescription className="text-xs text-muted-foreground font-light">
+                    Coordinate nodes submitted privately by lobby participants.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="bg-slate-100 border border-slate-200 p-8 rounded-xl text-center">
-                    <MapPin className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500 font-medium">
-                      Map preview placeholder. Midpoint will center search nearby venues.
+                  <div className="bg-accent/10 border border-border p-8 rounded-lg text-center text-xs">
+                    <MapPin className="h-6 w-6 text-primary mx-auto mb-2" />
+                    <p className="text-muted-foreground font-medium">
+                      Map preview placeholder. Midpoint will center searches nearby.
                     </p>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     {locations.map((loc, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-100 rounded-lg">
-                        <span className="font-semibold text-slate-700">{loc.name}</span>
-                        <span className="font-mono text-slate-400">{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}</span>
+                      <div key={idx} className="flex justify-between items-center p-3 bg-black border border-border rounded-lg">
+                        <span className="font-bold text-foreground uppercase tracking-wide">{loc.name}</span>
+                        <span className="font-mono text-primary text-[11px]">{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}</span>
                       </div>
                     ))}
                   </div>
@@ -294,43 +302,43 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
             {/* Aggregates Dashboard */}
             <div className="space-y-6">
-              <Card>
+              <Card className="border border-border rounded-xl bg-card shadow-sm text-xs">
                 <CardHeader>
-                  <CardTitle className="text-base font-bold">Group Outing Aggregates</CardTitle>
-                  <CardDescription>
-                    Aggregated budget parameters. Individual submissions are kept strictly private.
+                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">Scoring Specifications</CardTitle>
+                  <CardDescription className="text-[10px] text-muted-foreground uppercase leading-relaxed font-light">
+                    Aggregated values computed from private envelopes.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4 text-sm">
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-500 font-medium">Budgets Submitted</span>
-                    <span className="font-bold text-slate-800">
+                <CardContent className="space-y-4 pt-2 font-medium">
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground">Submitted Envelopes</span>
+                    <span className="font-bold text-foreground">
                       {budgetSummary.submittedCount} of {budgetSummary.totalMembers}
                     </span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-500 font-medium">Min Budget Limit</span>
-                    <span className="font-bold text-slate-800">₹{budgetSummary.min}</span>
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground">Floor Limit (Min)</span>
+                    <span className="font-bold text-foreground">₹{budgetSummary.min}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-500 font-medium">Max Budget Limit</span>
-                    <span className="font-bold text-slate-800">₹{budgetSummary.max}</span>
+                  <div className="flex justify-between py-2 border-b border-border">
+                    <span className="text-muted-foreground">Ceiling Limit (Max)</span>
+                    <span className="font-bold text-foreground">₹{budgetSummary.max}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100 bg-emerald-50 px-2 rounded">
-                    <span className="text-emerald-700 font-bold">Average Capacity</span>
-                    <span className="font-extrabold text-emerald-900">₹{budgetSummary.avg}</span>
+                  <div className="flex justify-between py-2.5 border border-primary/20 bg-primary/10 px-3 rounded-lg text-primary font-bold uppercase">
+                    <span>Group Budget Cap</span>
+                    <span>₹{budgetSummary.avg}</span>
                   </div>
                 </CardContent>
-                <CardFooter className="bg-slate-50 pt-4 flex flex-col items-stretch">
+                <CardFooter className="bg-black pt-4 border-t border-border flex flex-col items-stretch rounded-b-xl">
                   <Link
                     href={`/planner/${group.id}`}
                     className={buttonVariants({
                       variant: 'outline',
                       size: 'sm',
-                      className: 'w-full justify-between font-semibold border-slate-200',
+                      className: 'w-full justify-between text-xs tracking-wider rounded-lg border-border hover:bg-primary/10 hover:text-primary',
                     })}
                   >
-                    View Scoring Results <ArrowRight className="h-4 w-4" />
+                    View Scoring Results <ArrowRight className="h-3.5 w-3.5 text-primary" />
                   </Link>
                 </CardFooter>
               </Card>
@@ -342,22 +350,22 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
           <TabsContent value="inputs" className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Submit Budget */}
-            <Card>
+            <Card className="border border-border rounded-xl bg-card shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-indigo-600" />
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-primary" />
                   Submit Budget Limits
                 </CardTitle>
-                <CardDescription>
-                  Enter your maximum spending limit for this meetup (between ₹50 and ₹100,000).
+                <CardDescription className="text-xs text-muted-foreground font-light">
+                  Enter your maximum spending cap for this outing (₹50 — ₹100,000).
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleBudgetSubmit}>
                 <CardContent className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="budgetInput">Your Max Budget (INR)</Label>
+                    <Label htmlFor="budgetInput" className="text-xs uppercase text-foreground">Your Max Budget (INR)</Label>
                     <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 font-bold">₹</span>
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary font-bold">₹</span>
                       <Input
                         id="budgetInput"
                         type="number"
@@ -366,7 +374,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         value={budgetVal}
                         onChange={(e) => setBudgetVal(e.target.value)}
                         placeholder="500"
-                        className="pl-8"
+                        className="pl-8 bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
                         required
                         disabled={isSubmittingBudget}
                       />
@@ -374,7 +382,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button type="submit" disabled={isSubmittingBudget} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white shadow">
+                  <Button type="submit" disabled={isSubmittingBudget} className="w-full bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg uppercase tracking-wider font-bold text-xs">
                     {isSubmittingBudget ? 'Saving...' : 'Submit Budget'}
                   </Button>
                 </CardFooter>
@@ -382,21 +390,21 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             </Card>
 
             {/* Submit Coordinates */}
-            <Card>
+            <Card className="border border-border rounded-xl bg-card shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-indigo-600" />
-                  Register Location
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Register Coordinates
                 </CardTitle>
-                <CardDescription>
-                  Enter your starting latitude and longitude coordinates to help compute the fair midpoint.
+                <CardDescription className="text-xs text-muted-foreground font-light">
+                  Register your starting coordinates to calculate the optimal midpoint.
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleLocationSubmit}>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4 text-xs">
                     <div className="space-y-1.5">
-                      <Label htmlFor="latitudeInput">Latitude</Label>
+                      <Label htmlFor="latitudeInput" className="uppercase text-foreground">Latitude</Label>
                       <Input
                         id="latitudeInput"
                         type="number"
@@ -405,12 +413,13 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         max={90}
                         value={latVal}
                         onChange={(e) => setLatVal(e.target.value)}
+                        className="bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
                         required
                         disabled={isSubmittingLocation}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="longitudeInput">Longitude</Label>
+                      <Label htmlFor="longitudeInput" className="uppercase text-foreground">Longitude</Label>
                       <Input
                         id="longitudeInput"
                         type="number"
@@ -419,6 +428,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         max={180}
                         value={lngVal}
                         onChange={(e) => setLngVal(e.target.value)}
+                        className="bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
                         required
                         disabled={isSubmittingLocation}
                       />
@@ -426,7 +436,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button type="submit" disabled={isSubmittingLocation} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white shadow">
+                  <Button type="submit" disabled={isSubmittingLocation} className="w-full bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg uppercase tracking-wider font-bold text-xs">
                     {isSubmittingLocation ? 'Registering...' : 'Register Coordinates'}
                   </Button>
                 </CardFooter>
