@@ -63,7 +63,7 @@ CREATE TABLE `__new_plan_slots` (
 	FOREIGN KEY (`experience_id`) REFERENCES `experiences`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-INSERT INTO `__new_plan_slots`("id", "plan_id", "slot_order", "venue_id", "experience_id", "venue_name", "name", "category", "arrival_time", "duration_minutes", "travel_to_next_minutes", "estimated_cost_per_head", "note") SELECT "id", "plan_id", "slot_order", "venue_id", "experience_id", "venue_name", "name", "category", "arrival_time", "duration_minutes", "travel_to_next_minutes", "estimated_cost_per_head", "note" FROM `plan_slots`;--> statement-breakpoint
+INSERT INTO `__new_plan_slots`("id", "plan_id", "slot_order", "venue_id", "experience_id", "venue_name", "name", "category", "arrival_time", "duration_minutes", "travel_to_next_minutes", "estimated_cost_per_head", "note") SELECT "id", "plan_id", "slot_order", "venue_id", NULL, "venue_name", "venue_name", "category", "arrival_time", "duration_minutes", "travel_to_next_minutes", "estimated_cost_per_head", "note" FROM `plan_slots`;--> statement-breakpoint
 DROP TABLE `plan_slots`;--> statement-breakpoint
 ALTER TABLE `__new_plan_slots` RENAME TO `plan_slots`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

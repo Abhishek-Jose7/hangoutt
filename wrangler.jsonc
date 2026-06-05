@@ -1,0 +1,10 @@
+{
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "hangout-dev",
+            "database_id": "934962ed-7fb8-4338-9120-69df5957722d",
+            "migrations_dir": "./drizzle/migrations"
+        }
+    ]
+}
