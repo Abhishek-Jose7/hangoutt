@@ -169,14 +169,18 @@ Every protected action that needs the internal user record calls this helper:
 | Table | Primary Key | Purpose |
 |---|---|---|
 | `users` | `id` (UUID) | Internal user records, synced from Clerk |
-| `groups` | `id` (UUID) | Planning groups |
+| `groups` | `id` (UUID) | Planning groups (with `vibes` column storing a JSON array of selected vibes) |
 | `group_members` | `id` (UUID) | Group membership and roles |
 | `invites` | `id` (UUID) | Invite codes with expiry |
 | `budgets` | `id` (UUID) | Per-user budget within a group |
 | `locations` | `id` (UUID) | Per-user location within a group |
 | `venues_cache` | `id` (UUID) | Cached Ola Maps venue results (TTL 1 hour) |
+| `experience_categories` | `id` (String) | Experience taxonomy categories |
+| `experience_sources` | `id` (String) | Ingestion sources metadata (e.g., BookMyShow, Tavily) |
+| `experiences` | `id` (UUID) | Main local experiences catalog |
+| `experience_cache` | `id` (String) | Cached raw provider payloads (transient raw scraper data) |
 | `plans` | `id` (UUID) | Generated Groq itinerary plans — one row per itinerary |
-| `plan_slots` | `id` (UUID) | Individual time slots within a plan |
+| `plan_slots` | `id` (UUID) | Individual time slots within a plan (venue or experience) |
 | `votes` | `id` (UUID) | Member votes on itinerary plans |
 | `history` | `id` (UUID) | Completed outings |
 
@@ -187,8 +191,9 @@ CREATE TABLE plans (
   id          TEXT PRIMARY KEY,           -- UUID
   group_id    TEXT NOT NULL REFERENCES groups(id),
   plan_index  INTEGER NOT NULL,           -- 1, 2, 3, or 4
-  name        TEXT NOT NULL,              -- e.g. "Chill & Bowl"
-  tagline     TEXT NOT NULL,              -- e.g. "A relaxed afternoon..."
+  name        TEXT NOT NULL,              -- e.g. "Artistic Romance"
+  tagline     TEXT NOT NULL,              -- e.g. "Craft a unique keepsake..."
+  budget_tier TEXT NOT NULL,              -- 'BUDGET_FRIENDLY' | 'BALANCED' | 'PREMIUM'
   total_estimated_cost_per_head INTEGER NOT NULL,
   total_duration_minutes INTEGER NOT NULL,
   generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -203,9 +208,10 @@ CREATE TABLE plan_slots (
   id                        TEXT PRIMARY KEY,
   plan_id                   TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
   slot_order                INTEGER NOT NULL,    -- 1, 2, 3...
-  venue_id                  TEXT NOT NULL,       -- Ola Maps place ID
-  venue_name                TEXT NOT NULL,
-  category                  TEXT NOT NULL,       -- VenueCategory enum
+  venue_id                  TEXT,                -- Ola Maps place ID (null if experience)
+  experience_id             TEXT REFERENCES experiences(id), -- Null if venue
+  name                      TEXT NOT NULL,       -- Sourced from venue name or experience title
+  category                  TEXT NOT NULL,       -- VenueCategory or ExperienceCategory enum
   arrival_time              TEXT NOT NULL,       -- e.g. "12:00 PM"
   duration_minutes          INTEGER NOT NULL,
   travel_to_next_minutes    INTEGER,             -- null for last slot
@@ -215,7 +221,63 @@ CREATE TABLE plan_slots (
 );
 ```
 
-### 5.4 Critical Unique Constraints
+### 5.4 Experience Database Schemas
+
+```sql
+-- Experience categories lookup table
+CREATE TABLE experience_categories (
+  id          TEXT PRIMARY KEY, -- e.g., "CONCERT", "WORKSHOP", "POTTERY"
+  name        TEXT NOT NULL,
+  description TEXT
+);
+
+-- Ingestion sources metadata
+CREATE TABLE experience_sources (
+  id                 TEXT PRIMARY KEY, -- e.g., "BOOKMYSHOW", "TAVILY"
+  name               TEXT NOT NULL,
+  reliability_weight REAL NOT NULL DEFAULT 1.0,
+  last_fetched_at    TIMESTAMP,
+  total_records      INTEGER DEFAULT 0
+);
+
+-- Main experiences catalog
+CREATE TABLE experiences (
+  id                TEXT PRIMARY KEY, -- UUID
+  title             TEXT NOT NULL,
+  description       TEXT NOT NULL,
+  category          TEXT NOT NULL REFERENCES experience_categories(id),
+  city              TEXT NOT NULL,
+  latitude          REAL NOT NULL,
+  longitude         REAL NOT NULL,
+  start_date        TIMESTAMP NOT NULL,
+  end_date          TIMESTAMP NOT NULL,
+  ticket_price      INTEGER NOT NULL DEFAULT 0, -- INR
+  capacity          INTEGER,
+  source            TEXT NOT NULL REFERENCES experience_sources(id),
+  source_url        TEXT NOT NULL,
+  image_url         TEXT,
+  rating            REAL,
+  popularity_score  REAL NOT NULL DEFAULT 0.0, -- Normalised 0.0 - 1.0
+  is_recurring      INTEGER NOT NULL DEFAULT 0, -- Boolean (0 or 1)
+  created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Database Indexes for high-throughput edge query performance
+CREATE INDEX idx_experiences_city_category ON experiences(city, category);
+CREATE INDEX idx_experiences_date ON experiences(start_date, end_date);
+CREATE INDEX idx_experiences_popularity ON experiences(popularity_score DESC);
+
+-- Cache table for provider-specific raw responses
+CREATE TABLE experience_cache (
+  id         TEXT PRIMARY KEY,
+  cache_key  TEXT UNIQUE NOT NULL,
+  payload    TEXT NOT NULL, -- JSON
+  expires_at TIMESTAMP NOT NULL
+);
+```
+
+### 5.5 Critical Unique Constraints
 
 - `budgets`: `UNIQUE(group_id, user_id)` — one budget per user per group.
 - `locations`: `UNIQUE(group_id, user_id)` — one location per user per group.
@@ -289,25 +351,93 @@ All Ola Maps calls are proxied through `/api/maps` to keep the API key server-si
 
 **Caching:** All venue search results are cached in `venues_cache` with a 1-hour TTL. Cache key: `{category}:{lat_2dp}:{lng_2dp}`. Stale entries are skipped and re-fetched transparently.
 
-### 6.7 Recommendation Engine (`src/lib/services/recommendation.service.ts`)
+### 6.7 Recommendation Engine (`src/lib/services/recommendation.service.ts` & `planner.service.ts`)
 
-This service narrows the full venue pool to a **curated shortlist of 10–15 venues** that become the Groq context.
+This service (coordinated by `planner.service.ts`) compiles shortlist candidates for both venues and experiences and applies their scoring algorithms before passing the top-ranked results to the Groq Itinerary Engine.
 
 **Pipeline:**
-
-1. Fetch all submitted locations for the group.
-2. Calculate midpoint.
-3. For each enabled venue category: check `venues_cache`; if stale or missing, call `searchNearbyVenues()`.
-4. For each candidate venue, compute all four score components (distance, budget, rating, preference).
-5. Sum weighted components into `finalScore`.
-6. Sort descending; return top 10–15 venues.
+1. Fetch all submitted locations and budget limits for the group.
+2. Calculate arithmetic midpoint of all members.
+3. Compute group budget aggregates:
+   - `groupMinBudget` = $\min_{m \in \text{Members}} (m.\text{maxBudget})$
+   - `groupAvgBudget` = average/median of all submitted budgets
+   - `groupMaxBudget` = $\max_{m \in \text{Members}} (m.\text{maxBudget})$
+4. **Fetch Venues**: For each category, query `venues_cache` or call Ola Maps Places API if the cache has expired.
+5. **Fetch Experiences**: Query the `experiences` table for events matching the group's city, start date, and end date range (supporting `FREE_EXPERIENCE` listings).
+6. **Score Venues**: Calculate `venueScore` for each candidate based on distance, budget, rating, and member preferences. Filter out any venue exceeding `groupMaxBudget`.
+7. **Score Experiences**: Calculate `experienceScore` for each candidate. Apply modifiers for:
+   - **Weather Suitability**: Penalize outdoor activities (-0.50) and boost indoor activities (+0.40) in case of poor weather forecasts.
+   - **Conversation Quality**: Boost interactive slots (+0.30) (e.g. pottery, board games, workshops) and penalize low-interaction slots (-0.20) for Date or Work outings.
+   - **Experience Freshness**: Penalize entities recommended in the last 2 plans (-0.30), selected in the last 30 days (-0.50), or visited in the last 60 days (-0.80).
+   - **Group Vibe system modifiers**: Boost matching categories by +0.30 according to the selected vibe profile.
+   - Filter out any experience exceeding `groupMaxBudget`.
+8. Sort venues and experiences descending by score.
+9. Return the top 10–15 venues and top 10–15 experiences along with the three budget thresholds as the structured payload for Groq.
 
 **Edge cases:**
-- Fewer than 2 locations → return `{ error: 'INSUFFICIENT_LOCATIONS' }`.
-- No venues found within radius for a category → expand radius 2× and retry once.
-- Ola Maps API fails → return cached results if available, else surface `MAPS_API_ERROR`.
+- Fewer than 2 locations → return `INSUFFICIENT_LOCATIONS` error.
+- No venues or experiences found → expand search radius or return empty list (Groq will build a plan with available entities).
+- Budget is too low for any activity → fallback to `FREE_EXPERIENCE` outdoor/community list.
 
-### 6.8 Voting Module
+### 6.8 Experience Engine (`src/lib/services/experience.service.ts`)
+
+The Experience Engine manages structured local event and activity listings, completely decoupled from the venue search engine.
+
+#### 6.8.1 `ExperienceProvider` Abstraction
+All event providers must implement the normalized provider interface:
+```typescript
+import 'server-only';
+
+export interface ExperienceCategory {
+  id: string;
+  name: string;
+}
+
+export interface Experience {
+  id: string;               -- UUID
+  title: string;
+  description: string;
+  category: string;         -- FK to experience_categories
+  city: string;
+  latitude: number;
+  longitude: number;
+  startDate: Date;
+  endDate: Date;
+  ticketPrice: number;
+  capacity?: number;
+  source: string;           -- FK to experience_sources
+  sourceUrl: string;
+  imageUrl?: string;
+  rating?: number;
+  popularityScore: number;
+  isRecurring: boolean;
+}
+
+export interface ExperienceProvider {
+  name: string;
+  reliabilityWeight: number;
+  fetchEvents(city: string, options?: { category?: string; startAfter?: Date }): Promise<Omit<Experience, 'id'>[]>;
+}
+```
+
+*Future Provider Implementations:*
+- `BookMyShowProvider`: Fetches concerts, stand-up comedy, and plays.
+- `EventbriteProvider` & `DistrictProvider`: Fetches workshops, classes, and conventions.
+- `TavilyProvider`: Executes background web search queries to scrape and parser regional night markets and festivals. (Must never run in the request path).
+- `InternalProvider`: For manual/back-office backfills of prominent landmarks or recurring scenicwalks.
+
+#### 6.8.2 Background Ingestion Pipeline
+To keep request latencies under performance limits, event scraping and ingestion run exclusively out-of-band via Cloudflare Workers cron jobs:
+1. **Trigger**: Cron job runs every 4 hours.
+2. **Fetch**: Parallel calls to event provider fetch routines.
+3. **Normalize**: Map data into the unified schema formats.
+4. **Deduplicate**:
+   - Compares titles via a normalized Levenshtein similarity metric ($> 0.85$).
+   - Verifies proximity ($< 100$ meters) and start time alignment.
+   - Merges duplicates, boosting `popularityScore` and caching the source URLs.
+5. **Clean**: Deletes expired non-recurring events where `endDate < CURRENT_TIMESTAMP`.
+
+### 6.9 Voting Module
 
 - `createVote(groupId, planId)`: One vote per user. Throws `VOTE_CLOSED` if voting session is closed.
 - `updateVote(groupId, planId)`: Replaces existing vote. Allowed only while status is OPEN.
@@ -354,45 +484,63 @@ import Groq from 'groq-sdk';
 
 ```typescript
 export const ITINERARY_SYSTEM_PROMPT = `
-You are a group outing planner. Given a list of available venues and group context, 
-generate exactly 3 or 4 distinct itinerary plans.
+You are an expert experience planner. Given a list of local experiences (including FREE_EXPERIENCE listings), available venues, and group context, generate exactly 3 or 4 distinct itinerary plans.
 
-STRICT RULES:
+STRICT ITINERARY FORMAT RULES:
 - Return ONLY valid JSON. No preamble, no markdown, no explanation.
 - Generate 3 or 4 itineraries (never fewer than 3).
-- Each itinerary must have 3 to 5 venue slots.
-- Each itinerary must include at least one meal slot (category CAFE or RESTAURANT).
-- No venue may appear in more than one itinerary.
-- Total estimated cost per head must not exceed the groupAvgBudget.
-- Each itinerary must have a unique name (2–4 words) and a tagline (one sentence, max 12 words).
-- Slot arrival times must be realistic (start from 11:00 AM by default unless specified).
-- Include at least 15 minutes travel buffer between consecutive venue slots.
-- The "note" field for each slot must be specific and helpful — why this venue, what to order or do.
-- Itineraries must differ meaningfully in vibe, category mix, or price point.
-- If groupType is DATE: romantic or intimate tone, max 2 people in mind.
-- If groupType is FAMILY: family-friendly venues, avoid late-night venues.
-- If groupType is WORK: professional tone, suitable for colleagues.
+- Each itinerary must have 2 to 4 slots.
+- Every itinerary must be built around a Primary Experience (category like CONCERT, WORKSHOP, EXHIBITION, FREE_EXPERIENCE, etc.).
+- Follow a narrative story-driven flow:
+  Primary Experience -> Complementary Dining (category CAFE or RESTAURANT) -> Optional Secondary Activity/Scenic Walk.
+- Budget Tiering: Each itinerary must be assigned to one of the following budget tiers and marked in the "budgetTier" field:
+  * BUDGET_FRIENDLY: Total cost per head <= groupMinBudget.
+  * BALANCED: Total cost per head <= groupAvgBudget.
+  * PREMIUM: Total cost per head <= groupMaxBudget.
+  * You must generate at least one itinerary in each tier.
+- No experience or venue may appear in more than one itinerary.
+- Each itinerary must have a unique name (2–4 words) and a tagline (one sentence, max 12 words) that describes its character and vibe.
+- Slot arrival times must be realistic. Start at 11:00 AM by default unless the event time dictates otherwise.
+- Include at least 15 minutes travel buffer between consecutive slots.
+- The "note" field for each slot must be specific and helpful — why this fits the group type and vibe, what to order or do.
+- If groupType is DATE: customize for a couple with a romantic/intimate tone. Factor in the vibe (e.g., ROMANTIC, CREATIVE) and prioritize experiences that foster High Conversation Quality (e.g. workshops, pottery, galleries, or museum tours). Avoid silent movie/concert slots unless specifically fitting the vibe.
+- If groupType is FAMILY: prioritize family-friendly venues and events, avoiding late-night slots.
+- If groupType is WORK: use a professional, collaborative team-building tone.
 
 REQUIRED JSON STRUCTURE:
 {
   "itineraries": [
     {
       "id": "plan_1",
-      "name": "Short Catchy Name",
-      "tagline": "One sentence describing the vibe.",
-      "totalEstimatedCostPerHead": 450,
-      "totalDurationMinutes": 240,
+      "name": "Creative Spark & Coffee",
+      "tagline": "Dabble in clay before unwinding at a cozy local cafe.",
+      "budgetTier": "BUDGET_FRIENDLY",
+      "totalEstimatedCostPerHead": 370,
+      "totalDurationMinutes": 180,
       "slots": [
         {
           "order": 1,
-          "venueId": "venue_id_from_input",
-          "venueName": "Venue Name",
-          "category": "CAFE",
-          "arrivalTime": "11:00 AM",
-          "durationMinutes": 60,
+          "experienceId": "exp_pottery_1",
+          "venueId": null,
+          "name": "Clay Studio Pottery Workshop",
+          "category": "POTTERY",
+          "arrivalTime": "02:00 PM",
+          "durationMinutes": 90,
           "travelToNextMinutes": 15,
-          "estimatedCostPerHead": 200,
-          "note": "Specific note about this venue and why it fits here."
+          "estimatedCostPerHead": 250,
+          "note": "A hands-on clay pottery session to get your creative juices flowing together."
+        },
+        {
+          "order": 2,
+          "experienceId": null,
+          "venueId": "venue_cafe_1",
+          "name": "Indiranagar Coffee Roasters",
+          "category": "CAFE",
+          "arrivalTime": "03:45 PM",
+          "durationMinutes": 60,
+          "travelToNextMinutes": null,
+          "estimatedCostPerHead": 120,
+          "note": "Relax after the workshop and discuss your clay pieces over custom pour-overs."
         }
       ]
     }
@@ -409,12 +557,23 @@ export function buildItineraryPrompt(context: ItineraryPromptContext): string {
     groupContext: {
       groupName: context.groupName,
       groupType: context.groupType,
+      vibes: context.vibes, // Array of group vibe strings (e.g. ['CHILL', 'CREATIVE'])
       memberCount: context.memberCount,
       groupMinBudget: context.groupMinBudget,
       groupAvgBudget: context.groupAvgBudget,
+      groupMaxBudget: context.groupMaxBudget,
       preferredCategories: context.preferredCategories,
       midpointAddress: context.midpointAddress,
     },
+    availableExperiences: context.experiences.map(e => ({
+      id: e.id,
+      title: e.title,
+      category: e.category,
+      ticketPrice: e.ticketPrice,
+      rating: e.rating,
+      distanceFromMidpoint: `${e.distanceKm.toFixed(1)} km`,
+      address: e.address,
+    })),
     availableVenues: context.venues.map(v => ({
       id: v.id,
       name: v.name,
@@ -491,24 +650,37 @@ All Groq output is validated with Zod before being saved to the database or retu
 import { z } from 'zod';
 
 const SlotSchema = z.object({
-  order: z.number().int().min(1).max(5),
-  venueId: z.string().min(1),
-  venueName: z.string().min(1),
-  category: z.enum(['CAFE','RESTAURANT','PARK','ARCADE','BOWLING','ESCAPE_ROOM','MOVIE','MALL','DESSERT','SPORTS','MUSEUM']),
+  order: z.number().int().min(1).max(4),
+  experienceId: z.string().nullable(),
+  venueId: z.string().nullable(),
+  name: z.string().min(1),
+  category: z.enum([
+    'CONCERT', 'LIVE_MUSIC', 'COMEDY', 'THEATRE', 'EXHIBITION', 'ART_GALLERY', 
+    'MUSEUM', 'AQUARIUM', 'WORKSHOP', 'POTTERY', 'PAINTING', 'BOOK_EVENT', 
+    'BOOKSTORE_EVENT', 'FOOD_FESTIVAL', 'FLEA_MARKET', 'NIGHT_MARKET', 'CONVENTION', 
+    'COMIC_CON', 'ANIME_EVENT', 'GAMING_EVENT', 'BOARD_GAME_EVENT', 'SPORTS_EVENT', 
+    'LOCAL_EVENT', 'SEASONAL_EVENT', 'CULTURAL_EVENT', 'OUTDOOR_EXPERIENCE', 
+    'SCENIC_EXPERIENCE', 'FREE_EXPERIENCE', 'CAFE', 'RESTAURANT', 'PARK', 'ARCADE', 
+    'BOWLING', 'ESCAPE_ROOM', 'MOVIE', 'MALL', 'DESSERT', 'SPORTS'
+  ]),
   arrivalTime: z.string().min(1),
   durationMinutes: z.number().int().min(15).max(300),
   travelToNextMinutes: z.number().int().min(0).max(120).nullable(),
   estimatedCostPerHead: z.number().int().min(0),
   note: z.string().min(10),
+}).refine(data => data.experienceId !== null || data.venueId !== null, {
+  message: "Either experienceId or venueId must be provided.",
+  path: ["experienceId", "venueId"]
 });
 
 const ItinerarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(2).max(40),
   tagline: z.string().min(5).max(120),
+  budgetTier: z.enum(['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM']),
   totalEstimatedCostPerHead: z.number().int().min(0),
   totalDurationMinutes: z.number().int().min(60),
-  slots: z.array(SlotSchema).min(3).max(5),
+  slots: z.array(SlotSchema).min(2).max(4),
 });
 
 export const itineraryResponseSchema = z.object({

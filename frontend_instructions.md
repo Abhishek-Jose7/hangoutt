@@ -439,15 +439,13 @@ Group Header
 
 Contains:
 
-Group Name
-
-Description
-
-Invite Button
-
-Share Button
-
-Delete Option
+* Group Name
+* Group Type Badge (FRIENDS, DATE, FAMILY, WORK)
+* Group Vibe Selection Widget (Visible for all groups; lets users select one or more optional vibes from the global list: CHILL, CREATIVE, FOODIE, CULTURAL, COMPETITIVE, ADVENTUROUS, ROMANTIC, LUXURY, BUDGET)
+* Description
+* Invite Button
+* Share Button
+* Delete Option
 
 ---
 
@@ -501,17 +499,15 @@ Route
 
 Purpose
 
-View generated plans.
+View generated plans and vote on the final outing.
 
 ---
 
 Layout
 
-Map Panel
-
-Recommendation Panel
-
-Itinerary Panel
+* Map Panel
+* Recommendation Panel (tabs for Experiences and Venues)
+* Itinerary Panel (highlights the Primary Experience anchor)
 
 ---
 
@@ -519,13 +515,11 @@ Map Panel
 
 Displays:
 
-Midpoint
-
-Venues
-
-Distances
-
-Markers
+* Calculated Midpoint
+* Experience Event Markers (highlighted color)
+* Venue Markers (secondary color)
+* Connecting Transit Lines representing the itinerary sequences
+* Travel Time / Distance indicators between nodes
 
 ---
 
@@ -533,13 +527,9 @@ Recommendation Panel
 
 Displays:
 
-Top Venues
-
-Ratings
-
-Distance
-
-Estimated Cost
+* Tabbed Selector: [Experiences] vs [Venues]
+* Top Experiences list (shows: title, category badge, ticket price, date/time, distance from midpoint, popularity rating)
+* Top Venues list (shows: name, category, average price/head, open hours, distance from midpoint, ratings)
 
 ---
 
@@ -547,11 +537,15 @@ Itinerary Panel
 
 Displays:
 
-Plan A
-
-Plan B
-
-Plan C
+* Plan A, B, C (3 or 4 generated itineraries)
+* **Budget Tier Badge**: Displays a visual indicator badge for each plan (e.g. green for "Budget Friendly", blue for "Balanced", orange for "Premium").
+* **Primary Experience Highlight**: The anchor experience of the plan is visually featured at the top of the plan summary card with larger typography, unique category icons, and high contrast styling.
+* Timeline flow of slot cards:
+  Primary Experience (e.g., Workshop, Concert, Free Experience)
+  ↓ (shows travel buffer time)
+  Dining / Drink Stop (Cafe, Restaurant)
+  ↓ (shows travel buffer time)
+  Optional Secondary Activity (e.g., Scenic Walk, Late Dessert)
 
 ---
 
@@ -559,7 +553,7 @@ Plan C
 
 Requirements
 
-Very simple.
+Super clean and mobile-optimized. Members vote on complete itineraries (not individual places).
 
 ---
 
@@ -567,15 +561,17 @@ Option Card
 
 Contains:
 
-Venue
-
-Score
-
-Distance
-
-Estimated Cost
-
-Vote Button
+* Itinerary Name & Tagline
+* **Budget Tier Badge & Affordability Check**: Clearly shows the plan category (`Budget Friendly`, `Balanced`, `Premium`). Displays user-specific status checks:
+  - "Fits Everyone" (if cost $\leq$ `groupMinBudget`)
+  - "Fits Most Members" (if cost $\leq$ `groupAvgBudget`)
+  - "Exceeds Some Budgets" (if cost $>$ `groupMinBudget`, lists which members are over-budget, e.g., "Exceeds Abhi's budget limit")
+* Primary Experience Highlight (prominent title, category badge, conversation quality tag)
+* Sequential slot timeline preview
+* Total Duration (minutes)
+* Total Cost Per Head
+* Live vote counts/avatars of members who voted
+* Vote Button (state changes: "Vote", "Voted", "Closed")
 
 ---
 

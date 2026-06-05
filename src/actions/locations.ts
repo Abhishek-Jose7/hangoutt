@@ -1,12 +1,12 @@
 'use server';
 
 import { getCurrentUser } from '@/lib/auth/getCurrentUser';
-import { memberRepository } from '@/lib/repositories/member.repository';
-import { locationRepository } from '@/lib/repositories/location.repository';
+import { locationService } from '@/lib/services/location.service';
 import { saveLocationSchema } from '@/lib/validators/location.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
-import { ValidationError, NotFoundError } from '@/lib/errors';
+import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
+import { ActionResponse } from '@/lib/types/api.types';
 
 export async function saveLocation(rawInput: unknown): ActionResponse<any> {
   try {
@@ -20,26 +20,7 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
 
     const { groupId, lat, lng } = parsed.data;
 
-    // Check that user is a member
-    const member = await memberRepository.getMember(groupId, user.id);
-    if (!member) {
-      throw new NotFoundError('You must be a member of the group to submit your location.');
-    }
-
-    const randomUUID = () => {
-      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-      }
-      return require('crypto').randomUUID();
-    };
-
-    const location = await locationRepository.upsertLocation({
-      id: randomUUID(),
-      groupId,
-      userId: user.id,
-      lat,
-      lng,
-    });
+    const location = await locationService.saveLocation(user.id, groupId, lat, lng);
 
     revalidatePath(`/groups/${groupId}`);
     return apiResponse.success(location);
@@ -49,8 +30,6 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
 }
 
 export async function updateLocation(rawInput: unknown): ActionResponse<any> {
-  // Submission upserts, so saveLocation handles both creation and updates
+  // saveLocation handles both create and update (upsert)
   return saveLocation(rawInput);
 }
-
-import { ActionResponse } from '@/lib/types/api.types';

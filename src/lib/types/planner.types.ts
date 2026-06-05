@@ -1,3 +1,5 @@
+import { type Experience } from '../repositories/experience.repository';
+
 export type VenueCategory =
   | 'CAFE'
   | 'RESTAURANT'
@@ -24,9 +26,11 @@ export interface Venue {
 
 export interface ItinerarySlot {
   order: number;
-  venueId: string;
-  venueName: string;
-  category: VenueCategory;
+  venueId: string | null;
+  experienceId?: string | null; // Optional
+  venueName: string | null; // Restored for frontend compatibility
+  name?: string; // Optional
+  category: string;
   arrivalTime: string;
   durationMinutes: number;
   travelToNextMinutes: number | null;
@@ -38,6 +42,7 @@ export interface GeneratedItinerary {
   id: string;
   name: string;
   tagline: string;
+  budgetTier?: 'BUDGET_FRIENDLY' | 'BALANCED' | 'PREMIUM'; // Optional for mock data compatibility
   totalEstimatedCostPerHead: number;
   totalDurationMinutes: number;
   slots: ItinerarySlot[];
@@ -50,10 +55,13 @@ export interface ItineraryResponse {
 export interface ItineraryPromptContext {
   groupName: string;
   groupType: 'FRIENDS' | 'DATE' | 'FAMILY' | 'WORK' | 'CUSTOM';
+  vibes: string[];
   memberCount: number;
   groupMinBudget: number;
   groupAvgBudget: number;
-  preferredCategories: VenueCategory[];
+  groupMaxBudget: number;
+  preferredCategories: string[];
   midpointAddress: string;
   venues: Venue[];
+  experiences: (Experience & { distanceKm: number })[];
 }

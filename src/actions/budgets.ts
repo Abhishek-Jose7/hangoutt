@@ -1,12 +1,12 @@
 'use server';
 
 import { getCurrentUser } from '@/lib/auth/getCurrentUser';
-import { memberRepository } from '@/lib/repositories/member.repository';
-import { budgetRepository } from '@/lib/repositories/budget.repository';
+import { budgetService } from '@/lib/services/budget.service';
 import { submitBudgetSchema } from '@/lib/validators/budget.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
-import { ValidationError, NotFoundError } from '@/lib/errors';
+import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
+import { ActionResponse } from '@/lib/types/api.types';
 
 export async function submitBudget(rawInput: unknown): ActionResponse<any> {
   try {
@@ -20,25 +20,7 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
 
     const { groupId, maxBudget } = parsed.data;
 
-    // Check that user is a member
-    const member = await memberRepository.getMember(groupId, user.id);
-    if (!member) {
-      throw new NotFoundError('You must be a member of the group to submit a budget.');
-    }
-
-    const randomUUID = () => {
-      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-      }
-      return require('crypto').randomUUID();
-    };
-
-    const budget = await budgetRepository.upsertBudget({
-      id: randomUUID(),
-      groupId,
-      userId: user.id,
-      maxBudget,
-    });
+    const budget = await budgetService.submitBudget(user.id, groupId, maxBudget);
 
     revalidatePath(`/groups/${groupId}`);
     return apiResponse.success(budget);
@@ -48,8 +30,6 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
 }
 
 export async function updateBudget(rawInput: unknown): ActionResponse<any> {
-  // Submission upserts, so submitBudget handles both creation and updates
+  // Submission handles both create and update (upsert)
   return submitBudget(rawInput);
 }
-
-import { ActionResponse } from '@/lib/types/api.types';

@@ -36,7 +36,8 @@ Planning a group outing involves a predictable set of recurring problems:
 - Participants live in different parts of the city — finding a fair central location requires manual effort most people skip.
 - Individual spending capacities vary widely — one person's "cheap" is another's expensive.
 - Group decisions via chat are slow and inconclusive, favouring whoever is most persistent.
-- Venue discovery is fragmented across Maps, Zomato, Google, and social media.
+- Outings default to boring, repetitive venue lists (e.g. Cafe -> Bowling -> Cafe) instead of unique, memorable experiences.
+- Venue and event discovery is fragmented across Google Maps, BookMyShow, Eventbrite, and social media.
 - Travel fairness is ignored — the person farthest from the chosen venue bears a disproportionate burden.
 - Plans collapse at the last minute because no one owns the confirmation step.
 
@@ -44,12 +45,13 @@ Planning a group outing involves a predictable set of recurring problems:
 
 | Tool | What It Does | What It Misses |
 |---|---|---|
-| Google Maps | Venue discovery and navigation | Group coordination, budgets, voting |
-| WhatsApp | Group communication | Structured decisions, venue data |
-| Splitwise | Post-outing expense splitting | Pre-outing planning and discovery |
-| Doodle | Scheduling polls | Location selection, budget, venue data |
+| Google Maps | Venue discovery and navigation | Group coordination, budgets, voting, structured event/experience integration |
+| WhatsApp | Group communication | Structured decisions, venue and event details |
+| Splitwise | Post-outing expense splitting | Pre-outing collaborative planning and activity discovery |
+| Doodle | Scheduling polls | Location selection, budget limits, venue and event curation |
+| Ticket / Event Sites (BookMyShow, Eventbrite) | Ticket booking and event listings | Collaborative itinerary planning, midpoint calculations, group voting |
 
-Hangout combines location intelligence, budget-aware venue filtering, Groq-powered itinerary generation, and group voting into one flow that takes under five minutes from group creation to confirmed plan.
+Hangout combines location intelligence, budget-aware experience and venue discovery, Groq-powered narrative itinerary generation, and group voting into one flow that takes under five minutes from group creation to confirmed plan.
 
 ---
 
@@ -124,10 +126,10 @@ Hangout combines location intelligence, budget-aware venue filtering, Groq-power
 | 5 | Each member | Enters maximum budget | Budget stored; group aggregate updated |
 | 6 | Each member | Submits location (GPS / map pin / address) | Coordinates validated and stored |
 | 7 | System | Calculates geographic midpoint | Arithmetic mean of all coordinates |
-| 8 | System | Searches venues near midpoint via Ola Maps | Up to 50 candidates fetched per category |
-| 9 | System | Scores and ranks all candidates | Top 10–15 venues selected as context |
-| 10 | **Groq LLM** | **Receives top venues + group context** | **Generates 3–4 distinct named itinerary plans** |
-| 11 | Members | View itineraries in the Planner | Each itinerary shown as a time-slotted, named plan card |
+| 8 | System | Searches local experiences near midpoint (D1 database records) and nearby venues via Ola Maps | Candidate pools gathered for both experiences and venues |
+| 9 | System | Scores and ranks experiences and venues separately | Shortlist of top 10-15 experiences and top 10-15 venues selected |
+| 10 | **Groq LLM** | **Receives top experiences + top venues + group context (with optional date vibes)** | **Generates 3–4 distinct itinerary plans built around primary experiences** |
+| 11 | Members | View itineraries in the Planner | Each itinerary shown as a time-slotted, narrative plan card |
 | 12 | Members | Vote on preferred itinerary | Votes tallied; one vote per user; live counts shown |
 | 13 | System | Declares winner by majority | Winning plan confirmed; all members notified |
 | 14 | Group | Meets up | Post-outing, plan saved to history |
@@ -195,9 +197,19 @@ Provider: **Clerk**. All session management is delegated to Clerk; Hangout store
 
 - One budget entry per user per group (enforced by UNIQUE constraint at DB level).
 - Budget range: ₹50 minimum — ₹100,000 maximum.
-- Derived aggregates (computed at query time, not stored): `groupMinBudget`, `groupAvgBudget`, `groupTotalBudget`, `groupMaxBudget`.
+- Derived aggregates (computed at query time, not stored): `groupMinBudget` (the minimum of all submitted budgets), `groupAvgBudget`, `groupTotalBudget`, `groupMaxBudget`.
 - Budget updates are allowed any time before voting begins.
-- **Privacy rule:** Individual amounts are never exposed to other members. Only aggregate stats are shown. The Groq prompt receives only `groupMinBudget` and `groupAvgBudget` — never individual amounts.
+- **Privacy rule:** Individual amounts are never exposed to other members. Only aggregate stats are shown.
+- **Budget Tiering System:** Rather than forcing all plans to the absolute minimum budget (which overly constrains higher-spending participants), Hangout generates options across three distinct budget tiers. Itineraries must be categorized and clearly labeled in the UI:
+  1. **Budget Friendly (Fits Everyone):** The total cost per head must strictly fit under the minimum budget cap submitted by any participant:
+     $$\text{Itinerary Cost Per Head} \leq \min_{m \in \text{Members}} (m.\text{maxBudget}) = \text{groupMinBudget}$$
+     This guarantees that at least 1-2 recommended plans are 100% financially accessible to all participants.
+  2. **Balanced (Fits Most Members):** The total cost per head fits the average/median budget cap of the group. It may exceed the lowest budget cap but fits the majority of the members:
+     $$\text{Itinerary Cost Per Head} \leq \text{groupAvgBudget}$$
+  3. **Premium (Exceeds Some Budgets):** The total cost per head allows premium/luxury experiences, capping at the maximum budget submitted by any participant:
+     $$\text{Itinerary Cost Per Head} \leq \max_{m \in \text{Members}} (m.\text{maxBudget}) = \text{groupMaxBudget}$$
+     This gives groups options for special outings, indicating clearly in the UI which members' caps are exceeded.
+- The Groq prompt receives `groupMinBudget`, `groupAvgBudget`, and `groupMaxBudget` along with instructions to generate at least one itinerary targeting each tier, labeling them accordingly.
 
 ### 6.6 Location Collection
 
@@ -224,44 +236,99 @@ Requires minimum 2 locations. Throws `INSUFFICIENT_LOCATIONS` error if fewer.
 
 **Version 2 (post-MVP):** Weighted Haversine midpoint with travel-time fairness scoring using Ola Maps Distance Matrix, penalising configurations that create uneven travel times across members.
 
-### 6.8 Venue Discovery
+### 6.8 Venue Discovery & Experience Taxonomy
 
+#### 6.8.1 Venue Discovery
 Source: **Ola Maps Places API** (Nearby Search endpoint).
-
-| Category Enum | Ola Maps Query Term | Default Search Radius |
-|---|---|---|
-| CAFE | cafe | 3 km |
-| RESTAURANT | restaurant | 3 km |
-| PARK | park | 5 km |
-| ARCADE | arcade game center | 5 km |
-| BOWLING | bowling alley | 10 km |
-| ESCAPE_ROOM | escape room | 10 km |
-| MOVIE | movie theatre | 5 km |
-| MALL | shopping mall | 5 km |
-| DESSERT | dessert shop | 3 km |
-| SPORTS | sports complex | 10 km |
-| MUSEUM | museum | 10 km |
+Category filter enums and query mapping:
+- `CAFE` (cafe, 3 km radius)
+- `RESTAURANT` (restaurant, 3 km radius)
+- `PARK` (park, 5 km radius)
+- `ARCADE` (arcade game center, 5 km radius)
+- `BOWLING` (bowling alley, 10 km radius)
+- `ESCAPE_ROOM` (escape room, 10 km radius)
+- `MOVIE` (movie theatre, 5 km radius)
+- `MALL` (shopping mall, 5 km radius)
+- `DESSERT` (dessert shop, 3 km radius)
+- `SPORTS` (sports complex, 10 km radius)
+- `MUSEUM` (museum, 10 km radius)
 
 Up to 50 candidates fetched per category. Deduplicated by place ID before scoring. If no results within radius, expand 2× and retry once.
 
+#### 6.8.2 Experience Discovery & Taxonomy
+Source: **D1 Experiences Database** (populated by the background Ingestion Pipeline).
+A dedicated experience taxonomy is established to prioritize unique events worth leaving the house for:
+- `CONCERT`, `LIVE_MUSIC`, `COMEDY`, `THEATRE`
+- `EXHIBITION`, `ART_GALLERY`, `MUSEUM`, `AQUARIUM`
+- `WORKSHOP`, `POTTERY`, `PAINTING`
+- `BOOK_EVENT`, `BOOKSTORE_EVENT`
+- `FOOD_FESTIVAL`, `FLEA_MARKET`, `NIGHT_MARKET`
+- `CONVENTION`, `COMIC_CON`, `ANIME_EVENT`, `GAMING_EVENT`, `BOARD_GAME_EVENT`
+- `SPORTS_EVENT`, `LOCAL_EVENT`, `SEASONAL_EVENT`, `CULTURAL_EVENT`
+- `OUTDOOR_EXPERIENCE`, `SCENIC_EXPERIENCE`
+- `FREE_EXPERIENCE` (Public Art Installations, Heritage Walks, Community Events, Bookstore Browsing, Public Lectures, Beach Events, Open-Air Exhibitions)
+
+#### 6.8.3 Group Vibe System
+Group Type and Vibe are maintained as two completely separate concepts. Group Type defines the social context ("who is going"), while Vibes define the outing mood ("what kind of outing they want"). Any group outing can select **one or more vibes** (multi-select).
+
+**Vibes Taxonomy**:
+- `CHILL` (Boosts: Parks, Scenic Walks, Coffee Shops, Dessert Cafes)
+- `CREATIVE` (Boosts: Pottery/Painting Workshops, Bookstore Events, Hands-on Craft Workshops)
+- `FOODIE` (Boosts: Food Festivals, Night Markets, Group Dining, Street Food, Dessert Cafes)
+- `CULTURAL` (Boosts: Museums, Art Galleries, Exhibitions, Heritage Walks, Book Events)
+- `COMPETITIVE` (Boosts: Board Game Events, Arcades, Sports Events, Escape Rooms)
+- `ADVENTUROUS` (Boosts: Outdoor Experiences, Interactive Games, Escape Rooms)
+- `ROMANTIC` (Boosts: Live Music, Scenic Experiences, Fine Dining, Cultural Events, Scenic Walks)
+- `LUXURY` (Boosts: Fine Dining, Premium Theatre, Orchestras, Art Gallery Previews)
+- `BUDGET` (Boosts: Free Experiences, Flea Markets, Street Food Festivals, Public Parks)
+
+By decoupling these, a user can plan a `FRIENDS` outing with `CREATIVE` vibe (producing Pottery $\rightarrow$ Cafe $\rightarrow$ Board Games), or a `FRIENDS` outing with `COMPETITIVE` vibe (producing Bowling $\rightarrow$ Arcade $\rightarrow$ Food), or a `DATE` outing with `CULTURAL` vibe (producing Museum $\rightarrow$ Bookstore $\rightarrow$ Coffee) without category explosion.
+
+---
+
 ### 6.9 Recommendation Engine (Pre-Groq Filtering)
 
-The scoring engine narrows the full venue pool down to a **curated shortlist of 10–15 venues** that become the context for Groq. It does not generate the itineraries — that is Groq's job.
+The system decoples the scoring of venues and experiences. The **Venue Engine** and **Experience Engine** run independently, sending their respective top shortlists to the **Planning Engine** to compose the final Groq prompt context.
 
-**Scoring formula (per venue):**
+#### 6.9.1 Venue Scoring Formula
+Calculated per candidate venue:
+$$\text{venueScore} = (\text{distanceScore} \times 0.40) + (\text{budgetScore} \times 0.30) + (\text{ratingScore} \times 0.20) + (\text{preferenceScore} \times 0.10)$$
 
-```
-finalScore = (distanceScore × 0.40) + (budgetScore × 0.30) + (ratingScore × 0.20) + (preferenceScore × 0.10)
-```
+Where:
+- `distanceScore`: $1 - (\text{distanceKm} / \text{maxDistanceKm})$; venues beyond max score 0.
+- `budgetScore`: $1$ if estimated cost $\leq$ `groupMinBudget`; linear decay to $0$ if cost exceeds `groupMinBudget`. (Strictly $0$ if cost exceeds `groupMinBudget`).
+- `ratingScore`: $\text{venue.rating} / 5.0$.
+- `preferenceScore`: Fraction of members who favor this venue's category.
 
-| Component | Calculation | Range |
-|---|---|---|
-| distanceScore | `1 - (distanceKm / maxDistanceKm)`; venues beyond max score 0 | 0–1 |
-| budgetScore | 1 if estimatedCost ≤ groupMinBudget; linear decay above min, 0 if above groupAvgBudget | 0–1 |
-| ratingScore | `venue.rating / 5.0` | 0–1 |
-| preferenceScore | Fraction of members who listed this category as a preference | 0–1 |
+#### 6.9.2 Experience Scoring Formula
+Calculated per experience record:
+$$\text{experienceScore} = (\text{distanceScore} \times 0.20) + (\text{ticketCostScore} \times 0.15) + (\text{popularityScore} \times 0.10) + (\text{preferenceScore} \times 0.10) + (\text{conversationQualityScore} \times 0.15) + (\text{freshnessScore} \times 0.15) + (\text{weatherSuitabilityScore} \times 0.15) + \text{groupTypeBoost} + \text{vibeBoost} + \text{availabilityBonus}$$
 
-Output: top 10–15 venues, sorted by finalScore descending, passed to the Groq Itinerary Engine.
+Scoring components:
+1. **Distance Score**: Centered on the group's midpoint. $1 - (\text{distanceKm} / \text{maxRadius})$.
+2. **Ticket Cost Score**: $1.0$ if the event is free (`FREE_EXPERIENCE`); $1.0 - (\text{price} / \text{groupMaxBudget})$ if price $\leq$ `groupMaxBudget`; $0$ if price exceeds `groupMaxBudget` (or filters into respective budget friendly / premium categories).
+3. **Popularity Score**: Normalized score ($0.0$ to $1.0$) tracking ticket velocities and event capacities.
+4. **Group Type Match Score (groupTypeBoost)**:
+   - **DATE**: Museums, Art Galleries, Exhibitions, Aquariums, Pottery/Painting Workshops, Live Music, Scenic Walks (+0.40); Fine Dining, Theatre (+0.20); Large crowded festivals, competitive sports (-0.20).
+   - **FRIENDS**: Concerts, Live Music, Comedy, Night Markets, Conventions, Gaming, Sports (+0.40); Board Games, Food Festivals (+0.20); Museums (-0.20).
+   - **FAMILY**: Museums, Aquariums, Parks, Cultural/Seasonal Events (+0.40); Board Games, Family Workshops (+0.20); Nightlife (-0.20).
+   - **WORK**: Team Activities, Workshops, Escape Rooms, Group Dining (+0.40); Cafes (+0.20); Romantic/Late-Night (-0.20).
+5. **Vibe Match Score (vibeBoost)**: Applies a $+0.30$ boost to categories matching any of the selected group vibes defined in Section 6.8.3 (cumulative if an experience matches multiple selected vibes, capped at a maximum boost of $+0.60$).
+6. **Availability Score (availabilityBonus)**: Multiplier (1.5x) if the event falls directly on the group's proposed meetup date.
+7. **Weather Suitability Score (weatherSuitabilityScore)**:
+   - Evaluates suitability based on real-time weather forecasts for the event date.
+   - If heavy rain, extreme heat, or severe weather is forecast: applies a heavy penalty ($-0.50$) to outdoor activities (`OUTDOOR_EXPERIENCE`, `SCENIC_EXPERIENCE`, `FOOD_FESTIVAL`, `NIGHT_MARKET`, `FLEA_MARKET`, `PARK`) and a boost ($+0.40$) to indoor activities (`MUSEUM`, `ART_GALLERY`, `AQUARIUM`, `ESCAPE_ROOM`, `BOWLING`, `THEATRE`, `MALL`, `CAFE`, `RESTAURANT`).
+8. **Conversation Quality Score (conversationQualityScore)**:
+   - Measures how much the experience naturally fosters conversation and group interaction:
+     * **High Conversation Quality** (Pottery, Painting, Museum, Art Gallery, Board Game Event, Workshops): $+0.30$ boost. (Specifically boosted for `DATE` group type to prevent silent/awkward meetups).
+     * **Low Conversation Quality** (Movie, Concert): $-0.20$ penalty for Date and Work groups where interaction is the primary objective.
+9. **Experience Freshness Score (freshnessScore)**:
+   - To prevent users from getting identical repeating suggestions (e.g. "Museum, Museum, Museum" every week), the engine tracks the group history:
+     * **Last Recommended**: Applies a penalty ($-0.30$) if the experience or venue was recommended in the group's last 2 generated plans.
+     * **Last Selected**: Applies a penalty ($-0.50$) if the experience or venue was selected in the last 30 days.
+     * **Last Visited**: Applies a penalty ($-0.80$) if the experience or venue was visited in the last 60 days.
+
+Output: The Planning Engine takes the top 10–15 venues and top 10–15 experiences, validates them against individual budget caps, and formats them as input payload for Groq.
 
 ### 6.10 Groq Itinerary Engine ⭐
 
@@ -272,26 +339,38 @@ This is the core AI feature. After venue scoring, the backend calls **Groq's API
 ```json
 {
   "groupContext": {
-    "groupName": "Koramangala Crew",
-    "groupType": "FRIENDS",
-    "memberCount": 5,
+    "groupName": "Weekend Outing",
+    "groupType": "DATE",
+    "vibes": ["ROMANTIC", "CREATIVE"],
+    "memberCount": 2,
     "groupMinBudget": 300,
-    "groupAvgBudget": 520,
-    "preferredCategories": ["CAFE", "BOWLING", "RESTAURANT"],
-    "midpointAddress": "Koramangala 5th Block, Bengaluru"
+    "groupAvgBudget": 600,
+    "groupMaxBudget": 1000,
+    "preferredCategories": ["MUSEUM", "CAFE", "LIVE_MUSIC"],
+    "midpointAddress": "Indiranagar, Bengaluru"
   },
+  "availableExperiences": [
+    {
+      "id": "exp_1",
+      "title": "Clay Pottery Taster Session",
+      "category": "POTTERY",
+      "ticketPrice": 250,
+      "rating": 4.8,
+      "distanceFromMidpoint": "1.2 km",
+      "address": "12th Main, Indiranagar"
+    }
+  ],
   "availableVenues": [
     {
       "id": "venue_abc",
-      "name": "Third Wave Coffee",
+      "name": "The Glen's Bakehouse",
       "category": "CAFE",
-      "rating": 4.6,
-      "distanceFromMidpoint": "0.4 km",
-      "estimatedCostPerHead": 180,
+      "rating": 4.4,
+      "distanceFromMidpoint": "0.6 km",
+      "estimatedCostPerHead": 120,
       "openNow": true,
-      "address": "100 Feet Rd, Koramangala"
+      "address": "80 Feet Rd, Indiranagar"
     }
-    // ... up to 15 venues
   ]
 }
 ```
@@ -305,21 +384,35 @@ Groq is instructed to respond **only** in the following JSON structure (no pream
   "itineraries": [
     {
       "id": "plan_1",
-      "name": "Chill & Bowl",
-      "tagline": "A relaxed afternoon with good coffee and friendly competition",
-      "totalEstimatedCostPerHead": 480,
-      "totalDurationMinutes": 270,
+      "name": "Artistic Romance",
+      "tagline": "Craft a unique keepsake together, followed by cozy treats.",
+      "budgetTier": "BUDGET_FRIENDLY",
+      "totalEstimatedCostPerHead": 370,
+      "totalDurationMinutes": 180,
       "slots": [
         {
           "order": 1,
-          "venueId": "venue_abc",
-          "venueName": "Third Wave Coffee",
-          "category": "CAFE",
-          "arrivalTime": "12:00 PM",
-          "durationMinutes": 60,
+          "experienceId": "exp_1",
+          "venueId": null,
+          "name": "Clay Pottery Taster Session",
+          "category": "POTTERY",
+          "arrivalTime": "02:00 PM",
+          "durationMinutes": 90,
           "travelToNextMinutes": 15,
-          "estimatedCostPerHead": 180,
-          "note": "Great spot to kick things off — known for their cold brew and comfortable seating."
+          "estimatedCostPerHead": 250,
+          "note": "Get hands-on with a private pottery wheel taster class — perfect for building shared memories."
+        },
+        {
+          "order": 2,
+          "experienceId": null,
+          "venueId": "venue_abc",
+          "name": "The Glen's Bakehouse",
+          "category": "CAFE",
+          "arrivalTime": "03:45 PM",
+          "durationMinutes": 60,
+          "travelToNextMinutes": null,
+          "estimatedCostPerHead": 120,
+          "note": "Relax and chat about your pottery creations over their signature red velvet cupcakes."
         }
       ]
     }
@@ -329,16 +422,20 @@ Groq is instructed to respond **only** in the following JSON structure (no pream
 
 #### Itinerary Generation Rules (enforced in the system prompt)
 
-- Generate **exactly 3 or 4** itineraries. Never fewer than 3.
-- Each itinerary must have **3–5 venue slots**.
-- Every itinerary must include **at least one meal** (RESTAURANT or CAFE).
-- **No venue may appear in more than one itinerary.**
-- Total estimated cost per head must not exceed `groupAvgBudget`.
-- Each itinerary must have a **unique name and tagline** that reflects its character (e.g. "Budget Bites & Beats", "The Long Afternoon").
-- Time slots must be realistic — include at least 15 minutes travel buffer between venues.
-- Venue notes must be genuine and helpful (why this venue fits, what to expect), not generic filler.
-- Itineraries must be meaningfully different from each other in vibe, category mix, or cost level.
-- If `groupType` is `DATE`, generate itineraries suited for two people with a romantic or intimate tone. If `FAMILY`, prioritise family-friendly venues.
+- **Prioritize Experiences**: Each itinerary must be built around a high-scoring Primary Experience (including `FREE_EXPERIENCE` alternatives). Venues are selected to complement the experience.
+- **Narrative Story Flow**: Slots must follow a logical sequence that reads like a story, e.g., Primary Experience $\rightarrow$ Complementary Dining $\rightarrow$ Optional Secondary Activity/Scenic Walk.
+- **Tiered Budgeting Options**: Rather than forcing all plans to the absolute minimum budget, generate options targeting three distinct budget tiers:
+  * **BUDGET_FRIENDLY**: Total cost per head $\leq$ `groupMinBudget`.
+  * **BALANCED**: Total cost per head $\leq$ `groupAvgBudget`.
+  * **PREMIUM**: Total cost per head $\leq$ `groupMaxBudget`.
+  * Generate **exactly 3 or 4** itineraries, including at least one plan representing each budget tier.
+- Each itinerary must have **2–4 slots**.
+- Every itinerary must include **at least one dining slot** (RESTAURANT or CAFE).
+- **No venue or experience may appear in more than one itinerary.**
+- Each itinerary must have a **unique name and tagline** reflecting its vibe and group activity profile.
+- Time slots must be realistic — include at least 15 minutes travel buffer between consecutive slots.
+- Notes must be tailored to the group configuration and the selected `vibe` (if any).
+- If `groupType` is `DATE`, generate plans with romantic/intimate descriptions and prioritize experiences that foster **High Conversation Quality** (such as workshops, pottery, galleries, or museum tours). If `FAMILY`, prioritize family-friendly venues. If `WORK`, focus on team cohesion.
 
 #### Groq API Configuration
 
