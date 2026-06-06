@@ -64,44 +64,44 @@ export default function GroupsPage() {
       title="Outing Lobbies"
       subtitle="Find your planning groups or start a new outing workspace."
       actions={
-        <div className="flex gap-2 w-full sm:w-auto font-sans text-xs">
+        <div className="flex gap-3 w-full sm:w-auto font-mono text-[10px]">
           <Button
             size="sm"
             onClick={() => setIsJoinOpen(true)}
             variant="outline"
-            className="flex items-center gap-1.5 rounded-lg border-neutral-800 hover:bg-neutral-900 text-foreground font-semibold tracking-wide"
+            className="flex items-center gap-1.5 rounded-[8px] border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 font-bold uppercase tracking-widest px-4 py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
-            <LogIn className="h-4 w-4 text-primary" />
+            <LogIn className="h-3.5 w-3.5 text-[#EB690B]" />
             Join Lobby
           </Button>
           <Button
             size="sm"
             onClick={() => setIsCreateOpen(true)}
-            className="bg-primary hover:bg-primary/95 text-primary-foreground flex items-center gap-1.5 rounded-lg font-semibold tracking-wide"
+            className="bg-[#EB690B] hover:bg-[#D4590A] text-white flex items-center gap-1.5 rounded-[8px] font-bold uppercase tracking-widest px-4 py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             New Lobby
           </Button>
         </div>
       }
     >
-      <div className="space-y-6 font-sans text-sm">
+      <div className="space-y-6 text-sm font-sans">
         
         {/* Search & Filter Controls */}
-        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-neutral-950/40 p-4 rounded-xl border border-neutral-900">
+        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-stone-950/40 p-4 rounded-[12px] border border-stone-900/60 backdrop-blur-md">
           <div className="w-full md:max-w-md">
             <SearchBar value={search} onChange={setSearch} placeholder="Search lobbies..." />
           </div>
           
-          <div className="flex rounded-lg border border-neutral-900 p-0.5 bg-black">
+          <div className="flex rounded-[8px] border border-stone-900 p-0.5 bg-stone-950">
             {(['ALL', 'ACTIVE', 'ARCHIVED'] as const).map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition cursor-pointer ${
+                className={`px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-[6px] transition cursor-pointer ${
                   filter === type
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-[#EB690B] text-white shadow-md'
+                    : 'text-neutral-500 hover:text-neutral-300'
                 }`}
               >
                 {type === 'ALL' ? 'All' : type === 'ACTIVE' ? 'Active' : 'Archived'}
@@ -112,50 +112,50 @@ export default function GroupsPage() {
 
         {/* Groups Grid */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-            <p className="text-xs uppercase tracking-widest font-semibold">Syncing your lobbies...</p>
+          <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
+            <Loader2 className="h-7 w-7 animate-spin text-[#EB690B] mb-4" />
+            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing Lobbies...</p>
           </div>
         ) : filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredGroups.map((group) => (
-              <Card key={group.id} className="relative overflow-hidden flex flex-col justify-between rounded-xl border border-neutral-900 bg-neutral-950/20 hover:border-primary/50 transition-all shadow-sm">
+              <Card key={group.id} className="relative overflow-hidden flex flex-col justify-between rounded-[12px] border border-stone-900/60 bg-stone-950/45 hover:border-[#EB690B]/30 hover:bg-stone-950/85 transition-all duration-300 shadow-lg group">
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start gap-2">
-                    <CardTitle className="text-base font-bold text-foreground font-heading tracking-wide uppercase">{group.name}</CardTitle>
+                    <CardTitle className="text-sm font-bold text-white font-campus tracking-widest uppercase">{group.name}</CardTitle>
                     {group.status === 'ARCHIVED' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-neutral-900 border border-neutral-800 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-                        <FolderArchive className="h-3 w-3" />
+                      <span className="inline-flex items-center gap-1 rounded-full bg-stone-900 border border-stone-850 px-2 py-0.5 text-[8px] font-mono font-bold uppercase text-neutral-500">
+                        <FolderArchive className="h-2.5 w-2.5" />
                         Archived
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-primary border border-primary/20">
-                        <Activity className="h-3 w-3" />
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#00E5A0]/10 px-2 py-0.5 text-[8px] font-mono font-bold uppercase text-[#00E5A0] border border-[#00E5A0]/20">
+                        <Activity className="h-2.5 w-2.5" />
                         {group.status.replace('_', ' ')}
                       </span>
                     )}
                   </div>
-                  <CardDescription className="line-clamp-2 text-xs text-muted-foreground mt-2 min-h-[32px] font-light">
+                  <CardDescription className="line-clamp-2 text-xs text-neutral-450 mt-2 min-h-[32px] font-sans font-light">
                     {group.description || 'No description provided.'}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="text-xs text-muted-foreground space-y-1.5 pb-4">
+                <CardContent className="text-[11px] font-mono text-neutral-400 space-y-2 pb-4">
                   <div className="flex items-center gap-2">
-                    <Users className="h-3.5 w-3.5 text-primary" />
+                    <Users className="h-3.5 w-3.5 text-[#EB690B]" />
                     <span>{group.memberCount} Members joined</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Invite Code:</span>
-                    <span className="font-mono text-foreground font-bold">{group.inviteCode}</span>
+                    <span className="text-[9px] uppercase font-bold tracking-wider text-neutral-500">Invite Code:</span>
+                    <span className="text-[#00E5A0] font-bold tracking-widest">{group.inviteCode}</span>
                   </div>
                 </CardContent>
-                <CardFooter className="pt-3 border-t border-neutral-900/60 flex justify-end bg-neutral-950/20 px-6 pb-4 rounded-b-xl">
+                <CardFooter className="pt-3.5 border-t border-stone-900/40 flex justify-end bg-stone-950/20 px-6 pb-4 rounded-b-[12px]">
                   <Link
                     href={`/groups/${group.id}`}
                     className={buttonVariants({
                       variant: 'ghost',
                       size: 'sm',
-                      className: 'text-primary hover:underline font-bold p-0 hover:bg-transparent text-xs tracking-wide flex items-center gap-1',
+                      className: 'text-[#EB690B] hover:text-[#EB690B]/80 font-mono font-bold p-0 hover:bg-transparent text-[10px] uppercase tracking-widest flex items-center gap-1 transition-all group-hover:translate-x-0.5',
                     })}
                   >
                     Open Workspace <ArrowRight className="h-3.5 w-3.5" />
@@ -165,11 +165,11 @@ export default function GroupsPage() {
             ))}
           </div>
         ) : (
-          <div className="text-center py-16 bg-neutral-950/20 rounded-xl border border-neutral-900">
-            <Users className="h-8 w-8 text-neutral-800 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-foreground">No Lobbies Found</h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1 font-light">
-              Create a lobby or enter an invite code to start collaborating with friends.
+          <div className="text-center py-20 bg-stone-950/20 rounded-[12px] border border-stone-900/60 backdrop-blur-md">
+            <Users className="h-8 w-8 text-stone-850 mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-campus">No Lobbies Found</h3>
+            <p className="text-[10px] text-neutral-500 max-w-xs mx-auto mt-1 font-mono uppercase tracking-wider">
+              Create a lobby or enter an invite code to start collaborating.
             </p>
           </div>
         )}

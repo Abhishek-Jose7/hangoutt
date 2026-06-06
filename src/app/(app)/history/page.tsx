@@ -38,9 +38,9 @@ export default function HistoryPage() {
     >
       <div className="space-y-6 font-sans text-sm">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-            <p className="text-xs uppercase tracking-widest font-semibold">Loading outing history...</p>
+          <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
+            <Loader2 className="h-7 w-7 animate-spin text-[#EB690B] mb-4" />
+            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Loading outing history...</p>
           </div>
         ) : historyEntries.length > 0 ? (
           <div className="space-y-4 max-w-3xl">
@@ -55,33 +55,33 @@ export default function HistoryPage() {
               }
               
               return (
-                <Card key={entry.id} className="border border-neutral-900 rounded-xl bg-neutral-950/20 shadow-sm hover:border-primary/20 transition-all">
+                <Card key={entry.id} className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg hover:border-[#EB690B]/30 hover:bg-stone-950/85 transition-all duration-300">
                   <CardHeader className="pb-3">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div>
-                        <span className="text-xs text-primary font-semibold uppercase flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-[#EB690B] font-bold uppercase flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5" />
                           {entry.outingDate}
                         </span>
-                        <CardTitle className="text-base font-bold mt-1 text-foreground font-heading tracking-wide uppercase">{entry.planName}</CardTitle>
-                        <CardDescription className="text-xs text-muted-foreground font-light mt-0.5">{entry.planTagline}</CardDescription>
+                        <CardTitle className="text-base font-bold mt-1 text-white font-campus tracking-widest uppercase">{entry.planName}</CardTitle>
+                        <CardDescription className="text-xs text-neutral-450 font-sans font-light mt-0.5">{entry.planTagline}</CardDescription>
                       </div>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-semibold uppercase rounded-full py-1 px-2.5">
+                      <Badge variant="outline" className="bg-[#00E5A0]/10 text-[#00E5A0] border-[#00E5A0]/20 text-[9px] font-mono font-bold uppercase rounded-full py-0.5 px-2.5">
                         {entry.groupName}
                       </Badge>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4 text-xs text-muted-foreground border-t border-neutral-900/60 pt-4">
+                  <CardContent className="space-y-4 text-xs text-neutral-450 border-t border-stone-900/40 pt-4 font-mono">
                     
                     {/* Venues checklist */}
                     {venues.length > 0 && (
                       <div>
-                        <h4 className="text-[10px] font-bold text-primary uppercase tracking-wider mb-2">Venues Visited</h4>
+                        <h4 className="text-[9px] font-bold text-[#EB690B] uppercase tracking-wider mb-2">Venues Visited</h4>
                         <div className="flex flex-wrap gap-2">
                           {venues.map((venue: any, idx: number) => {
                             const name = typeof venue === 'object' && venue !== null ? (venue.name || venue.venueName) : venue;
                             return (
-                              <span key={idx} className="inline-flex items-center rounded-full bg-neutral-900 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground border border-neutral-800">
+                              <span key={idx} className="inline-flex items-center rounded-full bg-stone-900 px-2.5 py-1 text-[9px] text-neutral-400 border border-stone-850">
                                 {name}
                               </span>
                             );
@@ -91,16 +91,16 @@ export default function HistoryPage() {
                     )}
 
                     {/* Participants list */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs font-semibold pt-2 border-t border-neutral-900/40">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Users className="h-4 w-4 text-primary" />
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-[10px] pt-3 border-t border-stone-900/30">
+                      <div className="flex items-center gap-1.5 text-neutral-400">
+                        <Users className="h-3.5 w-3.5 text-[#EB690B]" />
                         <span>
                           {participants.length} Participants: {participants.map((p: any) => typeof p === 'object' && p !== null ? p.name : p).join(', ')}
                         </span>
                       </div>
                       
-                      <span className="text-foreground flex items-center gap-0.5 font-bold">
-                        <DollarSign className="h-4 w-4 text-primary" />
+                      <span className="text-white flex items-center gap-0.5 font-bold">
+                        <DollarSign className="h-3.5 w-3.5 text-[#EB690B]" />
                         ₹{entry.totalCostPerHead} spent per head
                       </span>
                     </div>
@@ -111,11 +111,11 @@ export default function HistoryPage() {
             })}
           </div>
         ) : (
-          <div className="text-center py-16 bg-neutral-950/20 rounded-xl border border-neutral-900 max-w-3xl">
-            <Clock className="h-8 w-8 text-neutral-800 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-foreground">No Past Outings</h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1 font-light">
-              Outings are stored in history once a generated plan is confirmed and completed.
+          <div className="text-center py-20 bg-stone-950/20 rounded-[12px] border border-stone-900/60 max-w-3xl backdrop-blur-md">
+            <Clock className="h-8 w-8 text-stone-850 mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-campus">No Past Outings</h3>
+            <p className="text-[10px] text-neutral-500 max-w-xs mx-auto mt-1 font-mono uppercase tracking-wider">
+              Outings will appear here once plans are completed.
             </p>
           </div>
         )}

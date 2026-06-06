@@ -1,290 +1,1377 @@
-import Link from 'next/link';
-import { auth } from '@clerk/nextjs/server';
+'use client';
 
-export default async function HomePage() {
-  const { userId } = await auth();
-  const isSignedIn = !!userId;
+import { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
+import {
+  Plus,
+  Minus,
+  Search,
+  Menu,
+  Target,
+  CloudSun,
+  Navigation,
+  Phone,
+  MapPin,
+  Sparkles,
+  Activity,
+} from 'lucide-react';
+import { Card } from '@/components/ui/card';
+
+// ── 1. Scroll Progress Bar (Top of Viewport) ──
+function ScrollProgressBar() {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const pct = totalHeight > 0 ? (window.scrollY / totalHeight) * 100 : 0;
+      setWidth(pct);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-black font-sans text-foreground selection:bg-primary/20 selection:text-primary">
-      {/* Header */}
-      <header className="w-full bg-black">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-normal tracking-wide font-heading text-foreground">
-              Hang<span className="text-primary italic font-serif">out</span>
+    <div className="fixed top-0 left-0 w-full h-[3px] bg-stone-950 z-[100] pointer-events-none">
+      <div 
+        className="h-full bg-gradient-to-r from-[#EB690B] via-[#fbbf24] to-[#00E5A0] shadow-[0_0_8px_#EB690B] transition-all duration-100 ease-out"
+        style={{ width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+// ── 2. Scroll Reveal Component (IntersectionObserver) ──
+function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -50px 0px' }
+    );
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-1000 ease-out transform ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ── 3. Cursor-Glow Card (Bento Cards) ──
+interface GlowCardProps {
+  children: React.ReactNode;
+  className?: string;
+  glowColor?: string;
+}
+
+function GlowCard({ children, className = '', glowColor = 'rgba(235, 105, 11, 0.12)' }: GlowCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    setCoords({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`relative overflow-hidden bg-stone-950/80 border border-stone-900/60 p-8 flex flex-col justify-between transition-all duration-300 rounded-[12px] group hover:border-stone-800 ${className}`}
+    >
+      {isHovered && (
+        <div
+          className="absolute pointer-events-none transition-opacity duration-300 opacity-100 mix-blend-screen"
+          style={{
+            width: '280px',
+            height: '280px',
+            background: `radial-gradient(circle, ${glowColor} 0%, transparent 70%)`,
+            left: `${coords.x - 140}px`,
+            top: `${coords.y - 140}px`,
+          }}
+        />
+      )}
+      <div className="relative z-10 w-full h-full flex flex-col justify-between">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── 4. Scroll-linked Vertical Progress Timeline ──
+function ScrollTimeline() {
+  const steps = [
+    { num: '01', phase: 'SETUP', title: 'Create Lobby', desc: 'Initialize a group planning workspace in under 30 seconds and define the category profile parameters.', glow: 'rgba(235, 105, 11, 0.12)' },
+    { num: '02', phase: 'SYNC', title: 'Distribute Link', desc: 'Share a unique 8-character invite code. Members enter coordinate pins and budgets privately.', glow: 'rgba(0, 229, 160, 0.12)' },
+    { num: '03', phase: 'COMPUTE', title: 'Synthesize', desc: 'Ola Maps calculates travel times. AI layer compiles three tailored, narrative itinerary options.', glow: 'rgba(235, 105, 11, 0.12)' },
+    { num: '04', phase: 'LOCK', title: 'Consensus', desc: 'Cast votes in the shared planner lobby. The winning plan is confirmed and locked automatically.', glow: 'rgba(0, 229, 160, 0.12)' },
+  ];
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const totalDistance = rect.height;
+      const scrolled = viewportHeight / 2 - rect.top;
+      const pct = Math.min(Math.max(scrolled / totalDistance, 0), 1);
+      setScrollProgress(pct);
+
+      // Determine active step
+      const stepElements = containerRef.current.querySelectorAll('.timeline-step');
+      let minDiff = Infinity;
+      let currentActive = 0;
+      stepElements.forEach((el, index) => {
+        const stepRect = el.getBoundingClientRect();
+        const diff = Math.abs(stepRect.top + stepRect.height / 2 - viewportHeight / 2);
+        if (diff < minDiff) {
+          minDiff = diff;
+          currentActive = index;
+        }
+      });
+      setActiveStep(currentActive);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Trigger initially
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative max-w-4xl mx-auto pl-12 md:pl-20 py-10 space-y-16">
+      {/* Vertical Connection Track */}
+      <div className="absolute left-6 md:left-10 top-0 bottom-0 w-[2px] bg-stone-900">
+        <div 
+          className="absolute top-0 w-full bg-gradient-to-b from-[#EB690B] to-[#00E5A0] transition-all duration-150 ease-out shadow-[0_0_8px_#EB690B]"
+          style={{ height: `${scrollProgress * 100}%` }}
+        />
+      </div>
+
+      {steps.map((step, idx) => {
+        const isActive = idx <= activeStep;
+        const isCurrent = idx === activeStep;
+        return (
+          <div 
+            key={step.num} 
+            className="timeline-step relative transition-all duration-500 transform text-left"
+            style={{ 
+              opacity: isCurrent ? 1 : isActive ? 0.85 : 0.4,
+              transform: isCurrent ? 'translateX(0px)' : 'translateX(-4px)'
+            }}
+          >
+            {/* Dot Node */}
+            <div 
+              className={`absolute -left-[30px] md:-left-[46px] top-2.5 w-4 h-4 rounded-full bg-stone-950 border-2 transition-all duration-300 flex items-center justify-center ${
+                isActive 
+                  ? idx % 2 === 0 ? 'border-[#EB690B] scale-110' : 'border-[#00E5A0] scale-110'
+                  : 'border-stone-800'
+              }`}
+            >
+              {isActive && (
+                <span className={`w-1.5 h-1.5 rounded-full ${idx % 2 === 0 ? 'bg-[#EB690B]' : 'bg-[#00E5A0]'}`} />
+              )}
+            </div>
+
+            {/* Glowing step card */}
+            <GlowCard 
+              glowColor={step.glow} 
+              className={`p-6 md:p-8 bg-stone-950/45 border ${
+                isCurrent 
+                  ? idx % 2 === 0 ? 'border-[#EB690B]/30' : 'border-[#00E5A0]/30' 
+                  : 'border-stone-900/30'
+              } rounded-[12px]`}
+            >
+              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider block transition-colors duration-300 ${
+                isCurrent 
+                  ? idx % 2 === 0 ? 'text-[#EB690B]' : 'text-[#00E5A0]' 
+                  : 'text-neutral-500'
+              }`}>
+                {step.num} / {step.phase}
+              </span>
+              <h4 className="font-heading text-2xl text-white font-normal uppercase tracking-wide mt-2">{step.title}</h4>
+              <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed mt-3 max-w-2xl">{step.desc}</p>
+            </GlowCard>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 5. Venue Telemetry Type ──
+interface VenuePin {
+  id: string;
+  name: string;
+  place: string;
+  category: string;
+  lat: number;
+  lng: number;
+  mapX: number;
+  mapY: number;
+  num: string;
+  address: string;
+  phone: string;
+  connections: string;
+  description: string;
+  image: string;
+}
+
+// 24 Dynamic Spots mapped to Mumbai coordinates (North-to-South layout)
+const ALL_VENUE_PINS: VenuePin[] = [
+  // ── Cafés ──
+  {
+    id: 'cafe-01',
+    name: "Saint's Dark Coffee",
+    place: 'Bandra West, Mumbai',
+    category: 'Cafés (3)',
+    lat: 19.0596,
+    lng: 72.8295,
+    mapX: 680,
+    mapY: 340,
+    num: '01',
+    address: '52 Carter Rd Promenade, Bandra West',
+    phone: '(022) 2605 5437',
+    connections: 'Bandra Station // 1.2 km',
+    description: 'Intense dark roasts in a cozy library overlooking the Arabian Sea.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'cafe-02',
+    name: "Balzac's Roasters Coffee",
+    place: 'Worli, Mumbai',
+    category: 'Cafés (3)',
+    lat: 19.0178,
+    lng: 72.8478,
+    mapX: 710,
+    mapY: 480,
+    num: '02',
+    address: 'D685 Dr. Annie Besant Rd, Worli',
+    phone: '(022) 4202 1190',
+    connections: 'Lower Parel Monorail // 800 m',
+    description: 'Artisan roasting house featuring lush botanical reading gardens.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'cafe-03',
+    name: 'Pergamum Cafe Shop',
+    place: 'Fort, Colaba, Mumbai',
+    category: 'Cafés (3)',
+    lat: 18.9309,
+    lng: 72.8382,
+    mapX: 740,
+    mapY: 620,
+    num: '03',
+    address: '62 Via 84 A, Fort Heritage Block',
+    phone: '(022) 3671 5062',
+    connections: 'CSMT Main Terminal // 400 m',
+    description: 'Freshly brewed single-origin select. Vibe score 98%.',
+    image: '/images/cafe_1.png',
+  },
+
+  // ── Restaurants ──
+  {
+    id: 'rest-01',
+    name: 'The Bombay Canteen',
+    place: 'Lower Parel, Mumbai',
+    category: 'Restaurants',
+    lat: 19.0024,
+    lng: 72.8285,
+    mapX: 690,
+    mapY: 440,
+    num: '01',
+    address: 'Unit-1, Process House, Kamala Mills',
+    phone: '(022) 4966 6666',
+    connections: 'Lower Parel Station // 600 m',
+    description: 'Modern Indian dishes highlighting local micro-seasonal produce.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'rest-02',
+    name: 'Trishna Restaurant',
+    place: 'Kala Ghoda, Fort, Mumbai',
+    category: 'Restaurants',
+    lat: 18.9300,
+    lng: 72.8330,
+    mapX: 730,
+    mapY: 610,
+    num: '02',
+    address: '7 Sai Baba Marg, Kala Ghoda, Fort',
+    phone: '(022) 2270 3589',
+    connections: 'Churchgate Terminus // 700 m',
+    description: 'Famous butter pepper garlic crab and legendary Mangalorean seafood.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'rest-03',
+    name: 'Wasabi by Morimoto',
+    place: 'Colaba, Mumbai',
+    category: 'Restaurants',
+    lat: 18.9218,
+    lng: 72.8331,
+    mapX: 750,
+    mapY: 650,
+    num: '03',
+    address: 'The Taj Mahal Palace, Apollo Bunder',
+    phone: '(022) 6665 3366',
+    connections: 'Gateway of India Pier // 100 m',
+    description: 'World-class contemporary Japanese dining overlooking the historic harbor.',
+    image: '/images/cafe_1.png',
+  },
+
+  // ── Museums ──
+  {
+    id: 'mus-01',
+    name: 'Dr. Bhau Daji Lad Museum',
+    place: 'Byculla, Mumbai',
+    category: 'Museums',
+    lat: 18.9790,
+    lng: 72.8351,
+    mapX: 700,
+    mapY: 410,
+    num: '01',
+    address: '91 A, Veermata Jijabai Bhosale Udyan',
+    phone: '(022) 2373 1234',
+    connections: 'Byculla Station // 300 m',
+    description: 'Mumbais oldest museum building housing 19th-century decorative art.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'mus-02',
+    name: 'CSMVS Museum',
+    place: 'Kala Ghoda, Fort, Mumbai',
+    category: 'Museums',
+    lat: 18.9269,
+    lng: 72.8327,
+    mapX: 735,
+    mapY: 625,
+    num: '02',
+    address: '159-161 Mahatma Gandhi Road, Fort',
+    phone: '(022) 2284 5547',
+    connections: 'CSMT Railway Terminal // 900 m',
+    description: 'Grand Indo-Saracenic monument exhibiting ancient Indian sculptures.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'mus-03',
+    name: 'National Gallery of Modern Art',
+    place: 'Colaba, Mumbai',
+    category: 'Museums',
+    lat: 18.9258,
+    lng: 72.8325,
+    mapX: 745,
+    mapY: 635,
+    num: '03',
+    address: 'Sir Cowasji Jehangir Public Hall, Fort',
+    phone: '(022) 2288 1969',
+    connections: 'Churchgate Terminus // 800 m',
+    description: 'Heritage art museum showcasing premium contemporary masterpieces.',
+    image: '/images/cafe_1.png',
+  },
+
+  // ── Parkings ──
+  {
+    id: 'prk-01',
+    name: 'BKC Parking G-Block',
+    place: 'Bandra East, Mumbai',
+    category: 'Parkings',
+    lat: 19.0600,
+    lng: 72.8600,
+    mapX: 650,
+    mapY: 300,
+    num: '01',
+    address: 'G Block, Bandra Kurla Complex',
+    phone: '1800 220 990',
+    connections: 'Bandra-Kurla Connector // 400 m',
+    description: 'High-density automated multi-tier parking deck with EV hyperchargers.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'prk-02',
+    name: 'Kamala Mills Parking Plaza',
+    place: 'Lower Parel, Mumbai',
+    category: 'Parkings',
+    lat: 19.0020,
+    lng: 72.8280,
+    mapX: 685,
+    mapY: 435,
+    num: '02',
+    address: 'Senapati Bapat Marg, Lower Parel',
+    phone: '1800 220 991',
+    connections: 'Lower Parel Station // 500 m',
+    description: 'Secure multi-story parking structure convenient for dining & nightlife.',
+    image: '/images/cafe_1.png',
+  },
+  {
+    id: 'prk-03',
+    name: 'BMC Multilevel Parking Fort',
+    place: 'Fort, Mumbai',
+    category: 'Parkings',
+    lat: 18.9320,
+    lng: 72.8350,
+    mapX: 725,
+    mapY: 590,
+    num: '03',
+    address: 'Hutatma Chowk, Fort Commercial Zone',
+    phone: '1800 220 992',
+    connections: 'CSMT Station // 300 m',
+    description: 'Fully automated multi-level municipal smart parking terminal.',
+    image: '/images/cafe_active.png',
+  },
+
+  // ── ATMs ──
+  {
+    id: 'atm-01',
+    name: 'State Bank of India ATM',
+    place: 'Bandra West, Mumbai',
+    category: 'ATMs',
+    lat: 19.0580,
+    lng: 72.8280,
+    mapX: 670,
+    mapY: 330,
+    num: '01',
+    address: 'Carter Road Promenade, Bandra West',
+    phone: '1800 112 211',
+    connections: 'Bandra Bus Depot // 1.1 km',
+    description: '24-hour ATM and cash dispenser located near the promenade.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'atm-02',
+    name: 'ICICI Bank ATM',
+    place: 'Worli Seaface, Mumbai',
+    category: 'ATMs',
+    lat: 19.0200,
+    lng: 72.8420,
+    mapX: 705,
+    mapY: 470,
+    num: '02',
+    address: 'Worli Sea Face Promenade, Worli',
+    phone: '1800 102 424',
+    connections: 'Sea Link Exit Ramp // 600 m',
+    description: 'High-availability ATM kiosk with premium CCTV security.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'atm-03',
+    name: 'HDFC Bank ATM',
+    place: 'Nariman Point, Mumbai',
+    category: 'ATMs',
+    lat: 18.9280,
+    lng: 72.8240,
+    mapX: 740,
+    mapY: 660,
+    num: '03',
+    address: 'Express Towers Lobby, Nariman Point',
+    phone: '1800 224 433',
+    connections: 'Churchgate Station // 1 km',
+    description: 'Indoor multi-terminal cash facility located in the financial core.',
+    image: '/images/cafe_1.png',
+  },
+
+  // ── Bus Stops ──
+  {
+    id: 'bus-01',
+    name: 'Bandra Bus Depot',
+    place: 'Bandra West, Mumbai',
+    category: 'Bus Stops',
+    lat: 19.0550,
+    lng: 72.8350,
+    mapX: 665,
+    mapY: 345,
+    num: '01',
+    address: 'Station Road, Bandra West',
+    phone: '(022) 2414 6262',
+    connections: 'Bandra Railway Link // 100 m',
+    description: 'Core junction for suburban BEST bus loops and auto stands.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'bus-02',
+    name: 'Worli Naka Bus Stop',
+    place: 'Worli, Mumbai',
+    category: 'Bus Stops',
+    lat: 19.0150,
+    lng: 72.8430,
+    mapX: 700,
+    mapY: 460,
+    num: '02',
+    address: 'Dr. Annie Besant Road, Worli',
+    phone: '(022) 2414 6262',
+    connections: 'Worli Sea Face // 900 m',
+    description: 'High-frequency transit stop connecting central office hubs.',
+    image: '/images/cafe_1.png',
+  },
+  {
+    id: 'bus-03',
+    name: 'Colaba Bus Depot',
+    place: 'Colaba, Mumbai',
+    category: 'Bus Stops',
+    lat: 18.9180,
+    lng: 72.8280,
+    mapX: 755,
+    mapY: 665,
+    num: '03',
+    address: 'Electric House, Colaba Causeway',
+    phone: '(022) 2414 6262',
+    connections: 'Gateway of India // 500 m',
+    description: 'Southern terminal hub running express buses to Mumbai suburbs.',
+    image: '/images/cafe_2.png',
+  },
+
+  // ── Emergencies ──
+  {
+    id: 'emg-01',
+    name: 'Lilavati Trauma Center',
+    place: 'Bandra West, Mumbai',
+    category: 'Emergencies',
+    lat: 19.0510,
+    lng: 72.8270,
+    mapX: 675,
+    mapY: 350,
+    num: '01',
+    address: 'A-791, Bandra Reclamation Road',
+    phone: '(022) 2675 1000',
+    connections: 'Bandra-Worli Sea Link Entrance // 200 m',
+    description: '24/7 high-care trauma ward and cardiac unit services.',
+    image: '/images/cafe_1.png',
+  },
+  {
+    id: 'emg-02',
+    name: 'KEM Hospital Emergency',
+    place: 'Parel, Mumbai',
+    category: 'Emergencies',
+    lat: 19.0028,
+    lng: 72.8423,
+    mapX: 695,
+    mapY: 400,
+    num: '02',
+    address: 'Acharya Donde Marg, Parel',
+    phone: '(022) 2410 7000',
+    connections: 'Parel Central Station // 400 m',
+    description: 'Major public healthcare wing equipped with massive trauma facility.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'emg-03',
+    name: 'St. George ER Clinic',
+    place: 'Fort, Mumbai',
+    category: 'Emergencies',
+    lat: 18.9380,
+    lng: 72.8380,
+    mapX: 732,
+    mapY: 600,
+    num: '03',
+    address: 'P D\'Mello Road, Near CSMT Station',
+    phone: '(022) 2262 0242',
+    connections: 'CSMT Metro Terminal // 150 m',
+    description: 'Heritage municipal hospital hosting active primary triage.',
+    image: '/images/cafe_2.png',
+  },
+
+  // ── Sport Centers ──
+  {
+    id: 'spt-01',
+    name: 'Bandra Gymkhana Club',
+    place: 'Bandra West, Mumbai',
+    category: 'Sport Centers',
+    lat: 19.0585,
+    lng: 72.8315,
+    mapX: 672,
+    mapY: 335,
+    num: '01',
+    address: '20 St Andrew\'s Road, Bandra West',
+    phone: '(022) 2642 8515',
+    connections: 'Hill Road Junction // 500 m',
+    description: 'Premium colonial-era sporting club hosting clay tennis courts.',
+    image: '/images/cafe_2.png',
+  },
+  {
+    id: 'spt-02',
+    name: 'NSCI Sports Complex',
+    place: 'Worli, Mumbai',
+    category: 'Sport Centers',
+    lat: 19.0120,
+    lng: 72.8460,
+    mapX: 715,
+    mapY: 490,
+    num: '02',
+    address: 'Lala Lajpatrai Marg, Worli',
+    phone: '(022) 2493 8813',
+    connections: 'Mahalaxmi Station // 1.4 km',
+    description: 'Elite indoor arena complex featuring squash, pools, and tracks.',
+    image: '/images/cafe_active.png',
+  },
+  {
+    id: 'spt-03',
+    name: 'Wankhede Stadium Club',
+    place: 'Churchgate, Mumbai',
+    category: 'Sport Centers',
+    lat: 18.9288,
+    lng: 72.8258,
+    mapX: 738,
+    mapY: 640,
+    num: '03',
+    address: 'D Road, Churchgate, Mumbai',
+    phone: '(022) 2281 1729',
+    connections: 'Churchgate Terminal // 200 m',
+    description: 'Iconic sports venue offering gymnasiums and indoor cricket facilities.',
+    image: '/images/cafe_1.png',
+  },
+];
+
+const CATEGORIES = [
+  'ATMs',
+  'Bus Stops',
+  'Cafés (3)',
+  'Emergencies',
+  'Museums',
+  'Parkings',
+  'Restaurants',
+  'Sport Centers',
+];
+
+export default function HomePage() {
+  const { isSignedIn } = useAuth();
+  const [activeCategory, setActiveCategory] = useState<string>('Cafés (3)');
+  const [selectedPinId, setSelectedPinId] = useState<string>('cafe-01');
+  
+  // Interactive Viewport Navigation Zoom & Pan State (Centered on Mumbai layout)
+  const [zoom, setZoom] = useState<number>(1.35);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 30, y: -20 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [showCtrlTooltip, setShowCtrlTooltip] = useState<boolean>(false);
+  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Filter spots belonging to the currently active category
+  const filteredPins = useMemo(() => {
+    return ALL_VENUE_PINS.filter((pin) => pin.category === activeCategory);
+  }, [activeCategory]);
+
+  // Handle auto-switching of selected pin when category shifts
+  useEffect(() => {
+    if (filteredPins.length > 0) {
+      const isAlreadySelected = filteredPins.some((p) => p.id === selectedPinId);
+      if (!isAlreadySelected) {
+        setSelectedPinId(filteredPins[0].id);
+      }
+    }
+  }, [activeCategory, filteredPins, selectedPinId]);
+
+  const activeVenue = useMemo(() => {
+    return ALL_VENUE_PINS.find((v) => v.id === selectedPinId) || filteredPins[0] || ALL_VENUE_PINS[0];
+  }, [selectedPinId, filteredPins]);
+
+  // Carousel options: display only inactive spots in active category
+  const carouselVenues = useMemo(() => {
+    return filteredPins.filter((v) => v.id !== selectedPinId);
+  }, [filteredPins, selectedPinId]);
+
+  // ViewBox dynamic projection calculation based on Zoom/Pan
+  const viewBoxString = useMemo(() => {
+    const baseW = 1440;
+    const baseH = 900;
+    const w = baseW / zoom;
+    const h = baseH / zoom;
+    const x = baseW / 2 - w / 2 + pan.x;
+    const y = baseH / 2 - h / 2 + pan.y;
+    return `${x} ${y} ${w} ${h}`;
+  }, [zoom, pan]);
+
+  // Dynamic route connection line for the selected category's spots
+  const routePathD = useMemo(() => {
+    if (filteredPins.length === 0) return '';
+    return filteredPins
+      .map((pin, index) => `${index === 0 ? 'M' : 'L'} ${pin.mapX} ${pin.mapY}`)
+      .join(' ');
+  }, [filteredPins]);
+
+  // Viewport navigation mouse drag handlers
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (
+      (e.target as SVGElement).tagName !== 'circle' && 
+      (e.target as SVGElement).tagName !== 'path' && 
+      (e.target as SVGElement).tagName !== 'image'
+    ) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDragging) return;
+    const dx = (e.clientX - dragStart.x) / zoom;
+    const dy = (e.clientY - dragStart.y) / zoom;
+    setPan((prev) => ({ x: prev.x - dx, y: prev.y - dy }));
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Wheel zoom with Ctrl key guard
+  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      const zoomFactor = 0.05;
+      const newZoom = e.deltaY < 0 ? zoom + zoomFactor : zoom - zoomFactor;
+      setZoom(Math.min(2.5, Math.max(0.8, newZoom)));
+    } else {
+      setShowCtrlTooltip(true);
+      if (tooltipTimeoutRef.current) {
+        clearTimeout(tooltipTimeoutRef.current);
+      }
+      tooltipTimeoutRef.current = setTimeout(() => {
+        setShowCtrlTooltip(false);
+      }, 2000);
+    }
+  };
+
+  const handleZoomIn = () => {
+    setZoom((z) => Math.min(2.5, z + 0.15));
+  };
+
+  const handleZoomOut = () => {
+    setZoom((z) => Math.max(0.8, z - 0.15));
+  };
+
+  const handleRecenter = () => {
+    setZoom(1.35);
+    setPan({ x: 30, y: -20 });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (tooltipTimeoutRef.current) {
+        clearTimeout(tooltipTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="flex flex-col min-h-screen bg-[#0A0A0C] text-foreground font-sans selection:bg-[#EB690B]/20 selection:text-[#EB690B]">
+      
+      {/* ── 0. Sticky Scroll Progress Bar ── */}
+      <ScrollProgressBar />
+      
+      {/* ── SECTION 1: FULL VIEWPORT INTERACTIVE MAP CONSOLE ── */}
+      <section className="h-screen w-screen relative overflow-hidden bg-[#0D0A08] border-b border-stone-900/60 z-20">
+        
+        {/* Full-Bleed Map Canvas */}
+        <svg 
+          className={`absolute inset-0 w-full h-full z-0 cursor-${isDragging ? 'grabbing' : 'grab'}`}
+          viewBox={viewBoxString}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Cartographic Styled Mumbai Map Background Image */}
+          <image 
+            href="/images/mumbai_map.png"
+            x="0"
+            y="0"
+            width="1440"
+            height="900"
+            preserveAspectRatio="xMidYMid slice"
+            opacity="0.65"
+          />
+
+          {/* Concentric Shoreline offsets */}
+          <g stroke="rgba(235, 105, 11, 0.05)" fill="none">
+            <path d="M 120 900 C 120 700, 160 650, 220 620 C 280 600, 360 550, 340 450 C 320 350, 240 280, 180 200 C 120 120, 80 50, 80 0" strokeWidth="2" />
+            <path d="M 90 900 C 90 700, 130 650, 190 620 C 250 600, 330 550, 310 450 C 290 350, 210 280, 150 200 C 90 120, 50 50, 50 0" strokeWidth="1" />
+            <path d="M 60 900 C 60 700, 100 650, 160 620 C 220 600, 300 550, 280 450 C 260 350, 180 280, 120 200 C 60 120, 20 50, 20 0" strokeWidth="0.5" />
+          </g>
+
+          {/* Fine grid lines */}
+          <g stroke="rgba(235, 105, 11, 0.02)" strokeWidth="0.5">
+            <line x1="-1000" y1="150" x2="3000" y2="150" />
+            <line x1="-1000" y1="300" x2="3000" y2="300" />
+            <line x1="-1000" y1="450" x2="3000" y2="450" />
+            <line x1="-1000" y1="600" x2="3000" y2="600" />
+            <line x1="-1000" y1="750" x2="3000" y2="750" />
+            <line x1="200" y1="-1000" x2="200" y2="2000" />
+            <line x1="400" y1="-1000" x2="400" y2="2000" />
+            <line x1="600" y1="-1000" x2="600" y2="2000" />
+            <line x1="800" y1="-1000" x2="800" y2="2000" />
+            <line x1="1000" y1="-1000" x2="1000" y2="2000" />
+            <line x1="1200" y1="-1000" x2="1200" y2="2000" />
+          </g>
+
+          {/* Dynamic route path for selected category's pins */}
+          {routePathD && (
+            <path 
+              d={routePathD}
+              fill="none"
+              stroke="#EB690B"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.95"
+            />
+          )}
+
+          {/* Route terminal indicator */}
+          {filteredPins.length > 0 && (
+            <circle 
+              cx={filteredPins[filteredPins.length - 1].mapX} 
+              cy={filteredPins[filteredPins.length - 1].mapY} 
+              r="8" 
+              fill="#EB690B" 
+              stroke="#1E1511" 
+              strokeWidth="2" 
+            />
+          )}
+
+          {/* Active Midpoint Sweeper Circle */}
+          {activeVenue && (
+            <>
+              <circle 
+                cx={activeVenue.mapX} 
+                cy={activeVenue.mapY} 
+                r="45" 
+                fill="none" 
+                stroke="rgba(235, 105, 11, 0.15)" 
+                strokeWidth="1.2" 
+                strokeDasharray="2 3" 
+              />
+              <circle 
+                cx={activeVenue.mapX} 
+                cy={activeVenue.mapY} 
+                r="95" 
+                fill="none" 
+                stroke="rgba(235, 105, 11, 0.05)" 
+                strokeWidth="0.6" 
+              />
+            </>
+          )}
+
+          {/* Filtered spot pins */}
+          {filteredPins.map((venue) => {
+            const isSelected = venue.id === selectedPinId;
+            return (
+              <g 
+                key={venue.id} 
+                className="cursor-pointer"
+                onClick={() => setSelectedPinId(venue.id)}
+              >
+                {isSelected ? (
+                  // Location teardrop pin (Selected)
+                  <g transform={`translate(${venue.mapX - 12}, ${venue.mapY - 26})`}>
+                    <circle cx="12" cy="12" r="18" fill="none" stroke="#EB690B" strokeWidth="0.8" className="animate-ping" style={{ transformOrigin: '12px 12px' }} />
+                    <path 
+                      d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" 
+                      fill="#EB690B" 
+                      stroke="#0D0A08" 
+                      strokeWidth="1.5"
+                    />
+                  </g>
+                ) : (
+                  // Inactive badge (Green)
+                  <g>
+                    <circle cx={venue.mapX} cy={venue.mapY} r="9.5" fill="#00E5A0" stroke="#0D0A08" strokeWidth="1.8" />
+                    <text 
+                      x={venue.mapX} 
+                      y={venue.mapY + 3.2} 
+                      fill="#0D0A08" 
+                      fontSize="9.5" 
+                      fontFamily="monospace" 
+                      fontWeight="bold" 
+                      textAnchor="middle"
+                    >
+                      {venue.num}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Viewport Overlay Vignette Layer */}
+        <div className="absolute inset-0 pointer-events-none z-10 bg-radial-vignette opacity-85" />
+
+        {/* Floating Ctrl Tooltip warning */}
+        {showCtrlTooltip && (
+          <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 bg-stone-950/95 border border-[#EB690B]/30 text-white font-mono text-[10px] tracking-wider uppercase pointer-events-none rounded-[4px] shadow-lg animate-pulse flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#EB690B]" />
+            Use Ctrl + Scroll to Zoom Map Viewport
+          </div>
+        )}
+
+        {/* HUD Info Helper Top Right */}
+        <div className="absolute top-24 right-12 z-20 font-mono text-[9px] text-neutral-400 tracking-wider bg-stone-950/60 backdrop-blur-md px-3 py-1.5 border border-stone-900/60 pointer-events-none select-none hidden sm:block">
+          CTRL + SCROLL TO ZOOM // DRAG TO PAN
+        </div>
+
+        {/* Top Header Navigation */}
+        <header className="absolute top-0 left-0 w-full z-20 px-12 py-8 flex items-center justify-between pointer-events-auto">
+          <div className="flex items-center gap-3.5">
+            {/* Custom logo shield */}
+            <svg viewBox="0 0 24 28" className="w-9 h-10 text-[#EB690B]" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2C12 2 20 4 20 10C20 17 12 24 12 24C12 24 4 17 4 10C4 4 12 2 12 2Z" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" />
+              <path d="M8 8V13C8 15.2 9.8 17 12 17C14.2 17 16 15.2 16 13V8" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            <div className="text-left leading-none">
+              <h1 className="font-campus text-[16px] font-extrabold tracking-[0.1em] text-white uppercase leading-none">Hangoutt</h1>
+              <p className="font-campus text-[10px] tracking-[0.2em] text-neutral-400 uppercase mt-1 leading-none">Mumbai Noir</p>
+            </div>
+          </div>
+
+          {/* Spaced horizontal navigation */}
+          <nav className="hidden md:flex items-center gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase">
+            <Link href="#about" className="hover:text-white transition-colors duration-200">About</Link>
+            <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
+            <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
+            <Link href="#cta" className="hover:text-white transition-colors duration-200">Launch</Link>
+          </nav>
+
+          {/* Right Header Controls */}
+          <div className="flex items-center gap-6 text-neutral-300">
+            <button type="button" className="hover:text-white transition-colors cursor-pointer focus:outline-none">
+              <Search className="w-5 h-5" />
+            </button>
+            <button type="button" className="hover:text-white transition-colors cursor-pointer focus:outline-none">
+              <Menu className="w-5.5 h-5.5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Left Side Category Rail */}
+        <aside className="absolute left-12 top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none h-[420px]">
+          {/* Sidebar Vertical text decorator */}
+          <div className="flex flex-col gap-28 items-center mr-10 border-r border-stone-800/40 pr-8 justify-center">
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
+              • .
             </span>
-            <span className="hidden sm:inline-block text-[10px] font-sans tracking-wider text-muted-foreground uppercase pl-3 border-l border-border/40">
-              Outing Coordination Layer
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-[#EB690B] uppercase font-bold">
+              • LIFESTYLE
             </span>
           </div>
-          <nav className="flex items-center gap-6">
-            {isSignedIn ? (
-              <Link
-                href="/groups"
-                className="text-xs uppercase tracking-wider px-5 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-semibold rounded-lg"
-              >
-                Lobbies
-              </Link>
-            ) : (
-              <>
-                <Link 
-                  href="/sign-in" 
-                  className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="text-xs uppercase tracking-wider px-5 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-semibold rounded-lg"
-                >
-                  Get Started
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 bg-black">
-        
-        {/* Section 1: Hero Block */}
-        <section className="bg-black py-16 md:py-24">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-              
-              {/* Left Column: Typographic Statement */}
-              <div className="lg:col-span-8 flex flex-col justify-center">
-                <div className="space-y-6">
-                  <span className="inline-block text-xs font-bold uppercase tracking-widest text-primary">
-                    Outing Planning Protocol
+          {/* Categories Selector */}
+          <div className="flex flex-col items-start justify-center gap-4 text-left">
+            {CATEGORIES.map((cat) => {
+              const isActive = cat === activeCategory;
+              const cleanName = cat.replace(' (3)', '');
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(cat)}
+                  className={`text-left transition-all duration-300 relative group cursor-pointer block w-full focus:outline-none ${
+                    isActive 
+                      ? 'text-white py-1' 
+                      : 'text-neutral-500 hover:text-neutral-300 tracking-wider py-1 font-campus text-xs'
+                  }`}
+                >
+                  {isActive ? (
+                    <span className="font-serif-display text-5xl font-normal tracking-tight relative block leading-none">
+                      {cleanName} <span className="text-xl font-light align-top text-neutral-400 -ml-1">(3)</span>
+                    </span>
+                  ) : (
+                    cleanName
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Bottom-Left Telemetry / Weather Widget */}
+        <footer className="absolute bottom-10 left-12 z-20 pointer-events-auto select-none flex items-center gap-10 bg-stone-950/60 backdrop-blur-md px-6 py-4 border border-stone-900/60 shadow-lg rounded-[12px]">
+          <div className="flex items-center gap-4">
+            <CloudSun className="w-9 h-9 text-[#EB690B]" />
+            <div className="flex items-start gap-1">
+              <span className="font-sans text-[38px] font-light text-white leading-none">28°</span>
+              <div className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest leading-tight">
+                <div>NNW ↗</div>
+                <div>13 km/h</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-left font-mono text-[9px] text-neutral-400 tracking-wider leading-relaxed">
+            <div>Mon, 05 Aug, 2019</div>
+            <div className="text-neutral-600 mt-0.5">02:21 pm</div>
+          </div>
+
+          <div className="w-[1px] h-8 bg-stone-800" />
+
+          <div className="text-left font-mono text-[9px] tracking-widest uppercase leading-relaxed">
+            <div className="text-neutral-500">Spots</div>
+            <div className="text-[#00E5A0] font-bold">{filteredPins.length} / 3</div>
+          </div>
+        </footer>
+
+        {/* Bottom-Center Selected Pins Carousel (Filtered dynamically) */}
+        <div className="absolute bottom-10 left-[35%] xl:left-[38%] z-20 flex items-center gap-4 pointer-events-auto">
+          {carouselVenues.map((venue) => {
+            return (
+              <button
+                key={venue.id}
+                type="button"
+                onClick={() => setSelectedPinId(venue.id)}
+                className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.03] rounded-[12px]"
+              >
+                {/* Thumbnail with overlay badge */}
+                <div className="relative w-10 h-10 flex-shrink-0">
+                  <img 
+                    src={venue.image} 
+                    alt={venue.name} 
+                    className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]" 
+                  />
+                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border border-[#00E5A0]">
+                    {venue.num}
                   </span>
-                  <h1 className="text-4xl sm:text-6xl lg:text-7xl font-normal font-heading leading-[1.1] tracking-tight text-foreground">
-                    Assemble the group, <br />
-                    privately coordinate budgets, <br />
-                    and meet at the <span className="italic text-primary font-semibold">fair midpoint.</span>
-                  </h1>
-                  <p className="max-w-2xl text-base md:text-lg font-light text-muted-foreground leading-relaxed pt-4">
-                    Hangout automates coordinate geometry, budget limits, and venue preferences. No endless debate threads. No awkward group finance conversations. Just optimized plans, compiled instantly.
+                </div>
+                
+                <div>
+                  <p className="font-campus text-[10.5px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
+                  <p className="font-mono text-[8px] text-neutral-400 mt-1 leading-none">{venue.address}</p>
+                  <p className="font-mono text-[8px] text-neutral-500 leading-none mt-0.5">{venue.place}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Bottom-Right Selected Venue Details Card */}
+        <div className="absolute bottom-10 right-12 z-20 pointer-events-auto">
+          {activeVenue && (
+            <Card 
+              className="p-0 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-row overflow-hidden w-[420px] h-[195px] backdrop-blur-md rounded-[12px]"
+            >
+              {/* Left portion: Cafe Image */}
+              <div className="w-[140px] h-full relative flex-shrink-0 border-r border-stone-900/60">
+                <img 
+                  src={activeVenue.image} 
+                  alt={activeVenue.name} 
+                  className="w-full h-full object-cover grayscale opacity-85"
+                />
+              </div>
+              
+              {/* Right portion: Cafe Details */}
+              <div className="flex-1 p-5 flex flex-col justify-between text-left">
+                <div className="space-y-1">
+                  <span className="font-mono text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
+                  <h3 className="font-campus text-xl font-bold text-white tracking-wide leading-tight mt-0.5">{activeVenue.name}</h3>
+                  <p className="text-[9.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1">{activeVenue.address}</p>
+                  <p className="text-[9.5px] text-neutral-500 font-mono leading-none tracking-wider uppercase mt-0.5">{activeVenue.place}</p>
+                </div>
+                
+                <div className="flex items-center gap-4 text-[9.5px] font-mono text-neutral-400 my-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Navigation className="w-3.5 h-3.5 text-[#EB690B] transform rotate-45" /> 
+                    <span className="truncate max-w-[95px]">{activeVenue.connections}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-[#EB690B]" /> 
+                    <span>{activeVenue.phone}</span>
+                  </span>
+                </div>
+
+                <p className="text-neutral-400 leading-relaxed text-[9px] italic mb-1.5 font-sans">
+                  &quot;{activeVenue.description}&quot;
+                </p>
+
+                <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full">
+                  <button 
+                    type="button"
+                    className="w-full py-2.5 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[9.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[8px]"
+                  >
+                    Get More Information
+                  </button>
+                </Link>
+              </div>
+            </Card>
+          )}
+        </div>
+
+        {/* Far-Right Floating Map Navigation Controls */}
+        <div className="absolute right-12 top-1/2 -translate-y-1/2 z-20 pointer-events-auto">
+          <button 
+            type="button" 
+            onClick={handleRecenter}
+            title="Recenter Map Viewport"
+            className="w-12 h-12 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none border border-neutral-300"
+          >
+            <MapPin className="w-5.5 h-5.5" />
+          </button>
+        </div>
+
+        {/* Zoom stack */}
+        <div className="absolute right-12 bottom-32 z-20 flex flex-col gap-4 pointer-events-auto items-end">
+          <button
+            type="button"
+            onClick={handleRecenter}
+            title="Recenter"
+            className="w-12 h-12 bg-[#EB690B] hover:bg-[#D4590A] text-white flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
+          >
+            <Target className="w-5.5 h-5.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            title="Zoom In"
+            className="w-12 h-12 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-xl focus:outline-none rounded-[8px]"
+          >
+            <Plus className="w-5.5 h-5.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            title="Zoom Out"
+            className="w-12 h-12 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-xl focus:outline-none rounded-[8px]"
+          >
+            <Minus className="w-5.5 h-5.5" />
+          </button>
+        </div>
+
+        {/* Map scale indicator */}
+        <div className="absolute right-12 bottom-10 z-20 font-mono text-[8.5px] text-neutral-500 flex flex-col items-end pointer-events-none select-none">
+          <span>1,000 ft</span>
+          <div className="w-16 h-[5px] border-x border-b border-neutral-600 my-0.5" />
+          <span>100 m</span>
+        </div>
+
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-0.5 text-[8.5px] font-mono text-neutral-500 animate-bounce pointer-events-none uppercase tracking-widest">
+          <span>Scroll to explore</span>
+          <span className="text-xs">▼</span>
+        </div>
+
+      </section>
+
+      {/* ── SECTION 2: THE CORE COORDINATION TECHNOLOGY (BENTO GRID WITH GLOW) ── */}
+      <section id="about" className="bg-[#0A0A0C] py-24 md:py-32 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#EB690B]/5 rounded-full filter blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#00E5A0]/2 rounded-full filter blur-[100px] pointer-events-none" />
+
+        <div className="mx-auto max-w-7xl px-8 relative z-10" id="features">
+          <ScrollReveal className="text-center max-w-3xl mx-auto mb-20 space-y-4">
+            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#EB690B] font-mono">
+              [ COORDINATION PLATFORM ARCHITECTURE ]
+            </span>
+            <h2 className="font-heading text-4xl sm:text-6xl text-white font-normal leading-tight italic">
+              Resolving the friction of group coordination
+            </h2>
+            <p className="text-sm font-light text-neutral-400 leading-relaxed font-sans max-w-2xl mx-auto pt-2">
+              Hangoutt automates spatial coordinate geography, privacy budget ceilings, and dining preferences. No endless messaging chains. Just optimal consensus itineraries compiled instantly.
+            </p>
+          </ScrollReveal>
+
+          {/* Bento Grid using GlowCard */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+            {/* Card 1 */}
+            <ScrollReveal>
+              <GlowCard glowColor="rgba(235, 105, 11, 0.15)" className="h-full">
+                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#EB690B]/30 tracking-widest">PROTO_01</div>
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-[#EB690B]/10 border border-[#EB690B]/30 flex items-center justify-center mb-6">
+                    <Navigation className="w-5 h-5 text-[#EB690B] transform rotate-45" />
+                  </div>
+                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
+                    Fair travel midpoints
+                  </h3>
+                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                    Computes geographic coordinate centroids that minimize travel times. The participant living farthest away is no longer forced to bear all the commute burdens.
                   </p>
                 </div>
-
-                <div className="mt-10 flex flex-wrap gap-4">
-                  {isSignedIn ? (
-                    <Link
-                      href="/groups"
-                      className="text-xs uppercase tracking-wider px-8 py-4 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-bold rounded-lg shadow-sm"
-                    >
-                      Go to Lobbies
-                    </Link>
-                  ) : (
-                    <>
-                      <Link
-                        href="/sign-up"
-                        className="text-xs uppercase tracking-wider px-8 py-4 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-bold rounded-lg shadow-sm"
-                      >
-                        Create Outing Group
-                      </Link>
-                      <Link 
-                        href="/sign-in" 
-                        className="text-xs uppercase tracking-wider px-8 py-4 bg-black text-foreground border border-border rounded-lg hover:bg-primary/5 hover:border-primary/50 transition-all font-medium"
-                      >
-                        Learn More
-                      </Link>
-                    </>
-                  )}
+                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>METRIC: TRAVEL AVERAGES</span>
+                  <span className="text-[#EB690B] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
-              </div>
+              </GlowCard>
+            </ScrollReveal>
 
-              {/* Right Column: Clean Scheduled Outing Card */}
-              <div className="lg:col-span-4 flex flex-col justify-center">
-                <div className="p-6 bg-card rounded-xl space-y-6 shadow-sm border border-border/10">
-                  <div className="flex justify-between items-center pb-3 border-b border-border/40">
-                    <span className="text-primary text-[10px] font-bold tracking-widest uppercase">Lobby Session</span>
-                    <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold uppercase tracking-wider">Active</span>
+            {/* Card 2 */}
+            <ScrollReveal>
+              <GlowCard glowColor="rgba(0, 229, 160, 0.15)" className="h-full border-secondary/20">
+                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#00E5A0]/30 tracking-widest">PROTO_02</div>
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-[#00E5A0]/10 border border-[#00E5A0]/30 flex items-center justify-center mb-6">
+                    <Activity className="w-5 h-5 text-[#00E5A0]" />
                   </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2 text-xs">
-                      <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[9px]">Participant Status</p>
-                      <div className="flex justify-between py-1 border-b border-border/20 text-muted-foreground">
-                        <span className="font-semibold text-foreground">Abhishek J.</span>
-                        <span className="font-mono text-[10px] text-primary">₹400 max · 7.2km</span>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-border/20 text-muted-foreground">
-                        <span className="font-semibold text-foreground">Sarah C.</span>
-                        <span className="font-mono text-[10px] text-primary">₹800 max · 4.1km</span>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-border/20 text-muted-foreground">
-                        <span className="font-semibold text-foreground">Marcus M.</span>
-                        <span className="font-mono text-[10px] text-primary">₹350 max · 11.0km</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 space-y-2 text-xs">
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground uppercase text-[9px] tracking-wider">Optimal Midpoint</span>
-                        <span className="font-semibold text-foreground">Indiranagar, Block 3</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground uppercase text-[9px] tracking-wider">Aggregate Outing Budget</span>
-                        <span className="font-semibold text-primary">₹350 per head</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-border/30 space-y-2">
-                      <span className="text-muted-foreground uppercase text-[9px] tracking-wider block">Generated Options</span>
-                      <div className="border border-border/30 p-3 rounded-lg bg-black/60 flex justify-between items-center text-xs">
-                        <span className="font-bold text-foreground">Plan A: Cafe & Bowling</span>
-                        <span className="text-[9px] bg-primary text-primary-foreground px-2 py-0.5 rounded font-bold uppercase">3 Votes</span>
-                      </div>
-                      <div className="border border-border/20 p-3 rounded-lg bg-black/30 flex justify-between items-center text-xs text-muted-foreground">
-                        <span>Plan B: Brewery Tour</span>
-                        <span className="text-[9px] uppercase">1 Vote</span>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
+                    Zero-disclosure limits
+                  </h3>
+                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                    Individual budgets and start coordinates are kept completely private. Only derived averages and lowest-common-denominator caps are passed to recommend options.
+                  </p>
                 </div>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* Section 2: Specification Matrix */}
-        <section className="bg-black py-20 md:py-28">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
-              
-              {/* Feature 01 */}
-              <div className="space-y-4">
-                <span className="text-xs font-bold uppercase tracking-widest text-primary">01. Geographic Midpoint</span>
-                <h3 className="text-xl font-heading text-foreground font-normal tracking-wide uppercase">
-                  Fair Travel Metrics
-                </h3>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Computes spatial coordinates that minimize cumulative travel times. The participant living farthest away is no longer forced to carry all the travel burdens.
-                </p>
-              </div>
-
-              {/* Feature 02 */}
-              <div className="p-0 space-y-4">
-                <span className="text-xs font-bold uppercase tracking-widest text-primary">02. Privacy Envelope</span>
-                <h3 className="text-xl font-heading text-foreground font-normal tracking-wide uppercase">
-                  Zero-Disclosure Caps
-                </h3>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Individual budgets and coordinates remain private. Only derived averages and lowest-common-denominator limits are passed to recommend outing options.
-                </p>
-              </div>
-
-              {/* Feature 03 */}
-              <div className="p-0 space-y-4">
-                <span className="text-xs font-bold uppercase tracking-widest text-primary">03. Narrative Outings</span>
-                <h3 className="text-xl font-heading text-foreground font-normal tracking-wide uppercase">
-                  LLM Itinerary Compiler
-                </h3>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Instead of plain listings, nearby venues are passed through Groq to compile 3–4 narrative plans. Group members vote in real-time to lock the meetup.
-                </p>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* Section 3: Value Proposition Editorial */}
-        <section className="py-20 md:py-28 bg-black">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-16 items-start">
-              <div className="md:col-span-5 space-y-4">
-                <span className="text-xs font-bold uppercase tracking-widest text-primary">
-                  The Problem We Solve
-                </span>
-                <h2 className="text-3xl sm:text-5xl font-normal font-heading leading-tight tracking-tight text-foreground">
-                  Resolving the coordination friction
-                </h2>
-              </div>
-              <div className="md:col-span-7 space-y-6 text-sm text-muted-foreground font-light leading-relaxed">
-                <p>
-                  Planning outings via standard group chat leads to decision paralysis. Members enter coordinates and budgets privately into Hangout's secure lobby database, and our system calculates the optimized meetup plan.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 text-xs font-semibold uppercase tracking-wider text-foreground">
-                  <div className="space-y-1">
-                    <span className="text-primary block font-mono">01 / GEOGRAPHY</span>
-                    <span className="text-muted-foreground font-normal font-sans">Equal travel times determined by coordinate geometry average.</span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-primary block font-mono">02 / BUDGETS</span>
-                    <span className="text-muted-foreground font-normal font-sans">Privacy-first filters cap recommendation costs, respecting individual limits.</span>
-                  </div>
+                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>SECURITY: ENVELOPE SYNC</span>
+                  <span className="text-[#00E5A0] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
-              </div>
-            </div>
+              </GlowCard>
+            </ScrollReveal>
+
+            {/* Card 3 */}
+            <ScrollReveal>
+              <GlowCard glowColor="rgba(235, 105, 11, 0.15)" className="h-full">
+                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#EB690B]/30 tracking-widest">PROTO_03</div>
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-[#EB690B]/10 border border-[#EB690B]/30 flex items-center justify-center mb-6">
+                    <Sparkles className="w-5 h-5 text-[#EB690B]" />
+                  </div>
+                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
+                    Itinerary compiler
+                  </h3>
+                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                    Instead of random restaurant listings, venues are processed through our planner layer to generate 3 narrative options. Group members vote in real-time.
+                  </p>
+                </div>
+                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>SYSTEM: COMPILER CORES</span>
+                  <span className="text-[#EB690B] group-hover:translate-x-1 transition-transform">→</span>
+                </div>
+              </GlowCard>
+            </ScrollReveal>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Section 4: Process Steps */}
-        <section className="bg-black py-20 md:py-28">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
-              
-              {/* Step 1 */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-widest text-primary">01. Setup</div>
-                <h4 className="font-semibold text-foreground uppercase tracking-wider text-sm">Create Lobby</h4>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Initialize a group planning workspace in under 30 seconds and define the category profile.
-                </p>
-              </div>
-
-              {/* Step 2 */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-widest text-primary">02. Sync</div>
-                <h4 className="font-semibold text-foreground uppercase tracking-wider text-sm">Distribute Link</h4>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Share a unique 8-character invite code. Members enter coordinate pins and budgets privately.
-                </p>
-              </div>
-
-              {/* Step 3 */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-widest text-primary">03. Compute</div>
-                <h4 className="font-semibold text-foreground uppercase tracking-wider text-sm">Synthesize</h4>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Ola Maps aggregates nearby venues. Groq LLM compiles three tailored, narrative itinerary plans.
-                </p>
-              </div>
-
-              {/* Step 4 */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold uppercase tracking-widest text-primary">04. Lock</div>
-                <h4 className="font-semibold text-foreground uppercase tracking-wider text-sm">Consensus</h4>
-                <p className="font-sans font-light text-muted-foreground leading-relaxed text-sm">
-                  Cast votes in the shared planner lobby. The winning plan is confirmed and locked automatically.
-                </p>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-black py-12 text-xs text-muted-foreground">
-        <div className="mx-auto max-w-7xl px-6 flex flex-col sm:flex-row justify-between items-center gap-6">
-          <div className="text-xl font-normal font-heading tracking-wide text-foreground">
-            Hang<span className="text-primary italic font-serif">out</span>
-          </div>
-          <div className="flex gap-6 tracking-wide text-[10px] uppercase font-mono">
-            <span className="text-muted-foreground/60 font-medium">
-              © {new Date().getFullYear()} Hangout Outing Coordination Layer.
+      {/* ── SECTION 3: THE PROTOCOL TIMELINE (SCROLL PROGRESS CONNECTOR) ── */}
+      <section id="steps" className="bg-[#0D0D10] py-24 md:py-32 border-t border-stone-900/60 relative">
+        <div className="mx-auto max-w-7xl px-8">
+          <ScrollReveal className="text-center max-w-3xl mx-auto mb-16 space-y-3">
+            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#00E5A0] font-mono">
+              [ EXECUTION PROTOCOLS ]
             </span>
+            <h2 className="font-heading text-4xl sm:text-5xl text-white font-normal leading-tight italic">
+              How the platform operates
+            </h2>
+            <p className="text-xs font-mono text-neutral-500 uppercase tracking-widest mt-2">
+              Scroll to advance the synchronization sequence
+            </p>
+          </ScrollReveal>
+
+          {/* Interactive Timeline Component */}
+          <ScrollTimeline />
+        </div>
+      </section>
+
+      {/* ── SECTION 4: CALL TO ACTION EDITORIAL ── */}
+      <section id="cta" className="relative py-32 border-t border-stone-900/60 overflow-hidden bg-black text-center">
+        <div className="absolute inset-0 z-0">
+          {/* Subtle grid accent overlay */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:40px_40px] opacity-40" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0C] via-transparent to-[#0A0A0C] z-10" />
+        </div>
+
+        <div className="relative z-10 max-w-4xl mx-auto px-8 space-y-10">
+          <ScrollReveal className="space-y-4">
+            <span className="inline-block text-xs font-mono font-bold uppercase tracking-widest text-[#EB690B]">
+              [ LAUNCH INITIALIZATION ]
+            </span>
+            <h2 className="font-heading text-5xl sm:text-7xl text-white font-normal italic leading-none">
+              Ready for the night?
+            </h2>
+            <p className="text-sm font-light text-neutral-400 max-w-xl mx-auto pt-2 font-sans">
+              Connect your friends, coordinate coordinate maps, and let Hangoutt compile your most optimal outing expedition.
+            </p>
+          </ScrollReveal>
+
+          <ScrollReveal>
+            {isSignedIn ? (
+              <Link href="/groups" passHref>
+                <button 
+                  type="button" 
+                  className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                >
+                  Go to lobbies
+                </button>
+              </Link>
+            ) : (
+              <Link href="/sign-up" passHref>
+                <button 
+                  type="button" 
+                  className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                >
+                  START A HANGOUT
+                </button>
+              </Link>
+            )}
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="bg-[#070709] py-16 border-t border-stone-950 text-xs text-neutral-500 font-mono">
+        <div className="max-w-7xl mx-auto px-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+            <div className="md:col-span-2 space-y-4">
+              <span className="font-heading text-2xl text-primary block leading-none">HANGOUTT</span>
+              <p className="text-neutral-500 text-[10px] tracking-wider max-w-sm">
+                AI COORDINATION PLATFORM 4.0 // ENGINEERED FOR THE METROPOLIS THAT NEVER SLEEPS.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-[10px] text-white uppercase mb-4 tracking-widest border-b border-stone-900 pb-2">Protocols</h4>
+              <ul className="space-y-2.5 text-[10px]">
+                <li><Link href="#about" className="hover:text-white transition-colors">Venue Discovery</Link></li>
+                <li><Link href="#steps" className="hover:text-white transition-colors">Transit Intelligence</Link></li>
+                <li><Link href="#cta" className="hover:text-white transition-colors">Group Consensus</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-[10px] text-white uppercase mb-4 tracking-widest border-b border-stone-900 pb-2">HQ</h4>
+              <ul className="space-y-2.5 text-[10px]">
+                <li className="text-neutral-500 uppercase">Bandra West, Mumbai</li>
+                <li className="text-neutral-600 font-sans">© {new Date().getFullYear()} Hangoutt Technologies Pvt. Ltd.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="pt-8 border-t border-stone-900/60 flex flex-col md:flex-row justify-between items-center gap-4 text-[9px] text-neutral-600">
+            <div className="flex gap-6">
+              <span>PRIVACY_ENVELOPE_V4</span>
+              <span>TERMS_OF_SERVICE</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#00E5A0] animate-pulse shadow-[0_0_8px_#00E5A0]" />
+              <span className="uppercase text-[9px] tracking-wider text-neutral-400">PLANNING PROTOCOLS OPERATIONAL</span>
+            </div>
           </div>
         </div>
       </footer>
+
     </div>
   );
 }

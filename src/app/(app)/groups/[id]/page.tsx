@@ -356,19 +356,19 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-black text-foreground">
-        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-        <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Loading group workspace...</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
+        <Loader2 className="h-8 w-8 animate-spin text-[#EB690B] mb-4" />
+        <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing Workspace Module...</p>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <PageContainer title="Group Details">
-        <Card className="border border-border bg-neutral-950/40 text-center p-8 rounded-xl">
-          <p className="text-sm text-muted-foreground mb-4">Lobby workspace not found or you are not a member.</p>
-          <Link href="/groups" className={buttonVariants({ variant: 'outline', size: 'sm', className: 'rounded-lg border-border' })}>
+      <PageContainer title="Lobby Workspace">
+        <Card className="border border-stone-900 bg-stone-950/45 text-center p-8 rounded-[12px] backdrop-blur-md">
+          <p className="text-xs font-mono uppercase tracking-widest text-neutral-400 mb-4">Workspace not found or you are not a member.</p>
+          <Link href="/groups" className={buttonVariants({ variant: 'outline', size: 'sm', className: 'border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 transition-all' })}>
             Back to Lobbies
           </Link>
         </Card>
@@ -398,44 +398,44 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
   return (
     <PageContainer
-      title={group.name}
-      subtitle={`Lobby Status: ${group.status.replace('_', ' ')}`}
+      title={group.name.toUpperCase()}
+      subtitle={`WORKSPACE ID: ${group.id.substring(0, 8).toUpperCase()} // STATUS: ${group.status.replace('_', ' ')}`}
       actions={
         (group.status !== 'COMPLETED' && group.status !== 'ARCHIVED') ? (
-          <div className="flex gap-2 font-sans text-xs">
+          <div className="flex gap-2">
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleShareCode} 
-              className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
+              className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
             >
-              <Share2 className="h-4 w-4 text-primary" />
+              <Share2 className="h-3.5 w-3.5 text-[#EB690B]" />
               Share Code
             </Button>
           </div>
         ) : null
       }
     >
-      <div className="space-y-6 font-sans text-sm">
+      <div className="space-y-6 font-mono text-xs">
         
         {/* 1. Top Section Summary Card */}
-        <Card className="relative overflow-hidden bg-gradient-to-br from-neutral-950 via-neutral-950 to-primary/5 border border-border/60 p-5 rounded-2xl shadow-xl space-y-4">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+        <Card className="relative overflow-hidden border border-stone-900/60 bg-stone-950/45 p-6 rounded-[12px] shadow-lg backdrop-blur-md space-y-4">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#EB690B]/5 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex justify-between items-start gap-4">
             <div className="space-y-1">
-              <h1 className="text-xl font-extrabold text-foreground tracking-tight flex flex-wrap items-center gap-2">
-                <span>🎉 {group.name}</span>
+              <h1 className="text-lg font-bold text-white uppercase tracking-wider flex flex-wrap items-center gap-2 font-mono">
+                <span>Lobby Protocol // {group.name}</span>
               </h1>
-              <p className="text-xs text-muted-foreground font-light line-clamp-1">{group.description || 'Experience-first Outing lobby'}</p>
+              <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed line-clamp-1">{group.description || 'Experience-focused custom outings planning system.'}</p>
             </div>
             
-            <Badge variant="outline" className={`shrink-0 rounded-full py-1 px-3 text-[10px] font-bold uppercase tracking-wider ${
+            <Badge variant="outline" className={`shrink-0 font-mono rounded-[4px] py-1 px-2.5 text-[9px] font-bold uppercase tracking-widest ${
               group.status === 'VOTING' 
-                ? 'bg-primary/15 text-primary border-primary/30 animate-pulse'
+                ? 'bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 animate-pulse'
                 : group.status === 'COMPLETED'
-                  ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                  : 'bg-neutral-900 text-muted-foreground border-border'
+                  ? 'bg-[#00E5A0]/10 text-[#00E5A0] border-[#00E5A0]/20'
+                  : 'bg-stone-900/40 text-neutral-400 border-stone-850'
             }`}>
               {group.status.replace('_', ' ').replace('COLLECTING ', '')}
             </Badge>
@@ -443,17 +443,17 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
           {/* Conditional Invite Section (only if NOT completed/archived) */}
           {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
-            <div className="flex flex-wrap items-center gap-3 bg-black/40 border border-border/40 p-3 rounded-xl text-xs">
+            <div className="flex flex-wrap items-center gap-3 bg-stone-950/80 border border-stone-900/80 p-3 rounded-[8px] text-[11px]">
               <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground font-bold uppercase tracking-wider text-[9px]">Invite Code:</span>
-                <code className="bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded text-primary font-mono select-all font-extrabold text-xs">{group.inviteCode}</code>
+                <span className="text-neutral-500 font-bold uppercase tracking-widest text-[9px] font-mono">Invite Code:</span>
+                <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#EB690B] font-mono select-all font-bold text-xs">{group.inviteCode}</code>
               </div>
-              <span className="text-muted-foreground/60 hidden sm:inline">|</span>
+              <span className="text-stone-850 hidden sm:inline">|</span>
               <div className="flex items-center gap-1.5 truncate max-w-full">
-                <span className="text-muted-foreground font-bold uppercase tracking-wider text-[9px]">Invite Link:</span>
+                <span className="text-neutral-500 font-bold uppercase tracking-widest text-[9px] font-mono">Invite Link:</span>
                 <a 
                   href={typeof window !== 'undefined' ? `${window.location.origin}/join/${group.inviteCode}` : `/join/${group.inviteCode}`} 
-                  className="text-primary hover:underline font-bold truncate max-w-[180px] sm:max-w-xs"
+                  className="text-[#EB690B] hover:text-[#D4590A] transition-colors font-mono font-bold truncate max-w-[180px] sm:max-w-xs hover:underline"
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -463,69 +463,69 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/40 text-[11px] text-muted-foreground font-medium">
+          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-stone-900/60 text-[11px] text-neutral-400 font-medium">
             <div className="space-y-0.5">
-              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Members</p>
-              <p className="text-xs font-extrabold text-foreground flex items-center gap-1">
-                <Users className="h-3 w-3 text-primary" /> {members.length}
+              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Members</p>
+              <p className="text-xs font-bold text-white flex items-center gap-1 font-mono">
+                <Users className="h-3 w-3 text-[#EB690B]" /> {members.length}
               </p>
             </div>
             
             <div className="space-y-0.5">
-              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Budget Range</p>
-              <p className="text-xs font-extrabold text-foreground">
+              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Budget Range</p>
+              <p className="text-xs font-bold text-white font-mono">
                 ₹{budgetSummary?.min || 300} - ₹{budgetSummary?.max || 700}
               </p>
             </div>
 
             <div className="space-y-0.5">
-              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Vibe</p>
-              <p className="text-xs font-extrabold text-primary truncate">
-                {group.vibes ? JSON.parse(group.vibes).slice(0, 2).map((v: string) => v.charAt(0) + v.slice(1).toLowerCase()).join(', ') : 'Creative, Foodie'}
+              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Vibe</p>
+              <p className="text-xs font-bold text-[#EB690B] uppercase font-mono truncate">
+                {group.vibes ? JSON.parse(group.vibes).slice(0, 2).map((v: string) => v.toUpperCase()).join(' • ') : 'CREATIVE • FOODIE'}
               </p>
             </div>
           </div>
           
-          <div className="pt-2 border-t border-border/30 text-[11px] text-muted-foreground">
-            <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold mb-0.5">Location Spread</p>
-            <p className="text-xs font-bold text-foreground truncate">
+          <div className="pt-2 border-t border-stone-900/60 text-[11px] text-neutral-400">
+            <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono mb-0.5">Location Spread</p>
+            <p className="text-xs font-bold text-white truncate font-mono">
               {locations.length > 0 
-                ? locations.map((l: any) => l.locationName?.split(',')[0].trim()).filter(Boolean).join(' • ')
-                : 'Waiting for members...'}
+                ? locations.map((l: any) => l.locationName?.split(',')[0].trim().toUpperCase()).filter(Boolean).join(' • ')
+                : 'WAITING FOR MEMBERS...'}
             </p>
           </div>
         </Card>
 
         {/* Status Notification Banner (Cooking status) */}
         {isGeneratingState && (
-          <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 p-4 rounded-xl text-primary text-xs font-semibold animate-pulse">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Itineraries are currently being cooked. Check back in a few seconds...</span>
-            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1">
-              <RefreshCw className="h-3 w-3" /> Reload
+          <div className="flex items-center gap-3 bg-[#EB690B]/10 border border-[#EB690B]/20 p-4 rounded-[8px] text-[#EB690B] text-[10px] font-bold uppercase tracking-wider animate-pulse">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>AI Itineraries are currently being cooked. Check back shortly...</span>
+            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1 text-[9px] hover:bg-[#EB690B]/20 text-[#EB690B] hover:text-[#EB690B]">
+              <RefreshCw className="h-3 w-3 animate-spin" /> Reload
             </Button>
           </div>
         )}
 
         {/* 2. Member Progress Section (Before Generation) */}
         {!isVotingOrClosed && !isGeneratingState && (
-          <Card className="border border-border/60 rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-md p-4 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-border/40">
-              <div>
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+          <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg p-5 rounded-[12px] space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-stone-900/60">
+              <div className="space-y-0.5">
+                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5" />
-                  Members Ready
+                  Members Sync Status
                 </CardTitle>
-                <p className="text-[10px] text-muted-foreground font-light mt-0.5">
-                  Lobby registers green as soon as coordinates & budget caps are entered.
+                <p className="text-[9px] text-neutral-400 font-sans tracking-wide leading-relaxed">
+                  Lobby registers complete as soon as starting coordinates and budgets are saved.
                 </p>
               </div>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-extrabold py-0.5 px-2.5 rounded-lg shrink-0">
+              <Badge variant="outline" className="bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 text-[9px] font-mono font-bold py-0.5 px-2.5 rounded-[4px] shrink-0">
                 {members.filter((m: any) => {
                   const hasBudget = submittedBudgetUserIds.includes(m.userId);
                   const hasLocation = locations.some((l: any) => l.userId === m.userId);
                   return hasBudget && hasLocation;
-                }).length} / {members.length} Complete
+                }).length} / {members.length} SYNCED
               </Badge>
             </div>
             
@@ -536,10 +536,14 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 const isReady = hasBudget && hasLocation;
 
                 return (
-                  <div key={member.userId} className="flex items-center justify-between p-2 bg-neutral-950/80 border border-neutral-900 rounded-xl text-xs hover:border-border/80 transition-all duration-200">
-                    <span className="text-foreground font-bold truncate pr-1">{member.name}</span>
-                    <span className="text-sm shrink-0 leading-none">
-                      {isReady ? '🟢' : '🟡'}
+                  <div key={member.userId} className="flex items-center justify-between p-3 bg-stone-950/80 border border-stone-900 rounded-[8px] text-[11px] hover:border-stone-850 transition-all duration-200 font-mono">
+                    <span className="text-white font-bold truncate pr-1">{member.name.toUpperCase()}</span>
+                    <span className="text-[10px] shrink-0 leading-none flex items-center gap-1.5 font-bold">
+                      {isReady ? (
+                        <><span className="h-1.5 w-1.5 rounded-full bg-[#00E5A0] shadow-[0_0_8px_#00E5A0]" /> READY</>
+                      ) : (
+                        <><span className="h-1.5 w-1.5 rounded-full bg-[#EB690B] shadow-[0_0_8px_#EB690B] animate-pulse" /> PENDING</>
+                      )}
                     </span>
                   </div>
                 );
@@ -555,21 +559,22 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     const hasLocation = locations.some((l: any) => l.userId === m.userId);
                     return hasBudget && hasLocation;
                   }).length !== members.length}
-                  className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                  className="w-full bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {isGenerating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating Itineraries...
+                      COOKING ITINERARIES...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate Itineraries
+                      <Sparkles className="mr-2 h-4 w-4 text-[#0A0A0C] fill-white" />
+                      GENERATE ITINERARIES
                     </>
                   )}
                 </Button>
               </div>
+            )}
           </Card>
         )}
 
@@ -581,44 +586,44 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               (() => {
                 const winner = plans.find((p: any) => p.id === group.winningPlanId) || plans[0];
                 return (
-                  <Card className="relative overflow-hidden border border-emerald-500/30 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-2xl p-6 space-y-6">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                  <Card className="relative overflow-hidden border border-[#00E5A0]/20 rounded-[12px] bg-stone-950/45 backdrop-blur-md shadow-lg p-6 space-y-6">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E5A0]/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-border/40 pb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-stone-900/60 pb-4">
                       <div>
-                        <span className="text-[10px] uppercase font-extrabold text-emerald-500 tracking-widest flex items-center gap-1">
-                          <Award className="h-3.5 w-3.5" /> Final Outing Plan
+                        <span className="text-[9px] uppercase font-bold text-[#00E5A0] tracking-widest flex items-center gap-1 font-mono">
+                          <Award className="h-3.5 w-3.5 text-[#00E5A0]" /> Final Outing Protocol
                         </span>
-                        <h2 className="text-xl font-extrabold text-foreground mt-1 uppercase tracking-wide">{winner.name}</h2>
-                        <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed">{winner.tagline}</p>
+                        <h2 className="text-lg font-bold text-white mt-1 uppercase tracking-wide font-mono">{winner.name}</h2>
+                        <p className="text-xs text-neutral-400 mt-0.5 font-sans leading-relaxed tracking-wide">{winner.tagline}</p>
                       </div>
                       
-                      <Badge className="bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/15 hover:text-emerald-500 rounded-full flex items-center gap-1.5 text-xs font-bold py-1.5 px-4 uppercase tracking-wide">
-                        <Check className="h-4 w-4" /> Outing Confirmed
+                      <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest">
+                        <Check className="h-3.5 w-3.5" /> Outing Locked
                       </Badge>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       {/* Left: Final Itinerary slots flow */}
                       <div className="lg:col-span-2 space-y-4">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          📍 Primary Location: {winner.meetupZone}
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5 font-mono">
+                          📍 Primary Node: {winner.meetupZone.toUpperCase()}
                         </h3>
                         
                         <div className="flex flex-col items-stretch justify-start py-2 space-y-3">
                           {winner.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                             <React.Fragment key={sIdx}>
-                              <div className="flex items-start gap-4 p-4 bg-black/40 border border-neutral-900 rounded-xl">
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-bold border border-emerald-500/20 shrink-0">
+                              <div className="flex items-start gap-4 p-4 bg-stone-950/80 border border-stone-900 rounded-[8px]">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#00E5A0]/10 text-[#00E5A0] text-xs font-mono font-bold border border-[#00E5A0]/20 shrink-0">
                                   {slot.slotOrder}
                                 </span>
                                 <div className="space-y-1">
-                                  <h4 className="text-sm font-bold text-foreground leading-snug">{slot.name}</h4>
-                                  <p className="text-xs text-muted-foreground uppercase font-sans tracking-wide">
-                                    {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                  <h4 className="text-sm font-bold text-white leading-snug font-mono">{slot.name.toUpperCase()}</h4>
+                                  <p className="text-[10px] text-neutral-400 uppercase font-mono tracking-widest">
+                                    {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}M)
                                   </p>
                                   {slot.note && (
-                                    <p className="text-xs text-muted-foreground/80 font-light leading-relaxed italic mt-1.5">
+                                    <p className="text-[11px] text-neutral-400 font-sans leading-relaxed italic mt-1.5">
                                       "{slot.note}"
                                     </p>
                                   )}
@@ -626,7 +631,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               </div>
                               {sIdx < (winner.slots.length - 1) && (
                                 <div className="flex justify-center my-0.5">
-                                  <span className="text-emerald-500/70 font-black text-sm">↓</span>
+                                  <span className="text-[#00E5A0]/60 font-black text-sm">↓</span>
                                 </div>
                               )}
                             </React.Fragment>
@@ -635,25 +640,25 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       </div>
 
                       {/* Right: Summary details */}
-                      <div className="space-y-4 bg-black/30 border border-neutral-900/60 rounded-xl p-5 h-fit">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-primary">Plan Metadata</h3>
+                      <div className="space-y-4 bg-stone-950/80 border border-stone-900 rounded-[8px] p-5 h-fit text-[11px]">
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#EB690B] font-mono">Itinerary Analysis</h3>
                         
-                        <div className="divide-y divide-neutral-900 text-xs font-medium space-y-3">
+                        <div className="divide-y divide-stone-900/60 text-[11px] font-mono space-y-3">
                           <div className="flex justify-between py-2">
-                            <span className="text-muted-foreground">Estimated Cost</span>
-                            <span className="font-extrabold text-foreground">₹{winner.totalEstimatedCostPerHead} / person</span>
+                            <span className="text-neutral-400">ESTIMATED COST</span>
+                            <span className="font-extrabold text-white">₹{winner.totalEstimatedCostPerHead} / PERSON</span>
                           </div>
                           <div className="flex justify-between py-2">
-                            <span className="text-muted-foreground">Commute Time</span>
-                            <span className="font-extrabold text-foreground">~{winner.avgCabTime} mins (average)</span>
+                            <span className="text-neutral-400">COMMUTE TIME</span>
+                            <span className="font-extrabold text-white">~{winner.avgCabTime} MINS</span>
                           </div>
                           <div className="flex justify-between py-2">
-                            <span className="text-muted-foreground">Itinerary Score</span>
-                            <span className="font-extrabold text-primary">⭐ {(winner.score * 10).toFixed(1)}/10</span>
+                            <span className="text-neutral-400">ITINERARY SCORE</span>
+                            <span className="font-extrabold text-[#EB690B]">{(winner.score * 10).toFixed(1)}/10</span>
                           </div>
                           <div className="flex justify-between py-2">
-                            <span className="text-muted-foreground">Meetup Station</span>
-                            <span className="font-extrabold text-foreground uppercase">{winner.meetupZone}</span>
+                            <span className="text-neutral-400">MEETUP ZONE</span>
+                            <span className="font-extrabold text-white uppercase">{winner.meetupZone}</span>
                           </div>
                         </div>
                       </div>
@@ -665,21 +670,21 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               /* Case B: Voting Phase */
               <div className="space-y-6">
                 {/* 1. Mobile Carousel View (block md:hidden) */}
-                <Card className="block md:hidden border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-4 space-y-4">
-                  <div className="flex justify-between items-center pb-2 border-b border-border/40">
-                    <div>
-                      <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Card className="block md:hidden border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg p-4 space-y-4 rounded-[12px]">
+                  <div className="flex justify-between items-center pb-2 border-b border-stone-900/60">
+                    <div className="space-y-0.5">
+                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
-                        Outing Itinerary Options
+                        Outing Options
                       </CardTitle>
-                      <p className="text-[10px] text-muted-foreground font-light mt-0.5">
-                        Swipe through plans and cast your vote on your favorite option.
+                      <p className="text-[9px] text-neutral-400 font-sans tracking-wide leading-relaxed">
+                        Swipe through plans and lock your vote on your preferred routing.
                       </p>
                     </div>
-                    <Badge variant="outline" className={`rounded-full py-0.5 px-2.5 text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+                    <Badge variant="outline" className={`rounded-[4px] py-0.5 px-2.5 text-[9px] font-mono font-bold uppercase tracking-widest shrink-0 ${
                       group.votingStatus === 'OPEN' 
-                        ? 'bg-primary/10 text-primary border-primary/20 animate-pulse' 
-                        : 'bg-neutral-800 text-muted-foreground border-border'
+                        ? 'bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 animate-pulse' 
+                        : 'bg-stone-900/40 text-neutral-400 border-stone-850'
                     }`}>
                       Voting: {group.votingStatus.toLowerCase()}
                     </Badge>
@@ -709,51 +714,51 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           key={plan.id}
                           className="w-full shrink-0 snap-center snap-always space-y-4"
                         >
-                          <Card className="bg-black/40 border border-neutral-900/60 rounded-2xl p-5 shadow-inner">
+                          <Card className="bg-stone-950/80 border border-stone-900 rounded-[12px] p-5 shadow-inner">
                             <div className="flex justify-between items-start gap-2">
                               <div>
-                                <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest flex items-center gap-1">
-                                  📍 Primary Location: {plan.meetupZone}
+                                <span className="text-[9px] uppercase font-bold text-[#EB690B] tracking-widest flex items-center gap-1 font-mono">
+                                  📍 Zone: {plan.meetupZone.toUpperCase()}
                                 </span>
-                                <h3 className="text-base font-extrabold text-foreground mt-1.5 uppercase tracking-wide">{plan.name}</h3>
-                                <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-1">{plan.tagline}</p>
+                                <h3 className="text-sm font-bold text-white mt-1.5 uppercase tracking-wider font-mono">{plan.name}</h3>
+                                <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-1">{plan.tagline}</p>
                               </div>
-                              <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 hover:text-primary rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                              <Badge variant="secondary" className="bg-[#EB690B]/10 text-[#EB690B] border border-[#EB690B]/20 hover:bg-[#EB690B]/10 hover:text-[#EB690B] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
                                 <Vote className="h-3 w-3" />
-                                {voteCount} votes
+                                {voteCount} VOTES
                               </Badge>
                             </div>
 
                             {/* Compact Itinerary Flow using Actual places */}
-                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-neutral-950/75 rounded-2xl border border-neutral-900/85 space-y-2 text-center">
+                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-stone-950/90 rounded-[8px] border border-stone-900/60 space-y-2 text-center">
                               {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                                 <React.Fragment key={sIdx}>
                                   <div className="px-3">
-                                    <p className="text-xs font-bold text-foreground tracking-wide leading-snug">{slot.name}</p>
-                                    <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
-                                      {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                    <p className="text-[11px] font-bold text-white tracking-wider leading-snug font-mono">{slot.name.toUpperCase()}</p>
+                                    <p className="text-[9px] text-neutral-400 uppercase font-mono tracking-widest mt-0.5">
+                                      {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}M)
                                     </p>
                                   </div>
                                   {sIdx < (plan.slots.length - 1) && (
-                                    <span className="text-primary/70 font-black text-xs">↓</span>
+                                    <span className="text-[#EB690B]/70 font-black text-xs">↓</span>
                                   )}
                                 </React.Fragment>
                               ))}
                             </div>
 
                             {/* Travel and cost footer statistics */}
-                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-border/40 text-center text-[10px] font-semibold text-muted-foreground uppercase">
+                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-stone-900/60 text-center text-[10px] font-bold text-neutral-400 uppercase font-mono">
                               <div className="space-y-0.5">
-                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Per Head</p>
-                                <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
+                                <p className="text-[9px] text-neutral-500 tracking-wider">Per Head</p>
+                                <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
                               </div>
                               <div className="space-y-0.5">
-                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
-                                <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} mins</p>
+                                <p className="text-[9px] text-neutral-500 tracking-wider">Avg Travel</p>
+                                <p className="text-xs font-bold text-white">{plan.avgCabTime} M</p>
                               </div>
                               <div className="space-y-0.5">
-                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Plan Score</p>
-                                <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}/10</p>
+                                <p className="text-[9px] text-neutral-500 tracking-wider">Score</p>
+                                <p className="text-xs font-bold text-[#EB690B]">{(plan.score * 10).toFixed(1)}/10</p>
                               </div>
                             </div>
                           </Card>
@@ -764,19 +769,19 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               size="sm"
                               disabled={isCasting || userVotedPlanId === plan.id}
                               onClick={() => handleVoteCast(plan.id)}
-                              className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
+                              className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                                 userVotedPlanId === plan.id
-                                  ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
-                                  : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                                  ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
+                                  : 'bg-[#EB690B] hover:bg-[#D4590A] text-white'
                               }`}
                             >
                               {userVotedPlanId === plan.id ? (
                                 <>
-                                  <Check className="mr-2 h-4 w-4" /> Voted & Accepted
+                                  <Check className="mr-2 h-4 w-4 text-[#00E5A0]" /> VOTE REGISTERED
                                 </>
                               ) : (
                                 <>
-                                  <Vote className="mr-2 h-4 w-4" /> Vote for Option {plan.planIndex}
+                                  <Vote className="mr-2 h-4 w-4" /> SUBMIT VOTE FOR PLAN {plan.planIndex}
                                 </>
                               )}
                             </Button>
@@ -793,7 +798,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       size="xs" 
                       disabled={activePlanIdx === 0} 
                       onClick={() => scrollToPlan(activePlanIdx - 1)}
-                      className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+                      className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] h-7 px-3.5 cursor-pointer"
                     >
                       Prev
                     </Button>
@@ -805,7 +810,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           key={idx} 
                           onClick={() => scrollToPlan(idx)}
                           className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
-                            idx === activePlanIdx ? 'bg-primary scale-125' : 'bg-neutral-800 hover:bg-neutral-700'
+                            idx === activePlanIdx ? 'bg-[#EB690B] scale-125' : 'bg-stone-900 hover:bg-stone-800'
                           }`}
                         />
                       ))}
@@ -816,7 +821,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       size="xs" 
                       disabled={activePlanIdx === plans.length - 1} 
                       onClick={() => scrollToPlan(activePlanIdx + 1)}
-                      className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+                      className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] h-7 px-3.5 cursor-pointer"
                     >
                       Next
                     </Button>
@@ -830,52 +835,52 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     const hasUserVoted = userVotedPlanId === plan.id;
 
                     return (
-                      <Card key={plan.id} className="border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-5 flex flex-col justify-between space-y-4">
+                      <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 p-5 shadow-lg backdrop-blur-md flex flex-col justify-between space-y-4 rounded-[12px]">
                         <div className="space-y-4">
-                          <div className="flex justify-between items-start gap-2 border-b border-border/40 pb-3">
+                          <div className="flex justify-between items-start gap-2 border-b border-stone-900/60 pb-3">
                             <div>
-                              <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest flex items-center gap-1">
-                                📍 Primary Location: {plan.meetupZone}
+                              <span className="text-[9px] uppercase font-bold text-[#EB690B] tracking-widest flex items-center gap-1 font-mono">
+                                📍 Zone: {plan.meetupZone.toUpperCase()}
                               </span>
-                              <h3 className="text-sm font-extrabold text-foreground mt-1 uppercase tracking-wide line-clamp-1">{plan.name}</h3>
-                              <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-2 min-h-[2rem]">{plan.tagline}</p>
+                              <h3 className="text-xs font-bold text-white mt-1.5 uppercase tracking-widest font-mono line-clamp-1">{plan.name}</h3>
+                              <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-2 min-h-[2.5rem]">{plan.tagline}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                            <Badge variant="secondary" className="bg-[#EB690B]/10 text-[#EB690B] border border-[#EB690B]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
                               <Vote className="h-3 w-3" />
-                              {voteCount} votes
+                              {voteCount}
                             </Badge>
                           </div>
 
                           {/* Timeline Listing */}
-                          <div className="flex flex-col items-center justify-center py-3 bg-neutral-950/75 rounded-xl border border-neutral-900/85 space-y-1.5 text-center min-h-[14rem]">
+                          <div className="flex flex-col items-center justify-center py-3 bg-stone-950/90 rounded-[8px] border border-stone-900 space-y-1.5 text-center min-h-[14rem]">
                             {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                               <React.Fragment key={sIdx}>
                                 <div className="px-2">
-                                  <p className="text-xs font-bold text-foreground tracking-wide leading-snug line-clamp-2">{slot.name}</p>
-                                  <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
-                                    {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                  <p className="text-[11px] font-bold text-white tracking-wider leading-snug font-mono line-clamp-2">{slot.name.toUpperCase()}</p>
+                                  <p className="text-[9px] text-neutral-400 uppercase font-mono tracking-widest mt-0.5">
+                                    {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}M)
                                   </p>
                                 </div>
                                 {sIdx < (plan.slots.length - 1) && (
-                                  <span className="text-primary/70 font-black text-[10px]">↓</span>
+                                  <span className="text-[#EB690B]/70 font-black text-[10px]">↓</span>
                                 )}
                               </React.Fragment>
                             ))}
                           </div>
 
                           {/* Stats Grid */}
-                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-border/30 text-center text-[9px] font-semibold text-muted-foreground uppercase">
+                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-stone-900/60 text-center text-[9px] font-bold text-neutral-400 uppercase font-mono">
                             <div className="space-y-0.5">
-                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Per Head</p>
-                              <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
+                              <p className="text-[8px] text-neutral-500 tracking-wider">Per Head</p>
+                              <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
                             </div>
                             <div className="space-y-0.5">
-                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
-                              <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} m</p>
+                              <p className="text-[8px] text-neutral-500 tracking-wider">Avg Travel</p>
+                              <p className="text-xs font-bold text-white">{plan.avgCabTime} M</p>
                             </div>
                             <div className="space-y-0.5">
-                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Score</p>
-                              <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}</p>
+                              <p className="text-[8px] text-neutral-500 tracking-wider">Score</p>
+                              <p className="text-xs font-bold text-[#EB690B]">{(plan.score * 10).toFixed(1)}</p>
                             </div>
                           </div>
                         </div>
@@ -886,19 +891,19 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             size="sm"
                             disabled={isCasting || userVotedPlanId === plan.id}
                             onClick={() => handleVoteCast(plan.id)}
-                            className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3 shadow-md transition-all duration-200 cursor-pointer ${
+                            className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[9px] py-3 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
-                                ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
-                                : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                                ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
+                                : 'bg-[#EB690B] hover:bg-[#D4590A] text-white'
                             }`}
                           >
                             {userVotedPlanId === plan.id ? (
                               <>
-                                <Check className="mr-1.5 h-3.5 w-3.5" /> Voted
+                                <Check className="mr-1.5 h-3.5 w-3.5 text-[#00E5A0]" /> VOTED
                               </>
                             ) : (
                               <>
-                                <Vote className="mr-1.5 h-3.5 w-3.5" /> Vote Option {plan.planIndex}
+                                <Vote className="mr-1.5 h-3.5 w-3.5" /> VOTE PLAN {plan.planIndex}
                               </>
                             )}
                           </Button>
@@ -917,27 +922,28 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   variant="destructive"
                   onClick={handleCloseVoting}
                   disabled={isClosing}
-                  className="w-full rounded-xl font-bold uppercase tracking-wider text-xs py-3.5 bg-red-650 hover:bg-red-600 cursor-pointer"
+                  className="w-full bg-red-950/45 text-red-500 border border-red-900/50 hover:bg-red-950/80 hover:text-red-400 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-3.5 transition-all cursor-pointer"
                 >
                   Close Voting & Declare Winner
                 </Button>
               </div>
+            )}
           </div>
         )}
 
         {/* 4. Details Submission & Member overview (Locked post-generation to avoid clutter) */}
         {!isVotingOrClosed && (
           <Tabs defaultValue="workspace" className="space-y-6">
-            <TabsList className="bg-black border border-border p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-lg font-sans">
+            <TabsList className="bg-stone-950 border border-stone-900 p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-[8px] font-mono">
               <TabsTrigger 
                 value="workspace" 
-                className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+                className="text-[10px] font-mono font-bold uppercase tracking-widest py-2.5 rounded-[6px] data-[state=active]:bg-[#EB690B] data-[state=active]:text-white text-neutral-400 hover:text-white transition-all"
               >
                 Workspace Overview
               </TabsTrigger>
               <TabsTrigger 
                 value="inputs" 
-                className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+                className="text-[10px] font-mono font-bold uppercase tracking-widest py-2.5 rounded-[6px] data-[state=active]:bg-[#EB690B] data-[state=active]:text-white text-neutral-400 hover:text-white transition-all"
               >
                 Submit My Details
               </TabsTrigger>
@@ -948,14 +954,14 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               
               {/* Members List */}
               <div className="lg:col-span-2 space-y-6">
-                <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm">
+                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
                   <CardHeader>
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                      <Users className="h-4 w-4 text-primary" />
-                      Members Lobby ({members.length})
+                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
+                      <Users className="h-4 w-4 text-[#EB690B]" />
+                      Members Sync Status ({members.length})
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="divide-y divide-border/60 p-0 px-6 pb-6">
+                  <CardContent className="divide-y divide-stone-900/60 p-0 px-6 pb-6">
                     {members.map((member: any) => {
                       const isOwner = member.role === 'ADMIN';
                       
@@ -966,36 +972,36 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               <img
                                 src={member.imageUrl}
                                 alt={member.name}
-                                className="h-9 w-9 rounded-full object-cover border border-border"
+                                className="h-9 w-9 rounded-[6px] object-cover border border-stone-900"
                               />
                             ) : (
-                              <div className="h-9 w-9 rounded-full bg-neutral-900 border border-border flex items-center justify-center font-bold text-xs uppercase text-primary">
+                              <div className="h-9 w-9 rounded-[6px] bg-stone-900 border border-stone-850 flex items-center justify-center font-mono font-bold text-xs uppercase text-[#EB690B]">
                                 {member.name.charAt(0)}
                               </div>
                             )}
                             <div>
-                              <p className="text-sm font-bold text-foreground flex items-center gap-2">
-                                {member.name}
+                              <p className="text-sm font-bold text-white flex items-center gap-2 font-mono">
+                                {member.name.toUpperCase()}
                                 {isOwner && (
-                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[9px] font-semibold uppercase rounded-full py-0.5 px-2.5 flex items-center gap-0.5">
-                                    <Shield className="h-2.5 w-2.5" />
-                                    Admin
+                                  <Badge variant="outline" className="bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 text-[9px] font-mono font-bold uppercase rounded-[4px] py-0.5 px-2 flex items-center gap-0.5">
+                                    <Shield className="h-2.5 w-2.5 text-[#EB690B]" />
+                                    ADMIN
                                   </Badge>
                                 )}
                               </p>
-                              <p className="text-xs text-muted-foreground">{member.email}</p>
+                              <p className="text-[10px] text-neutral-400 font-mono">{member.email}</p>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-3">
                             {member.vibes && (
-                              <span className="text-[10px] text-muted-foreground font-light italic">
-                                {JSON.parse(member.vibes).slice(0, 2).join(', ').toLowerCase()}
+                              <span className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">
+                                {JSON.parse(member.vibes).slice(0, 2).join(' • ').toUpperCase()}
                               </span>
                             )}
-                            <span className="flex items-center text-[10px] uppercase text-primary font-bold">
-                              <span className="h-2 w-2 rounded-full bg-primary mr-1.5" />
-                              Joined
+                            <span className="flex items-center text-[9px] uppercase text-[#00E5A0] font-mono font-bold">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#00E5A0] mr-1.5" />
+                              CONNECTED
                             </span>
                           </div>
                         </div>
@@ -1005,13 +1011,13 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 </Card>
 
                 {/* Locations List */}
-                <Card className="border border-neutral-900 rounded-xl bg-neutral-950/20 backdrop-blur-md shadow-sm">
+                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
                   <CardHeader>
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-primary" />
-                      Geographic Registry
+                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-[#EB690B]" />
+                      Geographic Node Registry
                     </CardTitle>
-                    <CardDescription className="text-xs text-muted-foreground font-light">
+                    <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
                       Outing starting nodes submitted by lobby participants. Specific coordinates are masked for privacy unless you are the lobby Admin.
                     </CardDescription>
                   </CardHeader>
@@ -1019,10 +1025,10 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       {locations.map((loc: any, idx: number) => {
                         return (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-black border border-neutral-900 rounded-lg">
-                            <span className="font-bold text-foreground uppercase tracking-wide">{loc.name}</span>
-                            <span className="text-primary text-[11px] font-semibold flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5 text-primary" /> {loc.locationName || 'Location Saved'}
+                          <div key={idx} className="flex justify-between items-center p-3 bg-stone-950/90 border border-stone-900 rounded-[8px] font-mono text-[11px]">
+                            <span className="font-bold text-white uppercase tracking-wide">{loc.name}</span>
+                            <span className="text-[#EB690B] text-[11px] font-semibold flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5 text-[#EB690B]" /> {loc.locationName || 'Location Saved'}
                             </span>
                           </div>
                         );
@@ -1034,36 +1040,36 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
               {/* Aggregates Dashboard */}
               <div className="space-y-6">
-                <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm text-xs">
+                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] text-[11px] font-mono">
                   <CardHeader>
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">Budget Aggregates</CardTitle>
-                    <CardDescription className="text-[10px] text-muted-foreground uppercase leading-relaxed font-light">
-                      Computed aggregates from submitted budgets.
+                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B]">Budget Analysis</CardTitle>
+                    <CardDescription className="text-[10px] text-neutral-400 uppercase leading-relaxed font-light font-mono">
+                      Calculated limits from submitted envelopes.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4 pt-2 font-medium">
-                    <div className="flex justify-between py-2 border-b border-border/60">
-                      <span className="text-muted-foreground">Submitted Envelopes</span>
-                      <span className="font-bold text-foreground">
-                        {budgetSummary?.submittedCount || 0} of {members.length}
+                    <div className="flex justify-between py-2 border-b border-stone-900/60">
+                      <span className="text-neutral-400">ENVELOPES RECEIVED</span>
+                      <span className="font-bold text-white">
+                        {budgetSummary?.submittedCount || 0} OF {members.length}
                       </span>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-border/60">
-                      <span className="text-muted-foreground">Floor Limit (Min)</span>
-                      <span className="font-bold text-foreground">₹{budgetSummary?.min || 0}</span>
+                    <div className="flex justify-between py-2 border-b border-stone-900/60">
+                      <span className="text-neutral-400">FLOOR LIMIT (MIN)</span>
+                      <span className="font-bold text-white">₹{budgetSummary?.min || 0}</span>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-border/60">
-                      <span className="text-muted-foreground">Ceiling Limit (Max)</span>
-                      <span className="font-bold text-foreground">₹{budgetSummary?.max || 0}</span>
+                    <div className="flex justify-between py-2 border-b border-stone-900/60">
+                      <span className="text-neutral-400">CEILING LIMIT (MAX)</span>
+                      <span className="font-bold text-white">₹{budgetSummary?.max || 0}</span>
                     </div>
-                    <div className="flex justify-between py-2.5 border border-primary/20 bg-primary/10 px-3 rounded-lg text-primary font-bold uppercase">
-                      <span>Group Budget Cap</span>
+                    <div className="flex justify-between py-2.5 border border-[#EB690B]/20 bg-[#EB690B]/10 px-3 rounded-[8px] text-[#EB690B] font-bold uppercase">
+                      <span>GROUP PROTOCOL BUDGET CAP</span>
                       <span>₹{budgetSummary?.avg || 0}</span>
                     </div>
                   </CardContent>
-                  <CardFooter className="bg-black/20 pt-4 border-t border-border flex flex-col items-stretch rounded-b-xl">
-                    <span className="text-[10px] text-muted-foreground text-center italic">
-                      Note: Budgets are not hard limits. The planner will construct options mapping different strategies.
+                  <CardFooter className="bg-black/20 pt-4 border-t border-stone-900/60 flex flex-col items-stretch rounded-b-[12px]">
+                    <span className="text-[9px] text-neutral-500 text-center italic font-sans leading-relaxed">
+                      Note: Budgets are guide-ranges. The system constructs various target strategies.
                     </span>
                   </CardFooter>
                 </Card>
@@ -1075,22 +1081,22 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             <TabsContent value="inputs" className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
               {/* Submit Budget */}
-              <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm">
+              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
                 <CardHeader>
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-primary" />
-                    Submit Budget Limits
+                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-[#EB690B]" />
+                    Budget Thresholds
                   </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground font-light">
+                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
                     Enter your maximum spending cap for this outing (₹50 — ₹100,000).
                   </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleBudgetSubmit}>
                   <CardContent className="space-y-4">
                     <div className="space-y-1.5">
-                      <Label htmlFor="budgetInput" className="text-xs uppercase text-foreground">Your Max Budget (INR)</Label>
+                      <Label htmlFor="budgetInput" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Your Max Budget (INR)</Label>
                       <div className="relative">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary font-bold">₹</span>
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#EB690B] font-bold">₹</span>
                         <Input
                           id="budgetInput"
                           type="number"
@@ -1099,7 +1105,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           value={budgetVal}
                           onChange={(e) => setBudgetVal(e.target.value)}
                           placeholder="500"
-                          className="pl-8 bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
+                          className="pl-8 bg-stone-950/80 border border-stone-850 text-white rounded-[8px] font-mono text-xs focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B]"
                           required
                           disabled={isSubmittingBudget}
                         />
@@ -1107,86 +1113,86 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button 
-                      type="submit" 
-                      disabled={isSubmittingBudget} 
-                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
-                        currentUser.budget !== null 
-                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
-                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
-                      }`}
-                    >
-                      {isSubmittingBudget ? 'Saving...' : currentUser.budget !== null ? '✓ Budget Accepted' : 'Submit Budget'}
-                    </Button>
+                    {currentUser.budget !== null ? (
+                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5">
+                        <Check className="h-3.5 w-3.5" /> Budget Registered
+                      </div>
+                    ) : (
+                      <Button 
+                        type="submit" 
+                        disabled={isSubmittingBudget} 
+                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                      >
+                        {isSubmittingBudget ? 'Saving...' : 'Submit Budget'}
+                      </Button>
+                    )}
                   </CardFooter>
                 </form>
               </Card>
 
               {/* Submit Location Name */}
-              <Card className="border border-neutral-900 rounded-xl bg-neutral-950/20 backdrop-blur-md shadow-sm">
+              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
                 <CardHeader>
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-primary" />
-                    Submit Outing Location
+                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-[#EB690B]" />
+                    Starting Coordinates
                   </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground font-light">
+                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
                     Enter your starting location name/neighborhood (e.g. Dadar, Indiranagar) or auto-detect it.
                   </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleLocationSubmit}>
                   <CardContent className="space-y-4">
                     <div className="space-y-2.5">
-                      <Label htmlFor="locationInput" className="text-xs uppercase text-foreground">Location Name or Neighborhood</Label>
+                      <Label htmlFor="locationInput" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Location Name or Neighborhood</Label>
                       <Input
                         id="locationInput"
                         type="text"
                         value={addressVal}
                         onChange={(e) => setAddressVal(e.target.value)}
                         placeholder="e.g. Dadar, Mumbai or Koramangala, Bengaluru"
-                        className="bg-black border border-neutral-900 text-foreground rounded-lg text-xs focus-visible:ring-primary"
+                        className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] font-mono text-xs focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B]"
                         required
                         disabled={isSubmittingLocation || isCollectingMembers}
                       />
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2 pt-0">
-                    <Button 
-                      type="submit" 
-                      disabled={isSubmittingLocation || isCollectingMembers} 
-                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
-                        currentUser.location !== null 
-                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
-                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
-                      }`}
-                    >
-                      {isSubmittingLocation 
-                        ? 'Saving Location...' 
-                        : currentUser.location !== null 
-                          ? '✓ Location Accepted' 
-                          : 'Save Location Name'}
-                    </Button>
+                    {currentUser.location !== null ? (
+                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5 mb-1">
+                        <Check className="h-3.5 w-3.5" /> Coordinates Synced
+                      </div>
+                    ) : (
+                      <Button 
+                        type="submit" 
+                        disabled={isSubmittingLocation || isCollectingMembers} 
+                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                      >
+                        {isSubmittingLocation ? 'Saving Node...' : 'Save Location Name'}
+                      </Button>
+                    )}
                     <Button 
                       type="button" 
                       variant="outline" 
                       onClick={handleAutoDetect}
                       disabled={isSubmittingLocation || isCollectingMembers} 
-                      className="w-full border-neutral-800 text-foreground hover:bg-neutral-900 rounded-lg uppercase tracking-wider font-bold text-xs"
+                      className="border border-stone-855 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all"
                     >
-                      Auto-Detect Location
+                      Auto-Detect Coordinates
                     </Button>
                   </CardFooter>
                 </form>
               </Card>
 
               {/* Submit Vibe Preferences */}
-              <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm md:col-span-2">
+              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] md:col-span-2">
                 <CardHeader>
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <Heart className="h-4 w-4 text-primary" />
-                    Select Vibe Preferences
+                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
+                    <Heart className="h-4 w-4 text-[#EB690B]" />
+                    Outing Vibes Selection
                   </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground font-light">
-                    Choose the mood and type of outing you want. These will feed the experience matching scorer.
+                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
+                    Choose the target vibe properties. These guide the experience-matching vector score.
                   </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleVibesSubmit}>
@@ -1200,30 +1206,32 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             key={vibe}
                             onClick={() => toggleVibe(vibe)}
                             disabled={isSubmittingVibes}
-                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-[6px] border text-[9px] font-mono font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer ${
                               isSelected 
-                                ? 'bg-primary border-primary text-primary-foreground shadow-sm shadow-primary/25'
-                                : 'bg-black border-border hover:border-primary/50 text-muted-foreground'
+                                ? 'bg-[#EB690B] border-[#EB690B] text-white shadow-sm shadow-[#EB690B]/25'
+                                : 'bg-stone-950/80 border-stone-850 hover:border-[#EB690B]/50 text-neutral-400 hover:text-white'
                             }`}
                           >
-                            {vibe.toLowerCase()}
+                            {vibe}
                           </button>
                         );
                       })}
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Button 
-                      type="submit" 
-                      disabled={isSubmittingVibes} 
-                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
-                        hasVibes 
-                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
-                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
-                      }`}
-                    >
-                      {isSubmittingVibes ? 'Saving...' : hasVibes ? '✓ Preferences Saved & Accepted' : 'Save Vibe Preferences'}
-                    </Button>
+                    {hasVibes ? (
+                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5">
+                        <Check className="h-3.5 w-3.5" /> Vibes Locked & Saved
+                      </div>
+                    ) : (
+                      <Button 
+                        type="submit" 
+                        disabled={isSubmittingVibes} 
+                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                      >
+                        {isSubmittingVibes ? 'Saving...' : 'Save Vibes Preference'}
+                      </Button>
+                    )}
                   </CardFooter>
                 </form>
               </Card>

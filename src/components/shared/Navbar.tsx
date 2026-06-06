@@ -21,19 +21,19 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-neutral-900 bg-black/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-stone-900 bg-stone-950/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         
         {/* Logo */}
         <div className="flex items-center gap-8">
           <Link href="/groups" className="flex items-center gap-2">
-            <span className="text-xl font-bold uppercase tracking-widest font-heading text-foreground">
-              Hang<span className="text-primary italic font-serif lowercase">out</span>
+            <span className="text-[17px] font-campus font-bold uppercase tracking-[0.15em] text-white">
+              Hang<span className="text-[#EB690B] font-serif-display lowercase italic font-normal">out</span>
             </span>
           </Link>
           
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-4">
+          <nav className="hidden md:flex items-center gap-3">
             {navItems.map((item) => {
               const isActive = pathname === item.href;
               return (
@@ -41,13 +41,13 @@ export default function Navbar() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "text-xs uppercase tracking-wider font-bold transition-colors py-2 px-3 rounded-lg flex items-center gap-2",
+                    "text-[10px] font-mono uppercase tracking-widest font-bold transition-all py-1.5 px-3 rounded-[6px] flex items-center gap-2",
                     isActive 
-                      ? "bg-neutral-900 text-primary" 
-                      : "text-muted-foreground hover:bg-neutral-900/50 hover:text-foreground"
+                      ? "bg-stone-900 text-[#EB690B] border border-stone-800" 
+                      : "text-neutral-400 hover:bg-stone-900/50 hover:text-white"
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
+                  <item.icon className="h-3.5 w-3.5" />
                   {item.name}
                 </Link>
               );
@@ -60,9 +60,9 @@ export default function Navbar() {
           <Button
             onClick={() => setIsCreateOpen(true)}
             size="sm"
-            className="hidden sm:flex bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold uppercase tracking-wider rounded-lg px-3.5 py-2 gap-1.5 shadow-md active:scale-95 transition-transform"
+            className="hidden sm:flex bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             New Lobby
           </Button>
           
@@ -70,17 +70,17 @@ export default function Navbar() {
             onClick={() => setIsJoinOpen(true)}
             size="sm"
             variant="outline"
-            className="border-neutral-800 hover:bg-neutral-900 text-foreground text-xs font-bold uppercase tracking-wider rounded-lg px-3.5 py-2 gap-1.5 transition-colors"
+            className="border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
-            <LogIn className="h-4 w-4 text-primary" />
+            <LogIn className="h-3.5 w-3.5 text-[#EB690B]" />
             Join Lobby
           </Button>
 
-          <div className="pl-2 border-l border-neutral-900">
+          <div className="pl-2 border-l border-stone-900">
             <UserButton 
               appearance={{
                 elements: {
-                  userButtonAvatarBox: 'w-8.5 h-8.5 border border-neutral-800 rounded-lg overflow-hidden',
+                  userButtonAvatarBox: 'w-8.5 h-8.5 border border-stone-850 rounded-[8px] overflow-hidden',
                 }
               }}
             />
