@@ -2,6 +2,17 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+
+const Map = dynamic(() => import('@/components/Map'), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-stone-950 border border-stone-850 z-0">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#EB690B] mb-2" />
+      <span className="text-stone-500 font-mono text-[10px] uppercase tracking-widest">Booting Cartography Engine...</span>
+    </div>
+  ),
+});
 import { useAuth } from '@clerk/nextjs';
 import {
   Plus,
@@ -664,13 +675,9 @@ export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState<string>('Cafés (3)');
   const [selectedPinId, setSelectedPinId] = useState<string>('cafe-01');
   
-  // Interactive Viewport Navigation Zoom & Pan State (Centered on Mumbai layout)
-  const [zoom, setZoom] = useState<number>(1.35);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 30, y: -20 });
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [showCtrlTooltip, setShowCtrlTooltip] = useState<boolean>(false);
-  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Map zoom and center states (Centered on Mumbai)
+  const [mapCenter, setMapCenter] = useState<[number, number]>([72.8777, 19.076]);
+  const [mapZoom, setMapZoom] = useState<number>(11);
 
   // Filter spots belonging to the currently active category
   const filteredPins = useMemo(() => {
@@ -691,92 +698,40 @@ export default function HomePage() {
     return ALL_VENUE_PINS.find((v) => v.id === selectedPinId) || filteredPins[0] || ALL_VENUE_PINS[0];
   }, [selectedPinId, filteredPins]);
 
+  // Synchronize map center and zoom when the active venue changes
+  useEffect(() => {
+    if (activeVenue) {
+      setMapCenter([activeVenue.lng, activeVenue.lat]);
+      setMapZoom(13.5);
+    }
+  }, [activeVenue?.id]);
+
   // Carousel options: display only inactive spots in active category
   const carouselVenues = useMemo(() => {
     return filteredPins.filter((v) => v.id !== selectedPinId);
   }, [filteredPins, selectedPinId]);
 
-  // ViewBox dynamic projection calculation based on Zoom/Pan
-  const viewBoxString = useMemo(() => {
-    const baseW = 1440;
-    const baseH = 900;
-    const w = baseW / zoom;
-    const h = baseH / zoom;
-    const x = baseW / 2 - w / 2 + pan.x;
-    const y = baseH / 2 - h / 2 + pan.y;
-    return `${x} ${y} ${w} ${h}`;
-  }, [zoom, pan]);
-
-  // Dynamic route connection line for the selected category's spots
-  const routePathD = useMemo(() => {
-    if (filteredPins.length === 0) return '';
-    return filteredPins
-      .map((pin, index) => `${index === 0 ? 'M' : 'L'} ${pin.mapX} ${pin.mapY}`)
-      .join(' ');
-  }, [filteredPins]);
-
-  // Viewport navigation mouse drag handlers
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (
-      (e.target as SVGElement).tagName !== 'circle' && 
-      (e.target as SVGElement).tagName !== 'path' && 
-      (e.target as SVGElement).tagName !== 'image'
-    ) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!isDragging) return;
-    const dx = (e.clientX - dragStart.x) / zoom;
-    const dy = (e.clientY - dragStart.y) / zoom;
-    setPan((prev) => ({ x: prev.x - dx, y: prev.y - dy }));
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Wheel zoom with Ctrl key guard
-  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      const zoomFactor = 0.05;
-      const newZoom = e.deltaY < 0 ? zoom + zoomFactor : zoom - zoomFactor;
-      setZoom(Math.min(2.5, Math.max(0.8, newZoom)));
-    } else {
-      setShowCtrlTooltip(true);
-      if (tooltipTimeoutRef.current) {
-        clearTimeout(tooltipTimeoutRef.current);
-      }
-      tooltipTimeoutRef.current = setTimeout(() => {
-        setShowCtrlTooltip(false);
-      }, 2000);
-    }
-  };
+  const mapMarkers = useMemo(() => {
+    return filteredPins.map(pin => ({
+      id: pin.id,
+      lngLat: [pin.lng, pin.lat] as [number, number],
+      popupText: pin.name,
+      isActive: pin.id === selectedPinId
+    }));
+  }, [filteredPins, selectedPinId]);
 
   const handleZoomIn = () => {
-    setZoom((z) => Math.min(2.5, z + 0.15));
+    setMapZoom((z) => Math.min(18, z + 1));
   };
 
   const handleZoomOut = () => {
-    setZoom((z) => Math.max(0.8, z - 0.15));
+    setMapZoom((z) => Math.max(9, z - 1));
   };
 
   const handleRecenter = () => {
-    setZoom(1.35);
-    setPan({ x: 30, y: -20 });
+    setMapCenter([72.8777, 19.076]);
+    setMapZoom(11);
   };
-
-  useEffect(() => {
-    return () => {
-      if (tooltipTimeoutRef.current) {
-        clearTimeout(tooltipTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0A0A0C] text-foreground font-sans selection:bg-[#EB690B]/20 selection:text-[#EB690B]">
@@ -788,153 +743,22 @@ export default function HomePage() {
       <section className="h-screen w-screen relative overflow-hidden bg-[#0D0A08] border-b border-stone-900/60 z-20">
         
         {/* Full-Bleed Map Canvas */}
-        <svg 
-          className={`absolute inset-0 w-full h-full z-0 cursor-${isDragging ? 'grabbing' : 'grab'}`}
-          viewBox={viewBoxString}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* Cartographic Styled Mumbai Map Background Image */}
-          <image 
-            href="/images/mumbai_map.png"
-            x="0"
-            y="0"
-            width="1440"
-            height="900"
-            preserveAspectRatio="xMidYMid slice"
-            opacity="0.65"
-          />
-
-          {/* Concentric Shoreline offsets */}
-          <g stroke="rgba(235, 105, 11, 0.05)" fill="none">
-            <path d="M 120 900 C 120 700, 160 650, 220 620 C 280 600, 360 550, 340 450 C 320 350, 240 280, 180 200 C 120 120, 80 50, 80 0" strokeWidth="2" />
-            <path d="M 90 900 C 90 700, 130 650, 190 620 C 250 600, 330 550, 310 450 C 290 350, 210 280, 150 200 C 90 120, 50 50, 50 0" strokeWidth="1" />
-            <path d="M 60 900 C 60 700, 100 650, 160 620 C 220 600, 300 550, 280 450 C 260 350, 180 280, 120 200 C 60 120, 20 50, 20 0" strokeWidth="0.5" />
-          </g>
-
-          {/* Fine grid lines */}
-          <g stroke="rgba(235, 105, 11, 0.02)" strokeWidth="0.5">
-            <line x1="-1000" y1="150" x2="3000" y2="150" />
-            <line x1="-1000" y1="300" x2="3000" y2="300" />
-            <line x1="-1000" y1="450" x2="3000" y2="450" />
-            <line x1="-1000" y1="600" x2="3000" y2="600" />
-            <line x1="-1000" y1="750" x2="3000" y2="750" />
-            <line x1="200" y1="-1000" x2="200" y2="2000" />
-            <line x1="400" y1="-1000" x2="400" y2="2000" />
-            <line x1="600" y1="-1000" x2="600" y2="2000" />
-            <line x1="800" y1="-1000" x2="800" y2="2000" />
-            <line x1="1000" y1="-1000" x2="1000" y2="2000" />
-            <line x1="1200" y1="-1000" x2="1200" y2="2000" />
-          </g>
-
-          {/* Dynamic route path for selected category's pins */}
-          {routePathD && (
-            <path 
-              d={routePathD}
-              fill="none"
-              stroke="#EB690B"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity="0.95"
-            />
-          )}
-
-          {/* Route terminal indicator */}
-          {filteredPins.length > 0 && (
-            <circle 
-              cx={filteredPins[filteredPins.length - 1].mapX} 
-              cy={filteredPins[filteredPins.length - 1].mapY} 
-              r="8" 
-              fill="#EB690B" 
-              stroke="#1E1511" 
-              strokeWidth="2" 
-            />
-          )}
-
-          {/* Active Midpoint Sweeper Circle */}
-          {activeVenue && (
-            <>
-              <circle 
-                cx={activeVenue.mapX} 
-                cy={activeVenue.mapY} 
-                r="45" 
-                fill="none" 
-                stroke="rgba(235, 105, 11, 0.15)" 
-                strokeWidth="1.2" 
-                strokeDasharray="2 3" 
-              />
-              <circle 
-                cx={activeVenue.mapX} 
-                cy={activeVenue.mapY} 
-                r="95" 
-                fill="none" 
-                stroke="rgba(235, 105, 11, 0.05)" 
-                strokeWidth="0.6" 
-              />
-            </>
-          )}
-
-          {/* Filtered spot pins */}
-          {filteredPins.map((venue) => {
-            const isSelected = venue.id === selectedPinId;
-            return (
-              <g 
-                key={venue.id} 
-                className="cursor-pointer"
-                onClick={() => setSelectedPinId(venue.id)}
-              >
-                {isSelected ? (
-                  // Location teardrop pin (Selected)
-                  <g transform={`translate(${venue.mapX - 12}, ${venue.mapY - 26})`}>
-                    <circle cx="12" cy="12" r="18" fill="none" stroke="#EB690B" strokeWidth="0.8" className="animate-ping" style={{ transformOrigin: '12px 12px' }} />
-                    <path 
-                      d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" 
-                      fill="#EB690B" 
-                      stroke="#0D0A08" 
-                      strokeWidth="1.5"
-                    />
-                  </g>
-                ) : (
-                  // Inactive badge (Green)
-                  <g>
-                    <circle cx={venue.mapX} cy={venue.mapY} r="9.5" fill="#00E5A0" stroke="#0D0A08" strokeWidth="1.8" />
-                    <text 
-                      x={venue.mapX} 
-                      y={venue.mapY + 3.2} 
-                      fill="#0D0A08" 
-                      fontSize="9.5" 
-                      fontFamily="monospace" 
-                      fontWeight="bold" 
-                      textAnchor="middle"
-                    >
-                      {venue.num}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
-        </svg>
+        <Map
+          center={mapCenter}
+          zoom={mapZoom}
+          height="100%"
+          width="100%"
+          markers={mapMarkers}
+          onMarkerClick={setSelectedPinId}
+          className="z-0"
+        />
 
         {/* Viewport Overlay Vignette Layer */}
-        <div className="absolute inset-0 pointer-events-none z-10 bg-radial-vignette opacity-85" />
-
-        {/* Floating Ctrl Tooltip warning */}
-        {showCtrlTooltip && (
-          <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 bg-stone-950/95 border border-[#EB690B]/30 text-white font-mono text-[10px] tracking-wider uppercase pointer-events-none rounded-[4px] shadow-lg animate-pulse flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#EB690B]" />
-            Use Ctrl + Scroll to Zoom Map Viewport
-          </div>
-        )}
+        <div className="absolute inset-0 pointer-events-none z-10 bg-radial-vignette opacity-50" />
 
         {/* HUD Info Helper Top Right */}
         <div className="absolute top-24 right-12 z-20 font-mono text-[9px] text-neutral-400 tracking-wider bg-stone-950/60 backdrop-blur-md px-3 py-1.5 border border-stone-900/60 pointer-events-none select-none hidden sm:block">
-          CTRL + SCROLL TO ZOOM // DRAG TO PAN
+          DRAG TO PAN // MOUSE WHEEL TO ZOOM
         </div>
 
         {/* Top Header Navigation */}
@@ -957,6 +781,7 @@ export default function HomePage() {
             <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
             <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
             <Link href="#cta" className="hover:text-white transition-colors duration-200">Launch</Link>
+            <Link href="/map" className="text-[#EB690B] hover:text-[#00E5A0] transition-colors duration-200 font-bold">[ Live Map ]</Link>
           </nav>
 
           {/* Right Header Controls */}
@@ -1348,6 +1173,7 @@ export default function HomePage() {
                 <li><Link href="#about" className="hover:text-white transition-colors">Venue Discovery</Link></li>
                 <li><Link href="#steps" className="hover:text-white transition-colors">Transit Intelligence</Link></li>
                 <li><Link href="#cta" className="hover:text-white transition-colors">Group Consensus</Link></li>
+                <li><Link href="/map" className="text-[#EB690B] hover:text-[#00E5A0] font-bold transition-colors">Live Map</Link></li>
               </ul>
             </div>
             <div>
