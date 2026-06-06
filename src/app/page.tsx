@@ -45,7 +45,7 @@ function ScrollProgressBar() {
 
   return (
     <div className="fixed top-0 left-0 w-full h-[3px] bg-stone-950 z-[100] pointer-events-none">
-      <div 
+      <div
         className="h-full bg-gradient-to-r from-[#EB690B] via-[#fbbf24] to-[#00E5A0] shadow-[0_0_8px_#EB690B] transition-all duration-100 ease-out"
         style={{ width: `${width}%` }}
       />
@@ -77,9 +77,8 @@ function ScrollReveal({ children, className = '' }: { children: React.ReactNode;
   return (
     <div
       ref={ref}
-      className={`transition-all duration-1000 ease-out transform ${
-        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
-      } ${className}`}
+      className={`transition-all duration-1000 ease-out transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
+        } ${className}`}
     >
       {children}
     </div>
@@ -181,7 +180,7 @@ function ScrollTimeline() {
     <div ref={containerRef} className="relative max-w-4xl mx-auto pl-12 md:pl-20 py-10 space-y-16">
       {/* Vertical Connection Track */}
       <div className="absolute left-6 md:left-10 top-0 bottom-0 w-[2px] bg-stone-900">
-        <div 
+        <div
           className="absolute top-0 w-full bg-gradient-to-b from-[#EB690B] to-[#00E5A0] transition-all duration-150 ease-out shadow-[0_0_8px_#EB690B]"
           style={{ height: `${scrollProgress * 100}%` }}
         />
@@ -191,21 +190,20 @@ function ScrollTimeline() {
         const isActive = idx <= activeStep;
         const isCurrent = idx === activeStep;
         return (
-          <div 
-            key={step.num} 
+          <div
+            key={step.num}
             className="timeline-step relative transition-all duration-500 transform text-left"
-            style={{ 
+            style={{
               opacity: isCurrent ? 1 : isActive ? 0.85 : 0.4,
               transform: isCurrent ? 'translateX(0px)' : 'translateX(-4px)'
             }}
           >
             {/* Dot Node */}
-            <div 
-              className={`absolute -left-[30px] md:-left-[46px] top-2.5 w-4 h-4 rounded-full bg-stone-950 border-2 transition-all duration-300 flex items-center justify-center ${
-                isActive 
+            <div
+              className={`absolute -left-[30px] md:-left-[46px] top-2.5 w-4 h-4 rounded-full bg-stone-950 border-2 transition-all duration-300 flex items-center justify-center ${isActive
                   ? idx % 2 === 0 ? 'border-[#EB690B] scale-110' : 'border-[#00E5A0] scale-110'
                   : 'border-stone-800'
-              }`}
+                }`}
             >
               {isActive && (
                 <span className={`w-1.5 h-1.5 rounded-full ${idx % 2 === 0 ? 'bg-[#EB690B]' : 'bg-[#00E5A0]'}`} />
@@ -213,19 +211,17 @@ function ScrollTimeline() {
             </div>
 
             {/* Glowing step card */}
-            <GlowCard 
-              glowColor={step.glow} 
-              className={`p-6 md:p-8 bg-stone-950/45 border ${
-                isCurrent 
-                  ? idx % 2 === 0 ? 'border-[#EB690B]/30' : 'border-[#00E5A0]/30' 
+            <GlowCard
+              glowColor={step.glow}
+              className={`p-6 md:p-8 bg-stone-950/45 border ${isCurrent
+                  ? idx % 2 === 0 ? 'border-[#EB690B]/30' : 'border-[#00E5A0]/30'
                   : 'border-stone-900/30'
-              } rounded-[12px]`}
+                } rounded-[12px]`}
             >
-              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider block transition-colors duration-300 ${
-                isCurrent 
-                  ? idx % 2 === 0 ? 'text-[#EB690B]' : 'text-[#00E5A0]' 
+              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider block transition-colors duration-300 ${isCurrent
+                  ? idx % 2 === 0 ? 'text-[#EB690B]' : 'text-[#00E5A0]'
                   : 'text-neutral-500'
-              }`}>
+                }`}>
                 {step.num} / {step.phase}
               </span>
               <h4 className="font-heading text-2xl text-white font-normal uppercase tracking-wide mt-2">{step.title}</h4>
@@ -660,12 +656,12 @@ const ALL_VENUE_PINS: VenuePin[] = [
 ];
 
 const CATEGORIES = [
-  'ATMs',
-  'Bus Stops',
+  'Bowling',
+  'Arcades',
   'Cafés (3)',
-  'Emergencies',
+  'Garden',
   'Museums',
-  'Parkings',
+  'Beaches',
   'Restaurants',
   'Sport Centers',
 ];
@@ -674,7 +670,7 @@ export default function HomePage() {
   const { isSignedIn } = useAuth();
   const [activeCategory, setActiveCategory] = useState<string>('Cafés (3)');
   const [selectedPinId, setSelectedPinId] = useState<string>('cafe-01');
-  
+
   // Map zoom and center states (Centered on Mumbai)
   const [mapCenter, setMapCenter] = useState<[number, number]>([72.8777, 19.076]);
   const [mapZoom, setMapZoom] = useState<number>(11);
@@ -735,13 +731,13 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0A0A0C] text-foreground font-sans selection:bg-[#EB690B]/20 selection:text-[#EB690B]">
-      
+
       {/* ── 0. Sticky Scroll Progress Bar ── */}
       <ScrollProgressBar />
-      
+
       {/* ── SECTION 1: FULL VIEWPORT INTERACTIVE MAP CONSOLE ── */}
       <section className="h-screen w-screen relative overflow-hidden bg-[#0D0A08] border-b border-stone-900/60 z-20">
-        
+
         {/* Full-Bleed Map Canvas */}
         <Map
           center={mapCenter}
@@ -776,12 +772,19 @@ export default function HomePage() {
           </div>
 
           {/* Spaced horizontal navigation */}
-          <nav className="hidden md:flex items-center gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase">
+          <nav className="hidden md:flex items-center gap-10 lg:gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase">
             <Link href="#about" className="hover:text-white transition-colors duration-200">About</Link>
             <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
             <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
-            <Link href="#cta" className="hover:text-white transition-colors duration-200">Launch</Link>
-            <Link href="/map" className="text-[#EB690B] hover:text-[#00E5A0] transition-colors duration-200 font-bold">[ Live Map ]</Link>
+            {isSignedIn ? (
+              <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+                Go to Lobby
+              </Link>
+            ) : (
+              <Link href="/sign-up" className="px-5 py-2.5 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+                Start Hangout
+              </Link>
+            )}
           </nav>
 
           {/* Right Header Controls */}
@@ -796,19 +799,10 @@ export default function HomePage() {
         </header>
 
         {/* Left Side Category Rail */}
-        <aside className="absolute left-12 top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none h-[420px]">
-          {/* Sidebar Vertical text decorator */}
-          <div className="flex flex-col gap-28 items-center mr-10 border-r border-stone-800/40 pr-8 justify-center">
-            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
-              • .
-            </span>
-            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-[#EB690B] uppercase font-bold">
-              • LIFESTYLE
-            </span>
-          </div>
+        <aside className="absolute left-4 right-4 lg:left-12 lg:right-auto top-[85px] lg:top-[28%] z-20 flex flex-col lg:flex-row items-start lg:items-stretch pointer-events-auto select-none lg:h-[420px]">
 
           {/* Categories Selector */}
-          <div className="flex flex-col items-start justify-center gap-4 text-left">
+          <div className="flex flex-row lg:flex-col items-center lg:items-start justify-start lg:justify-center gap-3.5 text-left overflow-x-auto w-full no-scrollbar pb-2 lg:pb-0">
             {CATEGORIES.map((cat) => {
               const isActive = cat === activeCategory;
               const cleanName = cat.replace(' (3)', '');
@@ -817,18 +811,17 @@ export default function HomePage() {
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
-                  className={`text-left transition-all duration-300 relative group cursor-pointer block w-full focus:outline-none ${
-                    isActive 
-                      ? 'text-white py-1' 
+                  className={`text-left transition-all duration-300 relative group cursor-pointer block focus:outline-none whitespace-nowrap ${isActive
+                      ? 'text-white py-1 font-bold'
                       : 'text-neutral-500 hover:text-neutral-300 tracking-wider py-1 font-campus text-xs'
-                  }`}
+                    }`}
                 >
                   {isActive ? (
-                    <span className="font-serif-display text-5xl font-normal tracking-tight relative block leading-none">
-                      {cleanName} <span className="text-xl font-light align-top text-neutral-400 -ml-1">(3)</span>
+                    <span className="font-serif-display text-2xl lg:text-5xl font-normal tracking-tight relative block leading-none">
+                      {cleanName} <span className="text-sm lg:text-xl font-light align-top text-neutral-400 -ml-1">(3)</span>
                     </span>
                   ) : (
-                    cleanName
+                    <span className="font-campus text-xs lg:text-sm">{cleanName}</span>
                   )}
                 </button>
               );
@@ -837,7 +830,7 @@ export default function HomePage() {
         </aside>
 
         {/* Bottom-Left Telemetry / Weather Widget */}
-        <footer className="absolute bottom-10 left-12 z-20 pointer-events-auto select-none flex items-center gap-10 bg-stone-950/60 backdrop-blur-md px-6 py-4 border border-stone-900/60 shadow-lg rounded-[12px]">
+        <footer className="hidden lg:flex absolute bottom-10 left-12 z-20 pointer-events-auto select-none items-center gap-10 bg-stone-950/60 backdrop-blur-md px-6 py-4 border border-stone-900/60 shadow-lg rounded-[12px]">
           <div className="flex items-center gap-4">
             <CloudSun className="w-9 h-9 text-[#EB690B]" />
             <div className="flex items-start gap-1">
@@ -862,130 +855,109 @@ export default function HomePage() {
           </div>
         </footer>
 
-        {/* Bottom-Center Selected Pins Carousel (Filtered dynamically) */}
-        <div className="absolute bottom-10 left-[35%] xl:left-[38%] z-20 flex items-center gap-4 pointer-events-auto">
+        {/* Right Selected Pins Carousel (Filtered dynamically, vertical stack) */}
+        <div className="absolute bottom-[220px] sm:bottom-[160px] lg:bottom-[165px] right-4 lg:right-12 z-20 flex flex-col gap-2.5 pointer-events-auto max-w-[calc(100vw-32px)] sm:max-w-[360px] py-1 items-end">
           {carouselVenues.map((venue) => {
             return (
               <button
                 key={venue.id}
                 type="button"
                 onClick={() => setSelectedPinId(venue.id)}
-                className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.03] rounded-[12px]"
+                className="flex items-center gap-3 px-3 py-1.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.03] rounded-[10px] w-full sm:w-auto sm:min-w-[220px]"
               >
                 {/* Thumbnail with overlay badge */}
-                <div className="relative w-10 h-10 flex-shrink-0">
-                  <img 
-                    src={venue.image} 
-                    alt={venue.name} 
-                    className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]" 
+                <div className="relative w-7 h-7 flex-shrink-0">
+                  <img
+                    src={venue.image}
+                    alt={venue.name}
+                    className="w-full h-full rounded-full object-cover grayscale border border-[#00E5A0]"
                   />
-                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border border-[#00E5A0]">
+                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border border-[#00E5A0]">
                     {venue.num}
                   </span>
                 </div>
-                
-                <div>
-                  <p className="font-campus text-[10.5px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
-                  <p className="font-mono text-[8px] text-neutral-400 mt-1 leading-none">{venue.address}</p>
-                  <p className="font-mono text-[8px] text-neutral-500 leading-none mt-0.5">{venue.place}</p>
+
+                <div className="space-y-0.5">
+                  <p className="font-campus text-[9px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
+                  <p className="font-mono text-[7px] text-neutral-400 leading-none">{venue.address}</p>
                 </div>
               </button>
             );
           })}
         </div>
 
-        {/* Bottom-Right Selected Venue Details Card */}
-        <div className="absolute bottom-10 right-12 z-20 pointer-events-auto">
-          {activeVenue && (
-            <Card 
-              className="p-0 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-row overflow-hidden w-[420px] h-[195px] backdrop-blur-md rounded-[12px]"
-            >
-              {/* Left portion: Cafe Image */}
-              <div className="w-[140px] h-full relative flex-shrink-0 border-r border-stone-900/60">
-                <img 
-                  src={activeVenue.image} 
-                  alt={activeVenue.name} 
-                  className="w-full h-full object-cover grayscale opacity-85"
-                />
-              </div>
-              
-              {/* Right portion: Cafe Details */}
-              <div className="flex-1 p-5 flex flex-col justify-between text-left">
-                <div className="space-y-1">
-                  <span className="font-mono text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
-                  <h3 className="font-campus text-xl font-bold text-white tracking-wide leading-tight mt-0.5">{activeVenue.name}</h3>
-                  <p className="text-[9.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1">{activeVenue.address}</p>
-                  <p className="text-[9.5px] text-neutral-500 font-mono leading-none tracking-wider uppercase mt-0.5">{activeVenue.place}</p>
-                </div>
-                
-                <div className="flex items-center gap-4 text-[9.5px] font-mono text-neutral-400 my-1.5">
-                  <span className="flex items-center gap-1.5">
-                    <Navigation className="w-3.5 h-3.5 text-[#EB690B] transform rotate-45" /> 
-                    <span className="truncate max-w-[95px]">{activeVenue.connections}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-[#EB690B]" /> 
-                    <span>{activeVenue.phone}</span>
-                  </span>
-                </div>
-
-                <p className="text-neutral-400 leading-relaxed text-[9px] italic mb-1.5 font-sans">
-                  &quot;{activeVenue.description}&quot;
-                </p>
-
-                <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full">
-                  <button 
-                    type="button"
-                    className="w-full py-2.5 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[9.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[8px]"
-                  >
-                    Get More Information
-                  </button>
-                </Link>
-              </div>
-            </Card>
-          )}
-        </div>
-
-        {/* Far-Right Floating Map Navigation Controls */}
-        <div className="absolute right-12 top-1/2 -translate-y-1/2 z-20 pointer-events-auto">
-          <button 
-            type="button" 
+        {/* Bottom-Center Map Controls Stack (Horizontal Layout) */}
+        <div className="absolute bottom-4 lg:bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-3 pointer-events-auto items-center bg-stone-950/70 backdrop-blur-md px-4 py-2 border border-stone-850 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+          <button
+            type="button"
             onClick={handleRecenter}
             title="Recenter Map Viewport"
-            className="w-12 h-12 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none border border-neutral-300"
+            className="w-10 h-10 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none border border-neutral-300"
           >
-            <MapPin className="w-5.5 h-5.5" />
+            <MapPin className="w-4.5 h-4.5" />
           </button>
-        </div>
 
-        {/* Zoom stack */}
-        <div className="absolute right-12 bottom-32 z-20 flex flex-col gap-4 pointer-events-auto items-end">
           <button
             type="button"
             onClick={handleRecenter}
             title="Recenter"
-            className="w-12 h-12 bg-[#EB690B] hover:bg-[#D4590A] text-white flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
+            className="w-10 h-10 bg-[#EB690B] hover:bg-[#D4590A] text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
           >
-            <Target className="w-5.5 h-5.5" />
+            <Target className="w-4.5 h-4.5" />
           </button>
 
           <button
             type="button"
             onClick={handleZoomIn}
             title="Zoom In"
-            className="w-12 h-12 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-xl focus:outline-none rounded-[8px]"
+            className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]"
           >
-            <Plus className="w-5.5 h-5.5" />
+            <Plus className="w-4.5 h-4.5" />
           </button>
 
           <button
             type="button"
             onClick={handleZoomOut}
             title="Zoom Out"
-            className="w-12 h-12 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-xl focus:outline-none rounded-[8px]"
+            className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]"
           >
-            <Minus className="w-5.5 h-5.5" />
+            <Minus className="w-4.5 h-4.5" />
           </button>
+        </div>
+
+        {/* Bottom-Right Selected Venue Details Card (aligned right on desktop, stacked on mobile) */}
+        <div className="absolute bottom-[72px] sm:bottom-6 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
+          {activeVenue && (
+            <Card
+              className="p-4 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[360px] h-[130px] sm:h-[135px] backdrop-blur-md rounded-[12px] text-left"
+            >
+              <div className="space-y-0.5">
+                <span className="font-mono text-[6.5px] sm:text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
+                <h3 className="font-campus text-sm sm:text-base font-bold text-white tracking-wide leading-tight mt-0.5">{activeVenue.name}</h3>
+                <p className="text-[8px] sm:text-[8.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1">{activeVenue.address}, {activeVenue.place}</p>
+              </div>
+
+              <div className="flex items-center gap-3 text-[8px] sm:text-[8.5px] font-mono text-neutral-400 my-0.5">
+                <span className="flex items-center gap-1 sm:gap-1.5">
+                  <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B] transform rotate-45" />
+                  <span className="truncate max-w-[120px]">{activeVenue.connections}</span>
+                </span>
+                <span className="flex items-center gap-1 sm:gap-1.5">
+                  <Phone className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B]" />
+                  <span>{activeVenue.phone}</span>
+                </span>
+              </div>
+
+              <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full">
+                <button
+                  type="button"
+                  className="w-full py-1.5 sm:py-2 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[8px] sm:text-[8.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[6px]"
+                >
+                  Get More Information
+                </button>
+              </Link>
+            </Card>
+          )}
         </div>
 
         {/* Map scale indicator */}
@@ -1136,8 +1108,8 @@ export default function HomePage() {
           <ScrollReveal>
             {isSignedIn ? (
               <Link href="/groups" passHref>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
                 >
                   Go to lobbies
@@ -1145,8 +1117,8 @@ export default function HomePage() {
               </Link>
             ) : (
               <Link href="/sign-up" passHref>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
                 >
                   START A HANGOUT

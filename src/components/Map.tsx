@@ -72,6 +72,7 @@ export default function Map({
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
+      cooperativeGestures: true,
       style: {
         version: 8,
         sources: {
@@ -97,7 +98,6 @@ export default function Map({
     });
 
     mapInstance.current = map;
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     return () => {
       map.remove();
