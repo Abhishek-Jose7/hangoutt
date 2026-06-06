@@ -799,10 +799,19 @@ export default function HomePage() {
         </header>
 
         {/* Left Side Category Rail */}
-        <aside className="absolute left-4 right-4 lg:left-12 lg:right-auto top-[85px] lg:top-[28%] z-20 flex flex-col lg:flex-row items-start lg:items-stretch pointer-events-auto select-none lg:h-[420px]">
+        <aside className="absolute left-4 lg:left-12 top-[85px] lg:top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none lg:h-[420px]">
+          {/* Sidebar Vertical text decorator (LIFESTYLE word restored) */}
+          <div className="hidden lg:flex flex-col gap-28 items-center mr-10 border-r border-stone-800/40 pr-8 justify-center">
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
+              • .
+            </span>
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-[#EB690B] uppercase font-bold">
+              • LIFESTYLE
+            </span>
+          </div>
 
           {/* Categories Selector */}
-          <div className="flex flex-row lg:flex-col items-center lg:items-start justify-start lg:justify-center gap-3.5 text-left overflow-x-auto w-full no-scrollbar pb-2 lg:pb-0">
+          <div className="flex flex-row lg:flex-col items-center lg:items-start justify-start lg:justify-center gap-4 text-left overflow-x-auto w-full no-scrollbar pb-2 lg:pb-0">
             {CATEGORIES.map((cat) => {
               const isActive = cat === activeCategory;
               const cleanName = cat.replace(' (3)', '');
@@ -855,31 +864,31 @@ export default function HomePage() {
           </div>
         </footer>
 
-        {/* Right Selected Pins Carousel (Filtered dynamically, vertical stack) */}
-        <div className="absolute bottom-[220px] sm:bottom-[160px] lg:bottom-[165px] right-4 lg:right-12 z-20 flex flex-col gap-2.5 pointer-events-auto max-w-[calc(100vw-32px)] sm:max-w-[360px] py-1 items-end">
+        {/* Right Selected Pins Carousel (Filtered dynamically, vertical stack, placed below HUD Info Helper) */}
+        <div className="absolute top-[140px] right-4 lg:right-12 z-20 flex flex-col gap-3.5 pointer-events-auto max-w-[calc(100vw-32px)] sm:max-w-[360px] py-1 items-end">
           {carouselVenues.map((venue) => {
             return (
               <button
                 key={venue.id}
                 type="button"
                 onClick={() => setSelectedPinId(venue.id)}
-                className="flex items-center gap-3 px-3 py-1.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.03] rounded-[10px] w-full sm:w-auto sm:min-w-[220px]"
+                className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.03] rounded-[12px] w-full sm:w-auto sm:min-w-[240px]"
               >
                 {/* Thumbnail with overlay badge */}
-                <div className="relative w-7 h-7 flex-shrink-0">
+                <div className="relative w-10 h-10 flex-shrink-0">
                   <img
                     src={venue.image}
                     alt={venue.name}
-                    className="w-full h-full rounded-full object-cover grayscale border border-[#00E5A0]"
+                    className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]"
                   />
-                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border border-[#00E5A0]">
+                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border-2 border-[#00E5A0]">
                     {venue.num}
                   </span>
                 </div>
 
-                <div className="space-y-0.5">
-                  <p className="font-campus text-[9px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
-                  <p className="font-mono text-[7px] text-neutral-400 leading-none">{venue.address}</p>
+                <div className="space-y-1">
+                  <p className="font-campus text-[10px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
+                  <p className="font-mono text-[8px] text-neutral-400 leading-none">{venue.address}</p>
                 </div>
               </button>
             );
@@ -929,26 +938,38 @@ export default function HomePage() {
         <div className="absolute bottom-[72px] sm:bottom-6 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
           {activeVenue && (
             <Card
-              className="p-4 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[360px] h-[130px] sm:h-[135px] backdrop-blur-md rounded-[12px] text-left"
+              className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left"
             >
-              <div className="space-y-0.5">
-                <span className="font-mono text-[6.5px] sm:text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
-                <h3 className="font-campus text-sm sm:text-base font-bold text-white tracking-wide leading-tight mt-0.5">{activeVenue.name}</h3>
-                <p className="text-[8px] sm:text-[8.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1">{activeVenue.address}, {activeVenue.place}</p>
+              <div className="flex gap-3 items-start">
+                {/* Thumbnail Image */}
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[8px] overflow-hidden flex-shrink-0 border border-stone-800">
+                  <img
+                    src={activeVenue.image}
+                    alt={activeVenue.name}
+                    className="w-full h-full object-cover grayscale opacity-85"
+                  />
+                  <div className="absolute inset-0 bg-[#EB690B]/10 mix-blend-color" />
+                </div>
+
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <span className="font-mono text-[6.5px] sm:text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
+                  <h3 className="font-campus text-sm sm:text-base font-bold text-white tracking-wide leading-tight mt-0.5 truncate">{activeVenue.name}</h3>
+                  <p className="text-[8px] sm:text-[8.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1 truncate">{activeVenue.address}, {activeVenue.place}</p>
+
+                  <div className="flex items-center gap-3 text-[8px] sm:text-[8.5px] font-mono text-neutral-400 mt-1.5">
+                    <span className="flex items-center gap-1 sm:gap-1.5">
+                      <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B] transform rotate-45" />
+                      <span className="truncate max-w-[95px]">{activeVenue.connections}</span>
+                    </span>
+                    <span className="flex items-center gap-1 sm:gap-1.5">
+                      <Phone className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B]" />
+                      <span>{activeVenue.phone}</span>
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 text-[8px] sm:text-[8.5px] font-mono text-neutral-400 my-0.5">
-                <span className="flex items-center gap-1 sm:gap-1.5">
-                  <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B] transform rotate-45" />
-                  <span className="truncate max-w-[120px]">{activeVenue.connections}</span>
-                </span>
-                <span className="flex items-center gap-1 sm:gap-1.5">
-                  <Phone className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B]" />
-                  <span>{activeVenue.phone}</span>
-                </span>
-              </div>
-
-              <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full">
+              <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full mt-2">
                 <button
                   type="button"
                   className="w-full py-1.5 sm:py-2 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[8px] sm:text-[8.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[6px]"

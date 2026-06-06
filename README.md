@@ -10,7 +10,7 @@ Hangout is a collaborative group planning platform designed to coordinate and op
 * **Authentication**: Clerk (with internal database user sync webhooks)
 * **Database**: Cloudflare D1 (SQLite)
 * **ORM**: Drizzle ORM
-* **Maps Integration**: Ola Maps Places & Geocoding API
+* **Maps Integration**: MapLibre GL JS (via OpenStreetMap & CartoDB Dark Matter dark-mode tiles) & Ola Maps Places/Geocoding API
 * **AI Engine**: Groq SDK (`llama-3.3-70b-versatile` in JSON mode)
 * **Validation**: Zod (all entry inputs & AI schema outputs)
 
@@ -82,3 +82,18 @@ src/
     repositories/   ← Repository Layer (CRUD and direct database transactions)
     services/       ← Service Layer (Orchestration, aggregate calculators, permissions)
 ```
+
+---
+
+## 🗺️ Interactive Cartography (Map Console)
+
+The homepage features a full-screen, high-performance interactive map built with MapLibre GL JS:
+* **Dark-Mode Visuals**: Powered by CartoDB Dark Matter tiles tailored for the "Mumbai Noir" aesthetic.
+* **Interactive HUD Layout**:
+  * **Top-Right HUD**: Drag to pan / mouse wheel to zoom instructions.
+  * **Left Rail**: Categories menu Selector with a vertical `• LIFESTYLE` text decorator.
+  * **Bottom-Center**: Horizontal map control buttons capsule (Recenter `MapPin`, Target, Zoom `+`/`-`).
+  * **Bottom-Right**: Selected Venue Details card showing the active midpoint junction, connections, phone, and quick-info with a styled thumbnail image.
+  * **Right Column**: Scrollable carousel of recommendations matching the selected category.
+* **Smart Camera Control**: Dynamic panning/flying camera transition when markers or carousel cards are clicked.
+* **Responsive Layout**: Adapts gracefully to mobile viewports with a stacked responsive overlay format.
