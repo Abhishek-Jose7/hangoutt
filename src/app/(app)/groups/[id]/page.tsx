@@ -12,8 +12,9 @@ import { getGroupDetailsAction, startDetailsCollectionAction } from '@/actions/g
 import { submitBudget } from '@/actions/budgets';
 import { saveLocation, reverseGeocodeAction } from '@/actions/locations';
 import { submitMemberVibes } from '@/actions/members';
-import { generatePlan } from '@/actions/planner';
-import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw } from 'lucide-react';
+import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
+import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
+import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -43,6 +44,27 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmittingCollection, setIsSubmittingCollection] = useState(false);
 
+  // Planner and voting states
+  const [plans, setPlans] = useState<any[]>([]);
+  const [activePlanIdx, setActivePlanIdx] = useState<number>(0);
+  const [votes, setVotes] = useState<Record<string, number>>({});
+  const [userVotedPlanId, setUserVotedPlanId] = useState<string | null>(null);
+  const [isCasting, setIsCasting] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const carouselRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollToPlan = (idx: number) => {
+    if (carouselRef.current) {
+      const width = carouselRef.current.offsetWidth;
+      carouselRef.current.scrollTo({
+        left: idx * width,
+        behavior: 'smooth'
+      });
+      setActivePlanIdx(idx);
+    }
+  };
+
   const loadData = async () => {
     try {
       const res = await getGroupDetailsAction(groupId);
@@ -64,6 +86,29 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             setSelectedVibes(JSON.parse(currentMember.vibes));
           } catch (_e) {}
         }
+
+        // If plans are generated, load plans, vote counts, and user's vote
+        if (['VOTING', 'COMPLETED', 'ARCHIVED'].includes(res.data.group.status)) {
+          const [plansRes, voteTalliesRes, userVoteRes] = await Promise.all([
+            getPlansForGroupAction(groupId),
+            countVotes(groupId),
+            getUserVoteForGroup(groupId),
+          ]);
+
+          if (plansRes.success) {
+            setPlans(plansRes.data);
+          }
+          if (voteTalliesRes.success) {
+            const tallies = voteTalliesRes.data.reduce((acc: any, t: any) => {
+              acc[t.planId] = t.count;
+              return acc;
+            }, {});
+            setVotes(tallies);
+          }
+          if (userVoteRes.success) {
+            setUserVotedPlanId(userVoteRes.data);
+          }
+        }
       } else {
         toast.error(res.error.message || 'Failed to fetch group details');
       }
@@ -77,7 +122,71 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     loadData();
+
+    // Polling interval to reflect live updates (every 5 seconds)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [groupId]);
+
+  const handleVoteCast = async (planId: string) => {
+    setIsCasting(true);
+    try {
+      const res = await createVote({
+        groupId: groupId,
+        planId: planId,
+      });
+
+      if (!res.success) {
+        toast.error(res.error.message || 'Failed to submit vote');
+        setIsCasting(false);
+        return;
+      }
+
+      toast.success('Vote cast successfully!');
+      setUserVotedPlanId(planId);
+
+      // Re-fetch tallies to ensure accuracy
+      const voteTalliesRes = await countVotes(groupId);
+      if (voteTalliesRes.success) {
+        const tallies = voteTalliesRes.data.reduce((acc: any, t: any) => {
+          acc[t.planId] = t.count;
+          return acc;
+        }, {});
+        setVotes(tallies);
+      }
+
+      await loadData();
+    } catch (_err) {
+      toast.error('An error occurred submitting your vote.');
+    } finally {
+      setIsCasting(false);
+    }
+  };
+
+  const handleCloseVoting = async () => {
+    setIsClosing(true);
+    try {
+      const res = await closeVoting(groupId);
+
+      if (!res.success) {
+        toast.error(res.error.message || 'Failed to close voting');
+        setIsClosing(false);
+        return;
+      }
+
+      toast.success('Voting closed successfully! Winner declared.');
+      await loadData();
+    } catch (_err) {
+      toast.error('An error occurred closing voting.');
+    } finally {
+      setIsClosing(false);
+    }
+  };
 
   const handleBudgetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,8 +376,17 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const { group, members, budgetSummary, locations, currentUser } = data;
+  const { group, members, budgetSummary, submittedBudgetUserIds, locations, currentUser } = data;
   const isAdmin = currentUser.role === 'ADMIN';
+
+  // Retrieve vibes of the current user
+  const currentMember = members.find((m: any) => m.userId === currentUser.id);
+  let hasVibes = false;
+  if (currentMember && currentMember.vibes) {
+    try {
+      hasVibes = JSON.parse(currentMember.vibes).length > 0;
+    } catch (_e) {}
+  }
 
   // State checks
   const isCollectingMembers = group.status === 'COLLECTING_MEMBERS';
@@ -281,7 +399,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   return (
     <PageContainer
       title={group.name}
-      subtitle={`Lobby Category: ${group.groupType.toLowerCase()} / Status: ${group.status.replace('_', ' ')}`}
+      subtitle={`Lobby Status: ${group.status.replace('_', ' ')}`}
       actions={
         <div className="flex gap-2 font-sans text-xs">
           <Button 
@@ -295,43 +413,80 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
           </Button>
 
           {isVotingOrClosed && (
-            <Link
-              href={`/planner/${group.id}`}
-              className={buttonVariants({
-                size: 'sm',
-                className: 'bg-primary hover:bg-primary/95 text-primary-foreground flex items-center gap-1.5 rounded-lg font-semibold tracking-wide shadow-sm'
-              })}
-            >
-              <Sparkles className="h-4 w-4" />
-              View Itineraries
-            </Link>
-          )}
-
-          {isReady && isAdmin && (
             <Button
+              variant="outline"
               size="sm"
-              onClick={handlePlanGeneration}
-              disabled={isGenerating}
-              className="bg-primary hover:bg-primary/95 text-primary-foreground flex items-center gap-1.5 rounded-lg font-semibold tracking-wide shadow-sm"
+              onClick={() => {
+                setActivePlanIdx(0);
+                toast.success("Reset active carousel view to Option A.");
+              }}
+              className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
             >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  Generate Plans
-                </>
-              )}
+              <RefreshCw className="h-4 w-4" /> Reset View
             </Button>
           )}
         </div>
       }
     >
       <div className="space-y-6 font-sans text-sm">
-        {/* Status notification banner */}
+        
+        {/* 1. Top Section Summary Card */}
+        <Card className="relative overflow-hidden bg-gradient-to-br from-neutral-950 via-neutral-950 to-primary/5 border border-border/60 p-5 rounded-2xl shadow-xl space-y-4">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex justify-between items-start gap-4">
+            <div className="space-y-1">
+              <h1 className="text-xl font-extrabold text-foreground tracking-tight flex flex-wrap items-center gap-2">
+                <span>🎉 {group.name}</span>
+              </h1>
+              <p className="text-xs text-muted-foreground font-light line-clamp-1">{group.description || 'Experience-first Outing lobby'}</p>
+            </div>
+            
+            <Badge variant="outline" className={`shrink-0 rounded-full py-1 px-3 text-[10px] font-bold uppercase tracking-wider ${
+              group.status === 'VOTING' 
+                ? 'bg-primary/15 text-primary border-primary/30 animate-pulse'
+                : group.status === 'COMPLETED'
+                  ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
+                  : 'bg-neutral-900 text-muted-foreground border-border'
+            }`}>
+              {group.status.replace('_', ' ').replace('COLLECTING ', '')}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/40 text-[11px] text-muted-foreground font-medium">
+            <div className="space-y-0.5">
+              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Members</p>
+              <p className="text-xs font-extrabold text-foreground flex items-center gap-1">
+                <Users className="h-3 w-3 text-primary" /> {members.length}
+              </p>
+            </div>
+            
+            <div className="space-y-0.5">
+              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Budget Range</p>
+              <p className="text-xs font-extrabold text-foreground">
+                ₹{budgetSummary?.min || 300} - ₹{budgetSummary?.max || 700}
+              </p>
+            </div>
+
+            <div className="space-y-0.5">
+              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">Vibe</p>
+              <p className="text-xs font-extrabold text-primary truncate">
+                {group.vibes ? JSON.parse(group.vibes).slice(0, 2).map((v: string) => v.charAt(0) + v.slice(1).toLowerCase()).join(', ') : 'Creative, Foodie'}
+              </p>
+            </div>
+          </div>
+          
+          <div className="pt-2 border-t border-border/30 text-[11px] text-muted-foreground">
+            <p className="text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold mb-0.5">Location Spread</p>
+            <p className="text-xs font-bold text-foreground truncate">
+              {locations.length > 0 
+                ? locations.map((l: any) => l.locationName?.split(',')[0].trim()).filter(Boolean).join(' • ')
+                : 'Waiting for members...'}
+            </p>
+          </div>
+        </Card>
+
+        {/* Status Notification Banner (Cooking status) */}
         {isGeneratingState && (
           <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 p-4 rounded-xl text-primary text-xs font-semibold animate-pulse">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -342,377 +497,566 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
           </div>
         )}
 
-        {isCollectingMembers && (
-          <div className="flex items-center justify-between gap-3 bg-neutral-900/50 border border-neutral-800 p-4 rounded-xl text-muted-foreground text-xs">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary animate-pulse" />
-              <span>Lobby is accepting members. Share the invite code to add friends. Once everyone has joined, the admin can lock the lobby.</span>
+        {/* 2. Member Progress Section (Before Generation) */}
+        {!isVotingOrClosed && !isGeneratingState && (
+          <Card className="border border-border/60 rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-md p-4 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-border/40">
+              <div>
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Members Ready
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground font-light mt-0.5">
+                  Lobby registers green as soon as coordinates & budget caps are entered.
+                </p>
+              </div>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs font-extrabold py-0.5 px-2.5 rounded-lg shrink-0">
+                {members.filter((m: any) => {
+                  const hasBudget = submittedBudgetUserIds.includes(m.userId);
+                  const hasLocation = locations.some((l: any) => l.userId === m.userId);
+                  return hasBudget && hasLocation;
+                }).length} / {members.length} Complete
+              </Badge>
             </div>
-            {isAdmin && (
-              <Button 
-                onClick={handleStartDetailsCollection}
-                disabled={isSubmittingCollection}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold uppercase tracking-wider text-[10px] h-7 rounded-lg"
-              >
-                {isSubmittingCollection ? 'Locking Lobby...' : 'Lock Lobby'}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {isCollectingDetails && (
-          <div className="flex items-center gap-2 bg-neutral-900/50 border border-neutral-800 p-4 rounded-xl text-muted-foreground text-xs">
-            <Users className="h-4 w-4 text-primary" />
-            <span>Waiting for all members to submit budget and location details. Once everyone submits, the admin can generate plans.</span>
-          </div>
-        )}
-
-        {isReady && !isAdmin && (
-          <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl text-emerald-500 text-xs font-semibold">
-            <Sparkles className="h-4 w-4 text-emerald-500 animate-pulse" />
-            <span>Lobby is fully ready! Waiting for the admin to initiate itinerary generation.</span>
-          </div>
-        )}
-
-        {/* Workspace Quick Information */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="bg-neutral-950/40 border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
-            <Users className="h-5 w-5 text-primary flex-shrink-0" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Group Code</p>
-              <p className="text-base font-mono font-extrabold text-foreground">{group.inviteCode}</p>
-            </div>
-          </Card>
-
-          <Card className="bg-neutral-950/40 border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
-            <DollarSign className="h-5 w-5 text-primary flex-shrink-0" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Budget Ceiling (Avg)</p>
-              <p className="text-base font-extrabold text-foreground">₹{budgetSummary?.avg || 0}</p>
-            </div>
-          </Card>
-
-          <Card className="bg-neutral-950/40 border border-border flex items-center p-5 gap-4 rounded-xl shadow-sm">
-            <MapPin className="h-5 w-5 text-primary flex-shrink-0" />
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Midpoint Location</p>
-              <p className="text-sm font-semibold text-foreground">Calculated Near Lobby</p>
-            </div>
-          </Card>
-        </div>
-
-        {/* Content Tabs */}
-        <Tabs defaultValue="workspace" className="space-y-6">
-          <TabsList className="bg-black border border-border p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-lg font-sans">
-            <TabsTrigger 
-              value="workspace" 
-              className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
-            >
-              Workspace Overview
-            </TabsTrigger>
-            <TabsTrigger 
-              value="inputs" 
-              className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
-            >
-              Submit My Details
-            </TabsTrigger>
-          </TabsList>
-
-          {/* TAB 1: OVERVIEW */}
-          <TabsContent value="workspace" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* Members List */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-2 gap-2 pt-1 font-medium">
+              {members.map((member: any) => {
+                const hasBudget = submittedBudgetUserIds.includes(member.userId);
+                const hasLocation = locations.some((l: any) => l.userId === member.userId);
+                const isReady = hasBudget && hasLocation;
+
+                return (
+                  <div key={member.userId} className="flex items-center justify-between p-2 bg-neutral-950/80 border border-neutral-900 rounded-xl text-xs hover:border-border/80 transition-all duration-200">
+                    <span className="text-foreground font-bold truncate pr-1">{member.name}</span>
+                    <span className="text-sm shrink-0 leading-none">
+                      {isReady ? '🟢' : '🟡'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {isAdmin && (
+              <div className="pt-2">
+                <Button
+                  onClick={handlePlanGeneration}
+                  disabled={isGenerating || members.filter((m: any) => {
+                    const hasBudget = submittedBudgetUserIds.includes(m.userId);
+                    const hasLocation = locations.some((l: any) => l.userId === m.userId);
+                    return hasBudget && hasLocation;
+                  }).length !== members.length}
+                  className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating Itineraries...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Generate Itineraries
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 3. Horizontal Swipe Carousel of Itineraries (After Generation) */}
+        {isVotingOrClosed && plans.length > 0 && (
+          <Card className="border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-4 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-border/40">
+              <div>
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Outing Itinerary Options
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground font-light mt-0.5">
+                  Swipe through plans and cast your vote on your favorite option.
+                </p>
+              </div>
+              <Badge variant="outline" className={`rounded-full py-0.5 px-2.5 text-[9px] font-bold uppercase tracking-wider ${
+                group.votingStatus === 'OPEN' 
+                  ? 'bg-primary/10 text-primary border-primary/20 animate-pulse' 
+                  : 'bg-neutral-800 text-muted-foreground border-border'
+              }`}>
+                Voting: {group.votingStatus.toLowerCase()}
+              </Badge>
+            </div>
+
+            {/* Scroll Carousel */}
+            <div 
+              ref={carouselRef}
+              className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none px-0.5"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              onScroll={(e) => {
+                const container = e.currentTarget;
+                const scrollLeft = container.scrollLeft;
+                const width = container.offsetWidth;
+                const newIdx = Math.round(scrollLeft / width);
+                if (newIdx !== activePlanIdx && newIdx >= 0 && newIdx < plans.length) {
+                  setActivePlanIdx(newIdx);
+                }
+              }}
+            >
+              {plans.map((plan, idx) => {
+                const voteCount = votes[plan.id] || 0;
+                const hasUserVoted = userVotedPlanId === plan.id;
+                const isPlanWinner = group.winningPlanId === plan.id;
+                
+                const tierMap: Record<string, string> = {
+                  BUDGET_FRIENDLY: 'Most Convenient',
+                  BALANCED: 'Balanced Vibe',
+                  PREMIUM: 'Premium Pick',
+                };
+                const tag = tierMap[plan.budgetTier] || 'Alternative Option';
+
+                return (
+                  <div 
+                    key={plan.id}
+                    className="w-full shrink-0 snap-center snap-always space-y-4"
+                  >
+                    <Card className="bg-black/40 border border-neutral-900/60 rounded-2xl p-5 shadow-inner">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest">{tag}</span>
+                          <h3 className="text-base font-extrabold text-foreground mt-0.5 uppercase tracking-wide">{plan.name}</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-1">{plan.tagline}</p>
+                        </div>
+                        {isPlanWinner ? (
+                          <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                            <Award className="h-3 w-3" />
+                            Winner
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 hover:text-primary rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                            <Vote className="h-3 w-3" />
+                            {voteCount} votes
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Compact Itinerary Flow using Actual places */}
+                      <div className="flex flex-col items-center justify-center py-4 my-3 bg-neutral-950/75 rounded-2xl border border-neutral-900/85 space-y-2 text-center">
+                        {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                          <React.Fragment key={sIdx}>
+                            <div className="px-3">
+                              <p className="text-xs font-bold text-foreground tracking-wide leading-snug">{slot.name}</p>
+                              <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
+                                {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                              </p>
+                            </div>
+                            {sIdx < (plan.slots.length - 1) && (
+                              <span className="text-primary/70 font-black text-xs">↓</span>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
+
+                      {/* Travel and cost footer statistics */}
+                      <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-border/40 text-center text-[10px] font-semibold text-muted-foreground uppercase">
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Per Head</p>
+                          <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
+                          <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} mins</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Plan Score</p>
+                          <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}/10</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Voting Action */}
+                    {group.votingStatus === 'OPEN' && (
+                      <Button
+                        size="sm"
+                        disabled={isCasting || userVotedPlanId === plan.id}
+                        onClick={() => handleVoteCast(plan.id)}
+                        className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
+                          userVotedPlanId === plan.id
+                            ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
+                            : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                        }`}
+                      >
+                        {userVotedPlanId === plan.id ? (
+                          <>
+                            <Check className="mr-2 h-4 w-4" /> Voted & Accepted
+                          </>
+                        ) : (
+                          <>
+                            <Vote className="mr-2 h-4 w-4" /> Vote for Option {plan.planIndex}
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Carousel Navigation Controls */}
+            <div className="flex justify-between items-center mt-3 px-1">
+              <Button 
+                variant="outline" 
+                size="xs" 
+                disabled={activePlanIdx === 0} 
+                onClick={() => scrollToPlan(activePlanIdx - 1)}
+                className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+              >
+                Prev
+              </Button>
+              
+              {/* Dots indicator */}
+              <div className="flex gap-2">
+                {plans.map((_, idx) => (
+                  <span 
+                    key={idx} 
+                    onClick={() => scrollToPlan(idx)}
+                    className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
+                      idx === activePlanIdx ? 'bg-primary scale-125' : 'bg-neutral-800 hover:bg-neutral-700'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <Button 
+                variant="outline" 
+                size="xs" 
+                disabled={activePlanIdx === plans.length - 1} 
+                onClick={() => scrollToPlan(activePlanIdx + 1)}
+                className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+              >
+                Next
+              </Button>
+            </div>
+
+            {isAdmin && group.votingStatus === 'OPEN' && (
+              <div className="pt-2">
+                <Button
+                  variant="destructive"
+                  onClick={handleCloseVoting}
+                  disabled={isClosing}
+                  className="w-full rounded-xl font-bold uppercase tracking-wider text-xs py-3.5 bg-red-650 hover:bg-red-600 cursor-pointer"
+                >
+                  Close Voting & Declare Winner
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 4. Details Submission & Member overview (Locked post-generation to avoid clutter) */}
+        {!isVotingOrClosed && (
+          <Tabs defaultValue="workspace" className="space-y-6">
+            <TabsList className="bg-black border border-border p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-lg font-sans">
+              <TabsTrigger 
+                value="workspace" 
+                className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+              >
+                Workspace Overview
+              </TabsTrigger>
+              <TabsTrigger 
+                value="inputs" 
+                className="text-xs font-semibold py-2.5 rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
+              >
+                Submit My Details
+              </TabsTrigger>
+            </TabsList>
+
+            {/* TAB 1: OVERVIEW */}
+            <TabsContent value="workspace" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Members List */}
+              <div className="lg:col-span-2 space-y-6">
+                <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />
+                      Members Lobby ({members.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="divide-y divide-border/60 p-0 px-6 pb-6">
+                    {members.map((member: any) => {
+                      const isOwner = member.role === 'ADMIN';
+                      
+                      return (
+                        <div key={member.userId} className="flex items-center justify-between py-3">
+                          <div className="flex items-center gap-3">
+                            {member.imageUrl ? (
+                              <img
+                                src={member.imageUrl}
+                                alt={member.name}
+                                className="h-9 w-9 rounded-full object-cover border border-border"
+                              />
+                            ) : (
+                              <div className="h-9 w-9 rounded-full bg-neutral-900 border border-border flex items-center justify-center font-bold text-xs uppercase text-primary">
+                                {member.name.charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                                {member.name}
+                                {isOwner && (
+                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[9px] font-semibold uppercase rounded-full py-0.5 px-2.5 flex items-center gap-0.5">
+                                    <Shield className="h-2.5 w-2.5" />
+                                    Admin
+                                  </Badge>
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{member.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            {member.vibes && (
+                              <span className="text-[10px] text-muted-foreground font-light italic">
+                                {JSON.parse(member.vibes).slice(0, 2).join(', ').toLowerCase()}
+                              </span>
+                            )}
+                            <span className="flex items-center text-[10px] uppercase text-primary font-bold">
+                              <span className="h-2 w-2 rounded-full bg-primary mr-1.5" />
+                              Joined
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+
+                {/* Locations List */}
+                <Card className="border border-neutral-900 rounded-xl bg-neutral-950/20 backdrop-blur-md shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-primary" />
+                      Geographic Registry
+                    </CardTitle>
+                    <CardDescription className="text-xs text-muted-foreground font-light">
+                      Outing starting nodes submitted by lobby participants. Specific coordinates are masked for privacy unless you are the lobby Admin.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 font-medium">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      {locations.map((loc: any, idx: number) => {
+                        return (
+                          <div key={idx} className="flex justify-between items-center p-3 bg-black border border-neutral-900 rounded-lg">
+                            <span className="font-bold text-foreground uppercase tracking-wide">{loc.name}</span>
+                            <span className="text-primary text-[11px] font-semibold flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5 text-primary" /> {loc.locationName || 'Location Saved'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Aggregates Dashboard */}
+              <div className="space-y-6">
+                <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm text-xs">
+                  <CardHeader>
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">Budget Aggregates</CardTitle>
+                    <CardDescription className="text-[10px] text-muted-foreground uppercase leading-relaxed font-light">
+                      Computed aggregates from submitted budgets.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-2 font-medium">
+                    <div className="flex justify-between py-2 border-b border-border/60">
+                      <span className="text-muted-foreground">Submitted Envelopes</span>
+                      <span className="font-bold text-foreground">
+                        {budgetSummary?.submittedCount || 0} of {members.length}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-border/60">
+                      <span className="text-muted-foreground">Floor Limit (Min)</span>
+                      <span className="font-bold text-foreground">₹{budgetSummary?.min || 0}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-border/60">
+                      <span className="text-muted-foreground">Ceiling Limit (Max)</span>
+                      <span className="font-bold text-foreground">₹{budgetSummary?.max || 0}</span>
+                    </div>
+                    <div className="flex justify-between py-2.5 border border-primary/20 bg-primary/10 px-3 rounded-lg text-primary font-bold uppercase">
+                      <span>Group Budget Cap</span>
+                      <span>₹{budgetSummary?.avg || 0}</span>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="bg-black/20 pt-4 border-t border-border flex flex-col items-stretch rounded-b-xl">
+                    <span className="text-[10px] text-muted-foreground text-center italic">
+                      Note: Budgets are not hard limits. The planner will construct options mapping different strategies.
+                    </span>
+                  </CardFooter>
+                </Card>
+              </div>
+
+            </TabsContent>
+
+            {/* TAB 2: INPUTS FORM */}
+            <TabsContent value="inputs" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Submit Budget */}
               <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <Users className="h-4 w-4 text-primary" />
-                    Members Lobby ({members.length})
+                    <DollarSign className="h-4 w-4 text-primary" />
+                    Submit Budget Limits
                   </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground font-light">
+                    Enter your maximum spending cap for this outing (₹50 — ₹100,000).
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="divide-y divide-border/60 p-0 px-6 pb-6">
-                  {members.map((member: any) => {
-                    const isOwner = member.role === 'ADMIN';
-                    const hasSubmittedDetails = 
-                      budgetSummary.submittedCount > 0 && 
-                      currentUser.id === member.userId ? (currentUser.budget && currentUser.location) : true; // visual indicator proxy
-                    
-                    return (
-                      <div key={member.userId} className="flex items-center justify-between py-3">
-                        <div className="flex items-center gap-3">
-                          {member.imageUrl ? (
-                            <img
-                              src={member.imageUrl}
-                              alt={member.name}
-                              className="h-9 w-9 rounded-full object-cover border border-border"
-                            />
-                          ) : (
-                            <div className="h-9 w-9 rounded-full bg-neutral-900 border border-border flex items-center justify-center font-bold text-xs uppercase text-primary">
-                              {member.name.charAt(0)}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-sm font-bold text-foreground flex items-center gap-2">
-                              {member.name}
-                              {isOwner && (
-                                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[9px] font-semibold uppercase rounded-full py-0.5 px-2.5 flex items-center gap-0.5">
-                                  <Shield className="h-2.5 w-2.5" />
-                                  Admin
-                                </Badge>
-                              )}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{member.email}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {member.vibes && (
-                            <span className="text-[10px] text-muted-foreground font-light italic">
-                              {JSON.parse(member.vibes).slice(0, 2).join(', ').toLowerCase()}
-                            </span>
-                          )}
-                          <span className="flex items-center text-[10px] uppercase text-primary font-bold">
-                            <span className="h-2 w-2 rounded-full bg-primary mr-1.5" />
-                            Joined
-                          </span>
-                        </div>
+                <form onSubmit={handleBudgetSubmit}>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="budgetInput" className="text-xs uppercase text-foreground">Your Max Budget (INR)</Label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary font-bold">₹</span>
+                        <Input
+                          id="budgetInput"
+                          type="number"
+                          min={50}
+                          max={100000}
+                          value={budgetVal}
+                          onChange={(e) => setBudgetVal(e.target.value)}
+                          placeholder="500"
+                          className="pl-8 bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
+                          required
+                          disabled={isSubmittingBudget}
+                        />
                       </div>
-                    );
-                  })}
-                </CardContent>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      type="submit" 
+                      disabled={isSubmittingBudget} 
+                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
+                        currentUser.budget !== null 
+                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
+                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                      }`}
+                    >
+                      {isSubmittingBudget ? 'Saving...' : currentUser.budget !== null ? '✓ Budget Accepted' : 'Submit Budget'}
+                    </Button>
+                  </CardFooter>
+                </form>
               </Card>
 
-              {/* Locations List */}
+              {/* Submit Location Name */}
               <Card className="border border-neutral-900 rounded-xl bg-neutral-950/20 backdrop-blur-md shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-primary" />
-                    Geographic Registry
+                    Submit Outing Location
                   </CardTitle>
                   <CardDescription className="text-xs text-muted-foreground font-light">
-                    Outing starting nodes submitted by lobby participants. Specific coordinates are masked for privacy unless you are the lobby Admin.
+                    Enter your starting location name/neighborhood (e.g. Dadar, Indiranagar) or auto-detect it.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4 font-medium">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    {locations.map((loc: any, idx: number) => {
-                      return (
-                        <div key={idx} className="flex justify-between items-center p-3 bg-black border border-neutral-900 rounded-lg">
-                          <span className="font-bold text-foreground uppercase tracking-wide">{loc.name}</span>
-                          <span className="text-primary text-[11px] font-semibold flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5 text-primary" /> {loc.locationName || 'Location Saved'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Itinerary Placeholder */}
-              {hasSubmittedSelf && !isVotingOrClosed && (
-                <Card className="border border-neutral-900 bg-neutral-950/20 backdrop-blur-md rounded-xl p-8 text-center space-y-4 shadow-sm">
-                  <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
-                    <Sparkles className="h-6 w-6 animate-pulse text-primary" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Outing Itineraries (Pending)</h3>
-                    <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
-                      You have submitted your budget and location. Once all members finish entering their details, the admin ({group.creatorId === currentUser.id ? 'you' : 'the group host'}) will generate the outing itineraries.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto pt-2 text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-                    <div className="border border-neutral-900/50 bg-black/20 p-3 rounded-lg flex flex-col items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-neutral-800" />
-                      Option A (Budget-Friendly)
-                    </div>
-                    <div className="border border-neutral-900/50 bg-black/20 p-3 rounded-lg flex flex-col items-center gap-1 flex-1">
-                      <span className="h-2 w-2 rounded-full bg-neutral-800" />
-                      Option B (Balanced)
-                    </div>
-                    <div className="border border-neutral-900/50 bg-black/20 p-3 rounded-lg flex flex-col items-center gap-1">
-                      <span className="h-2 w-2 rounded-full bg-neutral-800" />
-                      Option C (Premium)
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
-
-            {/* Aggregates Dashboard */}
-            <div className="space-y-6">
-              <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm text-xs">
-                <CardHeader>
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary">Budget Aggregates</CardTitle>
-                  <CardDescription className="text-[10px] text-muted-foreground uppercase leading-relaxed font-light">
-                    Computed aggregates from submitted budgets.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4 pt-2 font-medium">
-                  <div className="flex justify-between py-2 border-b border-border/60">
-                    <span className="text-muted-foreground">Submitted Envelopes</span>
-                    <span className="font-bold text-foreground">
-                      {budgetSummary?.submittedCount || 0} of {members.length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-border/60">
-                    <span className="text-muted-foreground">Floor Limit (Min)</span>
-                    <span className="font-bold text-foreground">₹{budgetSummary?.min || 0}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-border/60">
-                    <span className="text-muted-foreground">Ceiling Limit (Max)</span>
-                    <span className="font-bold text-foreground">₹{budgetSummary?.max || 0}</span>
-                  </div>
-                  <div className="flex justify-between py-2.5 border border-primary/20 bg-primary/10 px-3 rounded-lg text-primary font-bold uppercase">
-                    <span>Group Budget Cap</span>
-                    <span>₹{budgetSummary?.avg || 0}</span>
-                  </div>
-                </CardContent>
-                <CardFooter className="bg-black/20 pt-4 border-t border-border flex flex-col items-stretch rounded-b-xl">
-                  <span className="text-[10px] text-muted-foreground text-center italic">
-                    Note: Budgets are not hard limits. The planner will construct options mapping different strategies.
-                  </span>
-                </CardFooter>
-              </Card>
-            </div>
-
-          </TabsContent>
-
-          {/* TAB 2: INPUTS FORM */}
-          <TabsContent value="inputs" className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Submit Budget */}
-            <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-primary" />
-                  Submit Budget Limits
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground font-light">
-                  Enter your maximum spending cap for this outing (₹50 — ₹100,000).
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleBudgetSubmit}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="budgetInput" className="text-xs uppercase text-foreground">Your Max Budget (INR)</Label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary font-bold">₹</span>
+                <form onSubmit={handleLocationSubmit}>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2.5">
+                      <Label htmlFor="locationInput" className="text-xs uppercase text-foreground">Location Name or Neighborhood</Label>
                       <Input
-                        id="budgetInput"
-                        type="number"
-                        min={50}
-                        max={100000}
-                        value={budgetVal}
-                        onChange={(e) => setBudgetVal(e.target.value)}
-                        placeholder="500"
-                        className="pl-8 bg-black border border-border text-foreground rounded-lg text-xs focus-visible:ring-primary"
+                        id="locationInput"
+                        type="text"
+                        value={addressVal}
+                        onChange={(e) => setAddressVal(e.target.value)}
+                        placeholder="e.g. Dadar, Mumbai or Koramangala, Bengaluru"
+                        className="bg-black border border-neutral-900 text-foreground rounded-lg text-xs focus-visible:ring-primary"
                         required
-                        disabled={isSubmittingBudget}
+                        disabled={isSubmittingLocation || isCollectingMembers}
                       />
                     </div>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" disabled={isSubmittingBudget} className="w-full bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg uppercase tracking-wider font-bold text-xs">
-                    {isSubmittingBudget ? 'Saving...' : 'Submit Budget'}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
+                  </CardContent>
+                  <CardFooter className="flex flex-col gap-2 pt-0">
+                    <Button 
+                      type="submit" 
+                      disabled={isSubmittingLocation || isCollectingMembers} 
+                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
+                        currentUser.location !== null 
+                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
+                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                      }`}
+                    >
+                      {isSubmittingLocation 
+                        ? 'Saving Location...' 
+                        : currentUser.location !== null 
+                          ? '✓ Location Accepted' 
+                          : 'Save Location Name'}
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={handleAutoDetect}
+                      disabled={isSubmittingLocation || isCollectingMembers} 
+                      className="w-full border-neutral-800 text-foreground hover:bg-neutral-900 rounded-lg uppercase tracking-wider font-bold text-xs"
+                    >
+                      Auto-Detect Location
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Card>
 
-            {/* Submit Location Name */}
-            <Card className="border border-neutral-900 rounded-xl bg-neutral-950/20 backdrop-blur-md shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-primary" />
-                  Submit Outing Location
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground font-light">
-                  Enter your starting location name/neighborhood (e.g. Dadar, Indiranagar) or auto-detect it.
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleLocationSubmit}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2.5">
-                    <Label htmlFor="locationInput" className="text-xs uppercase text-foreground">Location Name or Neighborhood</Label>
-                    <Input
-                      id="locationInput"
-                      type="text"
-                      value={addressVal}
-                      onChange={(e) => setAddressVal(e.target.value)}
-                      placeholder="e.g. Dadar, Mumbai or Koramangala, Bengaluru"
-                      className="bg-black border border-neutral-900 text-foreground rounded-lg text-xs focus-visible:ring-primary"
-                      required
-                      disabled={isSubmittingLocation || isCollectingMembers}
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter className="flex flex-col gap-2 pt-0">
-                  <Button 
-                    type="submit" 
-                    disabled={isSubmittingLocation || isCollectingMembers} 
-                    className="w-full bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg uppercase tracking-wider font-bold text-xs"
-                  >
-                    {isSubmittingLocation ? 'Saving Location...' : 'Save Location Name'}
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={handleAutoDetect}
-                    disabled={isSubmittingLocation || isCollectingMembers} 
-                    className="w-full border-neutral-800 text-foreground hover:bg-neutral-900 rounded-lg uppercase tracking-wider font-bold text-xs"
-                  >
-                    Auto-Detect Location
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
+              {/* Submit Vibe Preferences */}
+              <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                    <Heart className="h-4 w-4 text-primary" />
+                    Select Vibe Preferences
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground font-light">
+                    Choose the mood and type of outing you want. These will feed the experience matching scorer.
+                  </CardDescription>
+                </CardHeader>
+                <form onSubmit={handleVibesSubmit}>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {AVAILABLE_VIBES.map((vibe) => {
+                        const isSelected = selectedVibes.includes(vibe);
+                        return (
+                          <button
+                            type="button"
+                            key={vibe}
+                            onClick={() => toggleVibe(vibe)}
+                            disabled={isSubmittingVibes}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                              isSelected 
+                                ? 'bg-primary border-primary text-primary-foreground shadow-sm shadow-primary/25'
+                                : 'bg-black border-border hover:border-primary/50 text-muted-foreground'
+                            }`}
+                          >
+                            {vibe.toLowerCase()}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      type="submit" 
+                      disabled={isSubmittingVibes} 
+                      className={`w-full rounded-lg uppercase tracking-wider font-bold text-xs transition-colors duration-200 ${
+                        hasVibes 
+                          ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white' 
+                          : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                      }`}
+                    >
+                      {isSubmittingVibes ? 'Saving...' : hasVibes ? '✓ Preferences Saved & Accepted' : 'Save Vibe Preferences'}
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Card>
 
-            {/* Submit Vibe Preferences */}
-            <Card className="border border-border rounded-xl bg-neutral-950/40 backdrop-blur-md shadow-sm md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                  <Heart className="h-4 w-4 text-primary" />
-                  Select Vibe Preferences
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground font-light">
-                  Choose the mood and type of outing you want. These will feed the experience matching scorer.
-                </CardDescription>
-              </CardHeader>
-              <form onSubmit={handleVibesSubmit}>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {AVAILABLE_VIBES.map((vibe) => {
-                      const isSelected = selectedVibes.includes(vibe);
-                      return (
-                        <button
-                          type="button"
-                          key={vibe}
-                          onClick={() => toggleVibe(vibe)}
-                          disabled={isSubmittingVibes}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-semibold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-                            isSelected 
-                              ? 'bg-primary border-primary text-primary-foreground shadow-sm shadow-primary/25'
-                              : 'bg-black border-border hover:border-primary/50 text-muted-foreground'
-                          }`}
-                        >
-                          {vibe.toLowerCase()}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" disabled={isSubmittingVibes} className="w-full bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg uppercase tracking-wider font-bold text-xs">
-                    {isSubmittingVibes ? 'Saving...' : 'Save Vibe Preferences'}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
-
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </PageContainer>
   );

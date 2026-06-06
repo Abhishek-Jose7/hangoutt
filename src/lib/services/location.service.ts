@@ -7,20 +7,20 @@ import { ForbiddenError, ValidationError, NotFoundError, InsufficientLocationsEr
 import { geocodeAddress, reverseGeocode } from '../maps/geocoding';
 
 export const locationService = {
-  async saveLocation(userId: string, groupId: string, lat?: number, lng?: number, locationName?: string) {
+  async saveLocation(userId: string, groupId: string, lat?: number | null, lng?: number | null, locationName?: string | null) {
     // 1. Verify user is member
     const member = await memberRepository.getMember(groupId, userId);
     if (!member) {
       throw new ForbiddenError('You are not a member of this planning group.');
     }
 
-    let resolvedLat = lat;
-    let resolvedLng = lng;
-    let resolvedName = locationName;
+    let resolvedLat = (lat === null) ? undefined : lat;
+    let resolvedLng = (lng === null) ? undefined : lng;
+    let resolvedName = (locationName === null) ? undefined : locationName;
 
     // 2. Resolve coordinates/address
-    if (locationName && (resolvedLat === undefined || resolvedLng === undefined)) {
-      const geocoded = await geocodeAddress(locationName);
+    if (resolvedName && (resolvedLat === undefined || resolvedLng === undefined)) {
+      const geocoded = await geocodeAddress(resolvedName);
       resolvedLat = geocoded.lat;
       resolvedLng = geocoded.lng;
       resolvedName = geocoded.formattedAddress;

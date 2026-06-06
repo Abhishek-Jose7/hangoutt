@@ -152,6 +152,7 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
       },
       members,
       budgetSummary,
+      submittedBudgetUserIds: budgets.map(b => b.userId),
       locations: cleanLocations,
       currentUser: {
         id: user.id,
