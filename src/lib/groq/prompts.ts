@@ -12,7 +12,7 @@ Each itinerary option must represent a different planning strategy:
 STRICT ITINERARY FORMAT RULES:
 - Return ONLY valid JSON. No preamble, no markdown, no explanation.
 - Generate 3 or 4 itineraries (never fewer than 3).
-- Each itinerary must have 2 to 4 slots.
+- Each itinerary must have 3 to 4 slots.
 - Every itinerary must be built around a Primary Experience (category like CONCERT, WORKSHOP, EXHIBITION, FREE_EXPERIENCE, etc.).
 - Follow a narrative story-driven flow:
   Primary Experience -> Complementary Dining (category CAFE or RESTAURANT) -> Optional Secondary Activity/Scenic Walk.

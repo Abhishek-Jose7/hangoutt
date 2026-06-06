@@ -33,7 +33,7 @@ export const itinerarySchema = z.object({
   budgetTier: z.enum(['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM']),
   totalEstimatedCostPerHead: z.number().int().min(0),
   totalDurationMinutes: z.number().int().min(60),
-  slots: z.array(slotSchema).min(2).max(5),
+  slots: z.array(slotSchema).min(3).max(5),
 });
 
 export const itineraryResponseSchema = z.object({

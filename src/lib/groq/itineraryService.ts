@@ -27,35 +27,39 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
   
   const planConfigs = [
     {
-      name: 'Creative Spark & Coffee',
-      tagline: 'Dabble in clay before unwinding at a cozy local cafe.',
+      name: 'Bandra Creative Hub',
+      tagline: 'Explore pottery, escape rooms, and coffee roasters in Bandra West.',
       slots: [
-        { name: 'Clay Studio Pottery Workshop', category: 'POTTERY', price: 250, duration: 90, note: 'A hands-on clay pottery session to get your creative juices flowing together.' },
-        { name: 'Coffee Roasters Cafe', category: 'CAFE', price: 120, duration: 60, note: 'Relax after the workshop and discuss your clay pieces over custom pour-overs.' }
+        { name: 'Clay Studio Pottery Workshop, Bandra West', category: 'POTTERY', price: 250, duration: 90, note: 'A hands-on clay pottery session to get your creative juices flowing together.' },
+        { name: 'The Escape Hunt, Bandra West', category: 'ESCAPE_ROOM', price: 650, duration: 60, note: 'Work together to solve the mystery and escape the room.' },
+        { name: 'Subko Coffee Roasters, Bandra West', category: 'CAFE', price: 120, duration: 60, note: 'Relax and discuss your clay pieces over custom pour-overs.' }
       ]
     },
     {
-      name: 'Historic Walk & Dinner',
-      tagline: 'Take a scenic walk before dining at a premium restaurant.',
+      name: 'Thane Lakes & Ulhasnagar Food Tour',
+      tagline: 'Take a scenic walk in Thane followed by a premium dining experience.',
       slots: [
-        { name: 'Heritage Street Scenic Walk', category: 'FREE_EXPERIENCE', price: 0, duration: 120, note: 'A quiet, guided morning stroll discovering historical street murals and stories.' },
-        { name: 'Lakeside Bistro & Grill', category: 'RESTAURANT', price: 400, duration: 90, note: 'Enjoy a premium multi-cuisine dinner by the water.' }
+        { name: 'Upvan Lake Nature Walk, Thane', category: 'FREE_EXPERIENCE', price: 0, duration: 120, note: 'A quiet morning stroll discovering scenic lake views and fresh air.' },
+        { name: 'Century Club Premium Restaurant, Ulhasnagar', category: 'RESTAURANT', price: 400, duration: 90, note: 'Enjoy a premium multi-cuisine dinner with the group.' },
+        { name: 'Game Zone Bowling, Thane West', category: 'BOWLING', price: 250, duration: 60, note: 'Grab a lane for a friendly match.' }
       ]
     },
     {
-      name: 'Pop Culture & Gaming',
-      tagline: 'Dive into board games and arcade tournament with friends.',
+      name: 'Vashi Gaming & Panvel Garden',
+      tagline: 'Dive into board games and arcade tournament with friends in Vashi.',
       slots: [
-        { name: 'Comic Con & Board Game Center', category: 'BOARD_GAME_EVENT', price: 200, duration: 120, note: 'An engaging, competitive board games tournament with your group.' },
-        { name: 'Cyber Arcade & Burgers', category: 'ARCADE', price: 180, duration: 90, note: 'Play multiplayer retro arcade games followed by gourmet sliders.' }
+        { name: 'Vashi Comic Con & Board Game Center', category: 'BOARD_GAME_EVENT', price: 200, duration: 120, note: 'An engaging, competitive board games tournament with your group.' },
+        { name: 'Smaaash Arcade, Vashi', category: 'ARCADE', price: 180, duration: 90, note: 'Play multiplayer retro arcade games followed by gourmet sliders.' },
+        { name: 'Garden Desserts & Cafe, Panvel', category: 'DESSERT', price: 100, duration: 45, note: 'Savor gourmet desserts and wrap up the evening on a sweet note.' }
       ]
     },
     {
-      name: 'Live Music & Dessert',
-      tagline: 'Savor artisan desserts after an intimate live music performance.',
+      name: 'South Mumbai Heritage & Jazz',
+      tagline: 'Savor artisan desserts after a concert and sunset walk at Marine Drive.',
       slots: [
-        { name: 'Sunset Jazz & Blues Concert', category: 'LIVE_MUSIC', price: 600, duration: 150, note: 'Experience incredible acoustics and local bands at an intimate venue.' },
-        { name: 'Pâtisserie & Waffles', category: 'DESSERT', price: 150, duration: 45, note: 'Savor gourmet desserts and wrap up the evening on a sweet note.' }
+        { name: 'Sunset Jazz Concert at antiSOCIAL, CST', category: 'LIVE_MUSIC', price: 600, duration: 150, note: 'Experience incredible acoustics and local bands at an intimate venue near CST.' },
+        { name: 'Marine Drive Promenade Walk, CST', category: 'PARK', price: 0, duration: 60, note: 'Take a relaxing sunset walk along the famous queen\'s necklace.' },
+        { name: 'Kyani & Co. Irani Cafe, CST Area', category: 'DESSERT', price: 120, duration: 45, note: 'Wrap up the evening with fresh seasonal fruit ice cream and classic pudding.' }
       ]
     }
   ];
@@ -71,7 +75,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       let displayName = s.name;
       let cost = s.price;
 
-      if (idx === 0) {
+      if (s.category === 'POTTERY' || s.category === 'LIVE_MUSIC' || s.category === 'BOARD_GAME_EVENT' || s.category === 'FREE_EXPERIENCE') {
         const matchedExp = context.experiences.find(e => e.category === s.category);
         if (matchedExp) {
           experienceId = matchedExp.id;
@@ -93,16 +97,16 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
         venueId,
         name: displayName,
         category: s.category as any,
-        arrivalTime: idx === 0 ? '11:00 AM' : '01:30 PM',
+        arrivalTime: idx === 0 ? '11:00 AM' : idx === 1 ? '01:30 PM' : '03:30 PM',
         durationMinutes: s.duration,
-        travelToNextMinutes: idx === 0 ? 15 : null,
+        travelToNextMinutes: idx === 2 ? null : 15,
         estimatedCostPerHead: cost,
         note: s.note
       };
     });
 
     const totalCost = realSlots.reduce((sum, rs) => sum + rs.estimatedCostPerHead, 0);
-    const totalDuration = realSlots.reduce((sum, rs) => sum + rs.durationMinutes, 0) + 15;
+    const totalDuration = realSlots.reduce((sum, rs) => sum + rs.durationMinutes, 0) + 30; // 30 mins travel buffer
 
     itineraries.push({
       id: planId,

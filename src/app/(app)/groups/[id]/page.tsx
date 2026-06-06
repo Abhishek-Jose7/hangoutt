@@ -401,31 +401,19 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
       title={group.name}
       subtitle={`Lobby Status: ${group.status.replace('_', ' ')}`}
       actions={
-        <div className="flex gap-2 font-sans text-xs">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleShareCode} 
-            className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
-          >
-            <Share2 className="h-4 w-4 text-primary" />
-            Share Code
-          </Button>
-
-          {isVotingOrClosed && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setActivePlanIdx(0);
-                toast.success("Reset active carousel view to Option A.");
-              }}
+        (group.status !== 'COMPLETED' && group.status !== 'ARCHIVED') ? (
+          <div className="flex gap-2 font-sans text-xs">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleShareCode} 
               className="flex items-center gap-1.5 rounded-lg border-border hover:bg-primary/10 hover:text-primary font-semibold tracking-wide"
             >
-              <RefreshCw className="h-4 w-4" /> Reset View
+              <Share2 className="h-4 w-4 text-primary" />
+              Share Code
             </Button>
-          )}
-        </div>
+          </div>
+        ) : null
       }
     >
       <div className="space-y-6 font-sans text-sm">
@@ -452,6 +440,28 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               {group.status.replace('_', ' ').replace('COLLECTING ', '')}
             </Badge>
           </div>
+
+          {/* Conditional Invite Section (only if NOT completed/archived) */}
+          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
+            <div className="flex flex-wrap items-center gap-3 bg-black/40 border border-border/40 p-3 rounded-xl text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider text-[9px]">Invite Code:</span>
+                <code className="bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded text-primary font-mono select-all font-extrabold text-xs">{group.inviteCode}</code>
+              </div>
+              <span className="text-muted-foreground/60 hidden sm:inline">|</span>
+              <div className="flex items-center gap-1.5 truncate max-w-full">
+                <span className="text-muted-foreground font-bold uppercase tracking-wider text-[9px]">Invite Link:</span>
+                <a 
+                  href={typeof window !== 'undefined' ? `${window.location.origin}/join/${group.inviteCode}` : `/join/${group.inviteCode}`} 
+                  className="text-primary hover:underline font-bold truncate max-w-[180px] sm:max-w-xs"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {typeof window !== 'undefined' ? `${window.location.origin}/join/${group.inviteCode}` : `/join/${group.inviteCode}`}
+                </a>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/40 text-[11px] text-muted-foreground font-medium">
             <div className="space-y-0.5">
@@ -560,182 +570,347 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   )}
                 </Button>
               </div>
-            )}
           </Card>
         )}
 
-        {/* 3. Horizontal Swipe Carousel of Itineraries (After Generation) */}
+        {/* 3. Horizontal Swipe Carousel (Mobile) & Grid (Desktop) of Itineraries */}
         {isVotingOrClosed && plans.length > 0 && (
-          <Card className="border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-4 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-border/40">
-              <div>
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Outing Itinerary Options
-                </CardTitle>
-                <p className="text-[10px] text-muted-foreground font-light mt-0.5">
-                  Swipe through plans and cast your vote on your favorite option.
-                </p>
-              </div>
-              <Badge variant="outline" className={`rounded-full py-0.5 px-2.5 text-[9px] font-bold uppercase tracking-wider ${
-                group.votingStatus === 'OPEN' 
-                  ? 'bg-primary/10 text-primary border-primary/20 animate-pulse' 
-                  : 'bg-neutral-800 text-muted-foreground border-border'
-              }`}>
-                Voting: {group.votingStatus.toLowerCase()}
-              </Badge>
-            </div>
-
-            {/* Scroll Carousel */}
-            <div 
-              ref={carouselRef}
-              className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none px-0.5"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              onScroll={(e) => {
-                const container = e.currentTarget;
-                const scrollLeft = container.scrollLeft;
-                const width = container.offsetWidth;
-                const newIdx = Math.round(scrollLeft / width);
-                if (newIdx !== activePlanIdx && newIdx >= 0 && newIdx < plans.length) {
-                  setActivePlanIdx(newIdx);
-                }
-              }}
-            >
-              {plans.map((plan, idx) => {
-                const voteCount = votes[plan.id] || 0;
-                const hasUserVoted = userVotedPlanId === plan.id;
-                const isPlanWinner = group.winningPlanId === plan.id;
-                
-                const tierMap: Record<string, string> = {
-                  BUDGET_FRIENDLY: 'Most Convenient',
-                  BALANCED: 'Balanced Vibe',
-                  PREMIUM: 'Premium Pick',
-                };
-                const tag = tierMap[plan.budgetTier] || 'Alternative Option';
-
+          <div className="space-y-6">
+            {/* Case A: Outing Completed / Winner Declared */}
+            {(group.status === 'COMPLETED' || group.status === 'ARCHIVED') ? (
+              (() => {
+                const winner = plans.find((p: any) => p.id === group.winningPlanId) || plans[0];
                 return (
-                  <div 
-                    key={plan.id}
-                    className="w-full shrink-0 snap-center snap-always space-y-4"
-                  >
-                    <Card className="bg-black/40 border border-neutral-900/60 rounded-2xl p-5 shadow-inner">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest">{tag}</span>
-                          <h3 className="text-base font-extrabold text-foreground mt-0.5 uppercase tracking-wide">{plan.name}</h3>
-                          <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-1">{plan.tagline}</p>
+                  <Card className="relative overflow-hidden border border-emerald-500/30 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-2xl p-6 space-y-6">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                    
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-border/40 pb-4">
+                      <div>
+                        <span className="text-[10px] uppercase font-extrabold text-emerald-500 tracking-widest flex items-center gap-1">
+                          <Award className="h-3.5 w-3.5" /> Final Outing Plan
+                        </span>
+                        <h2 className="text-xl font-extrabold text-foreground mt-1 uppercase tracking-wide">{winner.name}</h2>
+                        <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed">{winner.tagline}</p>
+                      </div>
+                      
+                      <Badge className="bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/15 hover:text-emerald-500 rounded-full flex items-center gap-1.5 text-xs font-bold py-1.5 px-4 uppercase tracking-wide">
+                        <Check className="h-4 w-4" /> Outing Confirmed
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Left: Final Itinerary slots flow */}
+                      <div className="lg:col-span-2 space-y-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          📍 Primary Location: {winner.meetupZone}
+                        </h3>
+                        
+                        <div className="flex flex-col items-stretch justify-start py-2 space-y-3">
+                          {winner.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                            <React.Fragment key={sIdx}>
+                              <div className="flex items-start gap-4 p-4 bg-black/40 border border-neutral-900 rounded-xl">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-bold border border-emerald-500/20 shrink-0">
+                                  {slot.slotOrder}
+                                </span>
+                                <div className="space-y-1">
+                                  <h4 className="text-sm font-bold text-foreground leading-snug">{slot.name}</h4>
+                                  <p className="text-xs text-muted-foreground uppercase font-sans tracking-wide">
+                                    {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                  </p>
+                                  {slot.note && (
+                                    <p className="text-xs text-muted-foreground/80 font-light leading-relaxed italic mt-1.5">
+                                      "{slot.note}"
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              {sIdx < (winner.slots.length - 1) && (
+                                <div className="flex justify-center my-0.5">
+                                  <span className="text-emerald-500/70 font-black text-sm">↓</span>
+                                </div>
+                              )}
+                            </React.Fragment>
+                          ))}
                         </div>
-                        {isPlanWinner ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
-                            <Award className="h-3 w-3" />
-                            Winner
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 hover:text-primary rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
-                            <Vote className="h-3 w-3" />
-                            {voteCount} votes
-                          </Badge>
-                        )}
                       </div>
 
-                      {/* Compact Itinerary Flow using Actual places */}
-                      <div className="flex flex-col items-center justify-center py-4 my-3 bg-neutral-950/75 rounded-2xl border border-neutral-900/85 space-y-2 text-center">
-                        {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
-                          <React.Fragment key={sIdx}>
-                            <div className="px-3">
-                              <p className="text-xs font-bold text-foreground tracking-wide leading-snug">{slot.name}</p>
-                              <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
-                                {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
-                              </p>
-                            </div>
-                            {sIdx < (plan.slots.length - 1) && (
-                              <span className="text-primary/70 font-black text-xs">↓</span>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
-
-                      {/* Travel and cost footer statistics */}
-                      <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-border/40 text-center text-[10px] font-semibold text-muted-foreground uppercase">
-                        <div className="space-y-0.5">
-                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Per Head</p>
-                          <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
-                          <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} mins</p>
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-[9px] text-muted-foreground/60 tracking-wider">Plan Score</p>
-                          <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}/10</p>
+                      {/* Right: Summary details */}
+                      <div className="space-y-4 bg-black/30 border border-neutral-900/60 rounded-xl p-5 h-fit">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-primary">Plan Metadata</h3>
+                        
+                        <div className="divide-y divide-neutral-900 text-xs font-medium space-y-3">
+                          <div className="flex justify-between py-2">
+                            <span className="text-muted-foreground">Estimated Cost</span>
+                            <span className="font-extrabold text-foreground">₹{winner.totalEstimatedCostPerHead} / person</span>
+                          </div>
+                          <div className="flex justify-between py-2">
+                            <span className="text-muted-foreground">Commute Time</span>
+                            <span className="font-extrabold text-foreground">~{winner.avgCabTime} mins (average)</span>
+                          </div>
+                          <div className="flex justify-between py-2">
+                            <span className="text-muted-foreground">Itinerary Score</span>
+                            <span className="font-extrabold text-primary">⭐ {(winner.score * 10).toFixed(1)}/10</span>
+                          </div>
+                          <div className="flex justify-between py-2">
+                            <span className="text-muted-foreground">Meetup Station</span>
+                            <span className="font-extrabold text-foreground uppercase">{winner.meetupZone}</span>
+                          </div>
                         </div>
                       </div>
-                    </Card>
-
-                    {/* Voting Action */}
-                    {group.votingStatus === 'OPEN' && (
-                      <Button
-                        size="sm"
-                        disabled={isCasting || userVotedPlanId === plan.id}
-                        onClick={() => handleVoteCast(plan.id)}
-                        className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
-                          userVotedPlanId === plan.id
-                            ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
-                            : 'bg-primary hover:bg-primary/95 text-primary-foreground'
-                        }`}
-                      >
-                        {userVotedPlanId === plan.id ? (
-                          <>
-                            <Check className="mr-2 h-4 w-4" /> Voted & Accepted
-                          </>
-                        ) : (
-                          <>
-                            <Vote className="mr-2 h-4 w-4" /> Vote for Option {plan.planIndex}
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
+                    </div>
+                  </Card>
                 );
-              })}
-            </div>
+              })()
+            ) : (
+              /* Case B: Voting Phase */
+              <div className="space-y-6">
+                {/* 1. Mobile Carousel View (block md:hidden) */}
+                <Card className="block md:hidden border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-4 space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b border-border/40">
+                    <div>
+                      <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Outing Itinerary Options
+                      </CardTitle>
+                      <p className="text-[10px] text-muted-foreground font-light mt-0.5">
+                        Swipe through plans and cast your vote on your favorite option.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className={`rounded-full py-0.5 px-2.5 text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+                      group.votingStatus === 'OPEN' 
+                        ? 'bg-primary/10 text-primary border-primary/20 animate-pulse' 
+                        : 'bg-neutral-800 text-muted-foreground border-border'
+                    }`}>
+                      Voting: {group.votingStatus.toLowerCase()}
+                    </Badge>
+                  </div>
 
-            {/* Carousel Navigation Controls */}
-            <div className="flex justify-between items-center mt-3 px-1">
-              <Button 
-                variant="outline" 
-                size="xs" 
-                disabled={activePlanIdx === 0} 
-                onClick={() => scrollToPlan(activePlanIdx - 1)}
-                className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
-              >
-                Prev
-              </Button>
-              
-              {/* Dots indicator */}
-              <div className="flex gap-2">
-                {plans.map((_, idx) => (
-                  <span 
-                    key={idx} 
-                    onClick={() => scrollToPlan(idx)}
-                    className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
-                      idx === activePlanIdx ? 'bg-primary scale-125' : 'bg-neutral-800 hover:bg-neutral-700'
-                    }`}
-                  />
-                ))}
+                  {/* Scroll Carousel */}
+                  <div 
+                    ref={carouselRef}
+                    className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none px-0.5"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    onScroll={(e) => {
+                      const container = e.currentTarget;
+                      const scrollLeft = container.scrollLeft;
+                      const width = container.offsetWidth;
+                      const newIdx = Math.round(scrollLeft / width);
+                      if (newIdx !== activePlanIdx && newIdx >= 0 && newIdx < plans.length) {
+                        setActivePlanIdx(newIdx);
+                      }
+                    }}
+                  >
+                    {plans.map((plan, idx) => {
+                      const voteCount = votes[plan.id] || 0;
+                      const hasUserVoted = userVotedPlanId === plan.id;
+
+                      return (
+                        <div 
+                          key={plan.id}
+                          className="w-full shrink-0 snap-center snap-always space-y-4"
+                        >
+                          <Card className="bg-black/40 border border-neutral-900/60 rounded-2xl p-5 shadow-inner">
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest flex items-center gap-1">
+                                  📍 Primary Location: {plan.meetupZone}
+                                </span>
+                                <h3 className="text-base font-extrabold text-foreground mt-1.5 uppercase tracking-wide">{plan.name}</h3>
+                                <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-1">{plan.tagline}</p>
+                              </div>
+                              <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 hover:text-primary rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                                <Vote className="h-3 w-3" />
+                                {voteCount} votes
+                              </Badge>
+                            </div>
+
+                            {/* Compact Itinerary Flow using Actual places */}
+                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-neutral-950/75 rounded-2xl border border-neutral-900/85 space-y-2 text-center">
+                              {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                                <React.Fragment key={sIdx}>
+                                  <div className="px-3">
+                                    <p className="text-xs font-bold text-foreground tracking-wide leading-snug">{slot.name}</p>
+                                    <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
+                                      {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                    </p>
+                                  </div>
+                                  {sIdx < (plan.slots.length - 1) && (
+                                    <span className="text-primary/70 font-black text-xs">↓</span>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+
+                            {/* Travel and cost footer statistics */}
+                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-border/40 text-center text-[10px] font-semibold text-muted-foreground uppercase">
+                              <div className="space-y-0.5">
+                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Per Head</p>
+                                <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
+                                <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} mins</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-[9px] text-muted-foreground/60 tracking-wider">Plan Score</p>
+                                <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}/10</p>
+                              </div>
+                            </div>
+                          </Card>
+
+                          {/* Voting Action */}
+                          {group.votingStatus === 'OPEN' && (
+                            <Button
+                              size="sm"
+                              disabled={isCasting || userVotedPlanId === plan.id}
+                              onClick={() => handleVoteCast(plan.id)}
+                              className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
+                                userVotedPlanId === plan.id
+                                  ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
+                                  : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                              }`}
+                            >
+                              {userVotedPlanId === plan.id ? (
+                                <>
+                                  <Check className="mr-2 h-4 w-4" /> Voted & Accepted
+                                </>
+                              ) : (
+                                <>
+                                  <Vote className="mr-2 h-4 w-4" /> Vote for Option {plan.planIndex}
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Carousel Navigation Controls */}
+                  <div className="flex justify-between items-center mt-3 px-1">
+                    <Button 
+                      variant="outline" 
+                      size="xs" 
+                      disabled={activePlanIdx === 0} 
+                      onClick={() => scrollToPlan(activePlanIdx - 1)}
+                      className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+                    >
+                      Prev
+                    </Button>
+                    
+                    {/* Dots indicator */}
+                    <div className="flex gap-2">
+                      {plans.map((_, idx) => (
+                        <span 
+                          key={idx} 
+                          onClick={() => scrollToPlan(idx)}
+                          className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
+                            idx === activePlanIdx ? 'bg-primary scale-125' : 'bg-neutral-800 hover:bg-neutral-700'
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    <Button 
+                      variant="outline" 
+                      size="xs" 
+                      disabled={activePlanIdx === plans.length - 1} 
+                      onClick={() => scrollToPlan(activePlanIdx + 1)}
+                      className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </Card>
+
+                {/* 2. Desktop Grid View (hidden md:grid) */}
+                <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {plans.map((plan) => {
+                    const voteCount = votes[plan.id] || 0;
+                    const hasUserVoted = userVotedPlanId === plan.id;
+
+                    return (
+                      <Card key={plan.id} className="border border-border/60 rounded-2xl bg-neutral-950/45 backdrop-blur-md shadow-lg p-5 flex flex-col justify-between space-y-4">
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-start gap-2 border-b border-border/40 pb-3">
+                            <div>
+                              <span className="text-[9px] uppercase font-extrabold text-primary tracking-widest flex items-center gap-1">
+                                📍 Primary Location: {plan.meetupZone}
+                              </span>
+                              <h3 className="text-sm font-extrabold text-foreground mt-1 uppercase tracking-wide line-clamp-1">{plan.name}</h3>
+                              <p className="text-xs text-muted-foreground mt-0.5 font-light leading-relaxed line-clamp-2 min-h-[2rem]">{plan.tagline}</p>
+                            </div>
+                            <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 rounded-full flex items-center gap-1 text-[9px] font-bold py-0.5 px-2.5 uppercase tracking-wide shrink-0">
+                              <Vote className="h-3 w-3" />
+                              {voteCount} votes
+                            </Badge>
+                          </div>
+
+                          {/* Timeline Listing */}
+                          <div className="flex flex-col items-center justify-center py-3 bg-neutral-950/75 rounded-xl border border-neutral-900/85 space-y-1.5 text-center min-h-[14rem]">
+                            {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                              <React.Fragment key={sIdx}>
+                                <div className="px-2">
+                                  <p className="text-xs font-bold text-foreground tracking-wide leading-snug line-clamp-2">{slot.name}</p>
+                                  <p className="text-[9px] text-muted-foreground uppercase font-sans tracking-wide mt-0.5">
+                                    {slot.category.toLowerCase()} • {slot.arrivalTime} ({slot.durationMinutes}m)
+                                  </p>
+                                </div>
+                                {sIdx < (plan.slots.length - 1) && (
+                                  <span className="text-primary/70 font-black text-[10px]">↓</span>
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </div>
+
+                          {/* Stats Grid */}
+                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-border/30 text-center text-[9px] font-semibold text-muted-foreground uppercase">
+                            <div className="space-y-0.5">
+                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Per Head</p>
+                              <p className="text-xs font-extrabold text-foreground">₹{plan.totalEstimatedCostPerHead}</p>
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Avg Travel</p>
+                              <p className="text-xs font-extrabold text-foreground">{plan.avgCabTime} m</p>
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className="text-[8px] text-muted-foreground/60 tracking-wider">Score</p>
+                              <p className="text-xs font-extrabold text-primary">⭐ {(plan.score * 10).toFixed(1)}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Voting Action */}
+                        {group.votingStatus === 'OPEN' && (
+                          <Button
+                            size="sm"
+                            disabled={isCasting || userVotedPlanId === plan.id}
+                            onClick={() => handleVoteCast(plan.id)}
+                            className={`w-full font-bold rounded-xl uppercase tracking-wider text-xs py-3 shadow-md transition-all duration-200 cursor-pointer ${
+                              userVotedPlanId === plan.id
+                                ? 'bg-emerald-600 hover:bg-emerald-600/90 text-white'
+                                : 'bg-primary hover:bg-primary/95 text-primary-foreground'
+                            }`}
+                          >
+                            {userVotedPlanId === plan.id ? (
+                              <>
+                                <Check className="mr-1.5 h-3.5 w-3.5" /> Voted
+                              </>
+                            ) : (
+                              <>
+                                <Vote className="mr-1.5 h-3.5 w-3.5" /> Vote Option {plan.planIndex}
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
+            )}
 
-              <Button 
-                variant="outline" 
-                size="xs" 
-                disabled={activePlanIdx === plans.length - 1} 
-                onClick={() => scrollToPlan(activePlanIdx + 1)}
-                className="rounded-lg border-border text-[10px] h-7 px-3.5 font-bold cursor-pointer"
-              >
-                Next
-              </Button>
-            </div>
-
+            {/* Admin Close Button (rendered at bottom during open voting phase) */}
             {isAdmin && group.votingStatus === 'OPEN' && (
               <div className="pt-2">
                 <Button
@@ -747,8 +922,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   Close Voting & Declare Winner
                 </Button>
               </div>
-            )}
-          </Card>
+          </div>
         )}
 
         {/* 4. Details Submission & Member overview (Locked post-generation to avoid clutter) */}

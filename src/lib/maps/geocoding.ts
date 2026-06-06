@@ -55,8 +55,14 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
     return { lat: 12.9250, lng: 77.5897, formattedAddress: 'Jayanagar, Bengaluru, Karnataka, India' };
   } else if (lower.includes('hsr')) {
     return { lat: 12.9105, lng: 77.6450, formattedAddress: 'HSR Layout, Bengaluru, Karnataka, India' };
-  } else if (lower.includes('whitefield')) {
-    return { lat: 12.9698, lng: 77.7499, formattedAddress: 'Whitefield, Bengaluru, Karnataka, India' };
+  } else if (lower.includes('ulhasnagar')) {
+    return { lat: 19.2215, lng: 73.1644, formattedAddress: 'Ulhasnagar, Thane District, Maharashtra, India' };
+  } else if (lower.includes('panvel')) {
+    return { lat: 18.9894, lng: 73.1175, formattedAddress: 'Panvel, Navi Mumbai, Maharashtra, India' };
+  } else if (lower.includes('cst') || lower.includes('chhatrapati shivaji') || lower.includes('terminus')) {
+    return { lat: 18.9400, lng: 72.8354, formattedAddress: 'Chhatrapati Shivaji Terminus (CST), Mumbai, Maharashtra, India' };
+  } else if (lower.includes('thane')) {
+    return { lat: 19.2183, lng: 72.9781, formattedAddress: 'Thane, Maharashtra, India' };
   }
 
   // General default: Koramangala coordinate
@@ -84,6 +90,10 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
 
   // Fallback: match closest coordinate to candidate zone
   const centers = [
+    { name: 'Thane, Mumbai', lat: 19.2183, lng: 72.9781 },
+    { name: 'Ulhasnagar, Mumbai', lat: 19.2215, lng: 73.1644 },
+    { name: 'Panvel, Navi Mumbai', lat: 18.9894, lng: 73.1175 },
+    { name: 'CST, Mumbai', lat: 18.9400, lng: 72.8354 },
     { name: 'Dadar, Mumbai', lat: 19.0178, lng: 72.8478 },
     { name: 'Kurla, Mumbai', lat: 19.0607, lng: 72.8826 },
     { name: 'Vashi, Navi Mumbai', lat: 19.0745, lng: 72.9978 },
