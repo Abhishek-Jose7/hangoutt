@@ -165,6 +165,31 @@
   text-shadow: 0 0 10px rgba(255, 182, 144, 0.3);
 }
 
+/* HUD Grid & Scanning Line Styles */
+.hud-grid {
+  background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.scanning-line {
+  height: 2px;
+  background: linear-gradient(to right, transparent, #ff7a00, transparent);
+  animation: scan 4s linear infinite;
+  position: absolute;
+  width: 100%;
+  z-index: 10;
+}
+
+@keyframes scan {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+.active-glow {
+  box-shadow: 0 0 15px rgba(255, 122, 0, 0.4);
+}
+
 /* Custom scrollbar matching the moody UI */
 ::-webkit-scrollbar {
   width: 6px;

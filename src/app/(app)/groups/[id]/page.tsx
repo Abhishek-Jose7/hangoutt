@@ -313,6 +313,48 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const [isSubmittingDetails, setIsSubmittingDetails] = useState(false);
+
+  const handleUnifiedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingDetails(true);
+    
+    try {
+      const budgetAmount = parseInt(budgetVal) || 2000;
+      const budgetRes = await submitBudget({
+        groupId: groupId,
+        maxBudget: budgetAmount,
+      });
+
+      const lat = parseFloat(latVal) || undefined;
+      const lng = parseFloat(lngVal) || undefined;
+      const locationRes = await saveLocation({
+        groupId: groupId,
+        locationName: addressVal || "My Location",
+        lat,
+        lng,
+      });
+
+      const vibesRes = await submitMemberVibes(groupId, selectedVibes);
+
+      if (budgetRes.success && locationRes.success && vibesRes.success) {
+        toast.success("Lobby details synced successfully!");
+      } else {
+        const errorMsg = (!budgetRes.success ? (budgetRes as any).error?.message : '') || 
+                         (!locationRes.success ? (locationRes as any).error?.message : '') || 
+                         (!vibesRes.success ? (vibesRes as any).error?.message : '') || 
+                         "Details failed to save";
+        toast.error(errorMsg);
+      }
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      toast.error("An error occurred during details submission.");
+    } finally {
+      setIsSubmittingDetails(false);
+    }
+  };
+
   const handlePlanGeneration = async () => {
     setIsGenerating(true);
     try {
@@ -397,188 +439,56 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const hasSubmittedSelf = currentUser.budget !== null && currentUser.location !== null;
 
   return (
-    <PageContainer
-      title={group.name.toUpperCase()}
-      subtitle={`WORKSPACE ID: ${group.id.substring(0, 8).toUpperCase()} // STATUS: ${group.status.replace('_', ' ')}`}
-      actions={
-        (group.status !== 'COMPLETED' && group.status !== 'ARCHIVED') ? (
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleShareCode} 
-              className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-            >
-              <Share2 className="h-3.5 w-3.5 text-[#EB690B]" />
-              Share Code
-            </Button>
-          </div>
-        ) : null
-      }
-    >
-      <div className="space-y-6 font-mono text-xs">
+    <main className="hud-grid relative min-h-screen pt-10 pb-24 md:pb-10 bg-[#131313] text-[#e5e2e1] overflow-x-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6 relative z-10">
         
-        {/* 1. Top Section Summary Card */}
-        <Card className="relative overflow-hidden border border-stone-900/60 bg-stone-950/45 p-6 rounded-[12px] shadow-lg backdrop-blur-md space-y-4">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#EB690B]/5 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex justify-between items-start gap-4">
-            <div className="space-y-1">
-              <h1 className="text-lg font-bold text-white uppercase tracking-wider flex flex-wrap items-center gap-2 font-mono">
-                <span>Lobby Protocol // {group.name}</span>
-              </h1>
-              <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed line-clamp-1">{group.description || 'Experience-focused custom outings planning system.'}</p>
+        {/* Protocol Header */}
+        <div className="border-l-4 border-[#ff7a00] pl-6 py-3 bg-[#0e0e0e]/40 rounded-r-[4px] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 text-[#ff7a00] mb-1.5">
+              <Shield className="h-4.5 w-4.5" />
+              <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
+                STATUS: {group.status.replace('_', ' ')}
+              </span>
             </div>
-            
-            <Badge variant="outline" className={`shrink-0 font-mono rounded-[4px] py-1 px-2.5 text-[9px] font-bold uppercase tracking-widest ${
-              group.status === 'VOTING' 
-                ? 'bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 animate-pulse'
-                : group.status === 'COMPLETED'
-                  ? 'bg-[#00E5A0]/10 text-[#00E5A0] border-[#00E5A0]/20'
-                  : 'bg-stone-900/40 text-neutral-400 border-stone-850'
-            }`}>
-              {group.status.replace('_', ' ').replace('COLLECTING ', '')}
-            </Badge>
-          </div>
-
-          {/* Conditional Invite Section (only if NOT completed/archived) */}
-          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
-            <div className="flex flex-wrap items-center gap-3 bg-stone-950/80 border border-stone-900/80 p-3 rounded-[8px] text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <span className="text-neutral-500 font-bold uppercase tracking-widest text-[9px] font-mono">Invite Code:</span>
-                <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#EB690B] font-mono select-all font-bold text-xs">{group.inviteCode}</code>
-              </div>
-              <span className="text-stone-850 hidden sm:inline">|</span>
-              <div className="flex items-center gap-1.5 truncate max-w-full">
-                <span className="text-neutral-500 font-bold uppercase tracking-widest text-[9px] font-mono">Invite Link:</span>
-                <a 
-                  href={typeof window !== 'undefined' ? `${window.location.origin}/join/${group.inviteCode}` : `/join/${group.inviteCode}`} 
-                  className="text-[#EB690B] hover:text-[#D4590A] transition-colors font-mono font-bold truncate max-w-[180px] sm:max-w-xs hover:underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {typeof window !== 'undefined' ? `${window.location.origin}/join/${group.inviteCode}` : `/join/${group.inviteCode}`}
-                </a>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-stone-900/60 text-[11px] text-neutral-400 font-medium">
-            <div className="space-y-0.5">
-              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Members</p>
-              <p className="text-xs font-bold text-white flex items-center gap-1 font-mono">
-                <Users className="h-3 w-3 text-[#EB690B]" /> {members.length}
-              </p>
-            </div>
-            
-            <div className="space-y-0.5">
-              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Budget Range</p>
-              <p className="text-xs font-bold text-white font-mono">
-                ₹{budgetSummary?.min || 300} - ₹{budgetSummary?.max || 700}
-              </p>
-            </div>
-
-            <div className="space-y-0.5">
-              <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono">Vibe</p>
-              <p className="text-xs font-bold text-[#EB690B] uppercase font-mono truncate">
-                {group.vibes ? JSON.parse(group.vibes).slice(0, 2).map((v: string) => v.toUpperCase()).join(' • ') : 'CREATIVE • FOODIE'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="pt-2 border-t border-stone-900/60 text-[11px] text-neutral-400">
-            <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-bold font-mono mb-0.5">Location Spread</p>
-            <p className="text-xs font-bold text-white truncate font-mono">
-              {locations.length > 0 
-                ? locations.map((l: any) => l.locationName?.split(',')[0].trim().toUpperCase()).filter(Boolean).join(' • ')
-                : 'WAITING FOR MEMBERS...'}
+            <h1 className="font-sans text-3xl font-normal text-white uppercase leading-none tracking-wide">
+              LOBBY: {group.name}
+            </h1>
+            <p className="font-mono text-[10px] text-neutral-400 mt-2 flex flex-wrap items-center gap-2">
+              <span>UUID: {group.id.substring(0, 8).toUpperCase()}</span>
+              <span className="text-neutral-600">|</span>
+              <span>INVITE CODE:</span>
+              <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#ff7a00] font-mono select-all font-bold text-[11px]">{group.inviteCode}</code>
             </p>
           </div>
-        </Card>
+          
+          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleShareCode} 
+                className="border-[#353534] bg-[#1c1b1b]/55 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+              >
+                <Share2 className="h-3.5 w-3.5 text-[#ff7a00]" />
+                Share Code
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Status Notification Banner (Cooking status) */}
         {isGeneratingState && (
-          <div className="flex items-center gap-3 bg-[#EB690B]/10 border border-[#EB690B]/20 p-4 rounded-[8px] text-[#EB690B] text-[10px] font-bold uppercase tracking-wider animate-pulse">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex items-center gap-3 bg-[#ff7a00]/10 border border-[#ff7a00]/20 p-4 rounded-[4px] text-[#ff7a00] text-[10px] font-bold uppercase tracking-wider animate-pulse">
+            <Loader2 className="h-4 w-4 animate-spin text-[#ff7a00]" />
             <span>AI Itineraries are currently being cooked. Check back shortly...</span>
-            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1 text-[9px] hover:bg-[#EB690B]/20 text-[#EB690B] hover:text-[#EB690B]">
+            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1 text-[9px] hover:bg-[#ff7a00]/20 text-[#ff7a00] hover:text-[#ff7a00]">
               <RefreshCw className="h-3 w-3 animate-spin" /> Reload
             </Button>
           </div>
         )}
 
-        {/* 2. Member Progress Section (Before Generation) */}
-        {!isVotingOrClosed && !isGeneratingState && (
-          <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg p-5 rounded-[12px] space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-stone-900/60">
-              <div className="space-y-0.5">
-                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5" />
-                  Members Sync Status
-                </CardTitle>
-                <p className="text-[9px] text-neutral-400 font-sans tracking-wide leading-relaxed">
-                  Lobby registers complete as soon as starting coordinates and budgets are saved.
-                </p>
-              </div>
-              <Badge variant="outline" className="bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 text-[9px] font-mono font-bold py-0.5 px-2.5 rounded-[4px] shrink-0">
-                {members.filter((m: any) => {
-                  const hasBudget = submittedBudgetUserIds.includes(m.userId);
-                  const hasLocation = locations.some((l: any) => l.userId === m.userId);
-                  return hasBudget && hasLocation;
-                }).length} / {members.length} SYNCED
-              </Badge>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2 pt-1 font-medium">
-              {members.map((member: any) => {
-                const hasBudget = submittedBudgetUserIds.includes(member.userId);
-                const hasLocation = locations.some((l: any) => l.userId === member.userId);
-                const isReady = hasBudget && hasLocation;
-
-                return (
-                  <div key={member.userId} className="flex items-center justify-between p-3 bg-stone-950/80 border border-stone-900 rounded-[8px] text-[11px] hover:border-stone-850 transition-all duration-200 font-mono">
-                    <span className="text-white font-bold truncate pr-1">{member.name.toUpperCase()}</span>
-                    <span className="text-[10px] shrink-0 leading-none flex items-center gap-1.5 font-bold">
-                      {isReady ? (
-                        <><span className="h-1.5 w-1.5 rounded-full bg-[#00E5A0] shadow-[0_0_8px_#00E5A0]" /> READY</>
-                      ) : (
-                        <><span className="h-1.5 w-1.5 rounded-full bg-[#EB690B] shadow-[0_0_8px_#EB690B] animate-pulse" /> PENDING</>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {isAdmin && (
-              <div className="pt-2">
-                <Button
-                  onClick={handlePlanGeneration}
-                  disabled={isGenerating || members.filter((m: any) => {
-                    const hasBudget = submittedBudgetUserIds.includes(m.userId);
-                    const hasLocation = locations.some((l: any) => l.userId === m.userId);
-                    return hasBudget && hasLocation;
-                  }).length !== members.length}
-                  className="w-full bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      COOKING ITINERARIES...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4 text-[#0A0A0C] fill-white" />
-                      GENERATE ITINERARIES
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* 3. Horizontal Swipe Carousel (Mobile) & Grid (Desktop) of Itineraries */}
+        {/* Horizontal Swipe Carousel (Mobile) & Grid (Desktop) of Itineraries */}
         {isVotingOrClosed && plans.length > 0 && (
           <div className="space-y-6">
             {/* Case A: Outing Completed / Winner Declared */}
@@ -586,19 +496,19 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               (() => {
                 const winner = plans.find((p: any) => p.id === group.winningPlanId) || plans[0];
                 return (
-                  <Card className="relative overflow-hidden border border-[#00E5A0]/20 rounded-[12px] bg-stone-950/45 backdrop-blur-md shadow-lg p-6 space-y-6">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E5A0]/5 rounded-full blur-3xl pointer-events-none" />
+                  <Card className="relative overflow-hidden border border-[#00E1AB]/20 rounded-[8px] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-6 space-y-6">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E1AB]/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-stone-900/60 pb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[#353534] pb-4">
                       <div>
-                        <span className="text-[9px] uppercase font-bold text-[#00E5A0] tracking-widest flex items-center gap-1 font-mono">
-                          <Award className="h-3.5 w-3.5 text-[#00E5A0]" /> Final Outing Protocol
+                        <span className="text-[9px] uppercase font-bold text-[#00E1AB] tracking-widest flex items-center gap-1 font-mono">
+                          <Award className="h-3.5 w-3.5 text-[#00E1AB]" /> Final Outing Protocol
                         </span>
                         <h2 className="text-lg font-bold text-white mt-1 uppercase tracking-wide font-mono">{winner.name}</h2>
                         <p className="text-xs text-neutral-400 mt-0.5 font-sans leading-relaxed tracking-wide">{winner.tagline}</p>
                       </div>
                       
-                      <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest">
+                      <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest">
                         <Check className="h-3.5 w-3.5" /> Outing Locked
                       </Badge>
                     </div>
@@ -606,15 +516,15 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       {/* Left: Final Itinerary slots flow */}
                       <div className="lg:col-span-2 space-y-4">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5 font-mono">
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#ff7a00] flex items-center gap-1.5 font-mono">
                           📍 Primary Node: {winner.meetupZone.toUpperCase()}
                         </h3>
                         
                         <div className="flex flex-col items-stretch justify-start py-2 space-y-3">
                           {winner.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                             <React.Fragment key={sIdx}>
-                              <div className="flex items-start gap-4 p-4 bg-stone-950/80 border border-stone-900 rounded-[8px]">
-                                <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#00E5A0]/10 text-[#00E5A0] text-xs font-mono font-bold border border-[#00E5A0]/20 shrink-0">
+                              <div className="flex items-start gap-4 p-4 bg-[#1c1b1b] border border-[#353534] rounded-[4px]">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#00E1AB]/10 text-[#00E1AB] text-xs font-mono font-bold border border-[#00E1AB]/20 shrink-0">
                                   {slot.slotOrder}
                                 </span>
                                 <div className="space-y-1">
@@ -631,7 +541,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               </div>
                               {sIdx < (winner.slots.length - 1) && (
                                 <div className="flex justify-center my-0.5">
-                                  <span className="text-[#00E5A0]/60 font-black text-sm">↓</span>
+                                  <span className="text-[#00E1AB]/60 font-black text-sm">↓</span>
                                 </div>
                               )}
                             </React.Fragment>
@@ -640,10 +550,10 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       </div>
 
                       {/* Right: Summary details */}
-                      <div className="space-y-4 bg-stone-950/80 border border-stone-900 rounded-[8px] p-5 h-fit text-[11px]">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#EB690B] font-mono">Itinerary Analysis</h3>
+                      <div className="space-y-4 bg-[#1c1b1b] border border-[#353534] rounded-[4px] p-5 h-fit text-[11px]">
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#ff7a00] font-mono">Itinerary Analysis</h3>
                         
-                        <div className="divide-y divide-stone-900/60 text-[11px] font-mono space-y-3">
+                        <div className="divide-y divide-[#353534] text-[11px] font-mono space-y-3">
                           <div className="flex justify-between py-2">
                             <span className="text-neutral-400">ESTIMATED COST</span>
                             <span className="font-extrabold text-white">₹{winner.totalEstimatedCostPerHead} / PERSON</span>
@@ -654,9 +564,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           </div>
                           <div className="flex justify-between py-2">
                             <span className="text-neutral-400">ITINERARY SCORE</span>
-                            <span className="font-extrabold text-[#EB690B]">{(winner.score * 10).toFixed(1)}/10</span>
+                            <span className="font-extrabold text-[#ff7a00]">{(winner.score * 10).toFixed(1)}/10</span>
                           </div>
-                          <div className="flex justify-between py-2">
+                          <div className="flex justify-between py-2 border-b border-[#353534]">
                             <span className="text-neutral-400">MEETUP ZONE</span>
                             <span className="font-extrabold text-white uppercase">{winner.meetupZone}</span>
                           </div>
@@ -670,10 +580,10 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               /* Case B: Voting Phase */
               <div className="space-y-6">
                 {/* 1. Mobile Carousel View (block md:hidden) */}
-                <Card className="block md:hidden border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg p-4 space-y-4 rounded-[12px]">
-                  <div className="flex justify-between items-center pb-2 border-b border-stone-900/60">
+                <Card className="block md:hidden border border-[#353534] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-4 space-y-4 rounded-[8px]">
+                  <div className="flex justify-between items-center pb-2 border-b border-[#353534]">
                     <div className="space-y-0.5">
-                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5">
+                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#ff7a00] flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
                         Outing Options
                       </CardTitle>
@@ -683,7 +593,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     </div>
                     <Badge variant="outline" className={`rounded-[4px] py-0.5 px-2.5 text-[9px] font-mono font-bold uppercase tracking-widest shrink-0 ${
                       group.votingStatus === 'OPEN' 
-                        ? 'bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 animate-pulse' 
+                        ? 'bg-[#ff7a00]/10 text-[#ff7a00] border-[#ff7a00]/20 animate-pulse' 
                         : 'bg-stone-900/40 text-neutral-400 border-stone-850'
                     }`}>
                       Voting: {group.votingStatus.toLowerCase()}
@@ -707,30 +617,29 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   >
                     {plans.map((plan, idx) => {
                       const voteCount = votes[plan.id] || 0;
-                      const hasUserVoted = userVotedPlanId === plan.id;
 
                       return (
                         <div 
                           key={plan.id}
                           className="w-full shrink-0 snap-center snap-always space-y-4"
                         >
-                          <Card className="bg-stone-950/80 border border-stone-900 rounded-[12px] p-5 shadow-inner">
+                          <Card className="bg-[#1c1b1b] border border-[#353534] rounded-[8px] p-5 shadow-inner">
                             <div className="flex justify-between items-start gap-2">
                               <div>
-                                <span className="text-[9px] uppercase font-bold text-[#EB690B] tracking-widest flex items-center gap-1 font-mono">
+                                <span className="text-[9px] uppercase font-bold text-[#ff7a00] tracking-widest flex items-center gap-1 font-mono">
                                   📍 Zone: {plan.meetupZone.toUpperCase()}
                                 </span>
                                 <h3 className="text-sm font-bold text-white mt-1.5 uppercase tracking-wider font-mono">{plan.name}</h3>
                                 <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-1">{plan.tagline}</p>
                               </div>
-                              <Badge variant="secondary" className="bg-[#EB690B]/10 text-[#EB690B] border border-[#EB690B]/20 hover:bg-[#EB690B]/10 hover:text-[#EB690B] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
+                              <Badge variant="secondary" className="bg-[#ff7a00]/10 text-[#ff7a00] border border-[#ff7a00]/20 hover:bg-[#ff7a00]/10 hover:text-[#ff7a00] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
                                 <Vote className="h-3 w-3" />
                                 {voteCount} VOTES
                               </Badge>
                             </div>
 
                             {/* Compact Itinerary Flow using Actual places */}
-                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-stone-950/90 rounded-[8px] border border-stone-900/60 space-y-2 text-center">
+                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-[#0e0e0e]/90 rounded-[4px] border border-[#353534] space-y-2 text-center">
                               {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                                 <React.Fragment key={sIdx}>
                                   <div className="px-3">
@@ -740,14 +649,14 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                                     </p>
                                   </div>
                                   {sIdx < (plan.slots.length - 1) && (
-                                    <span className="text-[#EB690B]/70 font-black text-xs">↓</span>
+                                    <span className="text-[#ff7a00]/70 font-black text-xs">↓</span>
                                   )}
                                 </React.Fragment>
                               ))}
                             </div>
 
                             {/* Travel and cost footer statistics */}
-                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-stone-900/60 text-center text-[10px] font-bold text-neutral-400 uppercase font-mono">
+                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-[#353534] text-center text-[10px] font-bold text-neutral-400 uppercase font-mono">
                               <div className="space-y-0.5">
                                 <p className="text-[9px] text-neutral-500 tracking-wider">Per Head</p>
                                 <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
@@ -758,7 +667,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               </div>
                               <div className="space-y-0.5">
                                 <p className="text-[9px] text-neutral-500 tracking-wider">Score</p>
-                                <p className="text-xs font-bold text-[#EB690B]">{(plan.score * 10).toFixed(1)}/10</p>
+                                <p className="text-xs font-bold text-[#ff7a00]">{(plan.score * 10).toFixed(1)}/10</p>
                               </div>
                             </div>
                           </Card>
@@ -769,15 +678,15 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               size="sm"
                               disabled={isCasting || userVotedPlanId === plan.id}
                               onClick={() => handleVoteCast(plan.id)}
-                              className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
+                              className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[10px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                                 userVotedPlanId === plan.id
-                                  ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
-                                  : 'bg-[#EB690B] hover:bg-[#D4590A] text-white'
+                                  ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
+                                  : 'bg-[#ff7a00] hover:bg-[#e06b00] text-black font-bold'
                               }`}
                             >
                               {userVotedPlanId === plan.id ? (
                                 <>
-                                  <Check className="mr-2 h-4 w-4 text-[#00E5A0]" /> VOTE REGISTERED
+                                  <Check className="mr-2 h-4 w-4 text-[#00E1AB]" /> VOTE REGISTERED
                                 </>
                               ) : (
                                 <>
@@ -798,7 +707,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       size="xs" 
                       disabled={activePlanIdx === 0} 
                       onClick={() => scrollToPlan(activePlanIdx - 1)}
-                      className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] h-7 px-3.5 cursor-pointer"
+                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer"
                     >
                       Prev
                     </Button>
@@ -810,7 +719,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           key={idx} 
                           onClick={() => scrollToPlan(idx)}
                           className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
-                            idx === activePlanIdx ? 'bg-[#EB690B] scale-125' : 'bg-stone-900 hover:bg-stone-800'
+                            idx === activePlanIdx ? 'bg-[#ff7a00] scale-125' : 'bg-stone-900 hover:bg-stone-800'
                           }`}
                         />
                       ))}
@@ -821,7 +730,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       size="xs" 
                       disabled={activePlanIdx === plans.length - 1} 
                       onClick={() => scrollToPlan(activePlanIdx + 1)}
-                      className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] h-7 px-3.5 cursor-pointer"
+                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer"
                     >
                       Next
                     </Button>
@@ -832,27 +741,26 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {plans.map((plan) => {
                     const voteCount = votes[plan.id] || 0;
-                    const hasUserVoted = userVotedPlanId === plan.id;
 
                     return (
-                      <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 p-5 shadow-lg backdrop-blur-md flex flex-col justify-between space-y-4 rounded-[12px]">
+                      <Card key={plan.id} className="border border-[#353534] bg-[#0e0e0e]/80 p-5 shadow-lg backdrop-blur-md flex flex-col justify-between space-y-4 rounded-[8px]">
                         <div className="space-y-4">
-                          <div className="flex justify-between items-start gap-2 border-b border-stone-900/60 pb-3">
+                          <div className="flex justify-between items-start gap-2 border-b border-[#353534] pb-3">
                             <div>
-                              <span className="text-[9px] uppercase font-bold text-[#EB690B] tracking-widest flex items-center gap-1 font-mono">
+                              <span className="text-[9px] uppercase font-bold text-[#ff7a00] tracking-widest flex items-center gap-1 font-mono">
                                 📍 Zone: {plan.meetupZone.toUpperCase()}
                               </span>
                               <h3 className="text-xs font-bold text-white mt-1.5 uppercase tracking-widest font-mono line-clamp-1">{plan.name}</h3>
                               <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-2 min-h-[2.5rem]">{plan.tagline}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-[#EB690B]/10 text-[#EB690B] border border-[#EB690B]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
+                            <Badge variant="secondary" className="bg-[#ff7a00]/10 text-[#ff7a00] border border-[#ff7a00]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
                               <Vote className="h-3 w-3" />
                               {voteCount}
                             </Badge>
                           </div>
 
                           {/* Timeline Listing */}
-                          <div className="flex flex-col items-center justify-center py-3 bg-stone-950/90 rounded-[8px] border border-stone-900 space-y-1.5 text-center min-h-[14rem]">
+                          <div className="flex flex-col items-center justify-center py-3 bg-[#131313]/95 rounded-[4px] border border-[#353534] space-y-1.5 text-center min-h-[14rem]">
                             {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
                               <React.Fragment key={sIdx}>
                                 <div className="px-2">
@@ -862,14 +770,14 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                                   </p>
                                 </div>
                                 {sIdx < (plan.slots.length - 1) && (
-                                  <span className="text-[#EB690B]/70 font-black text-[10px]">↓</span>
+                                  <span className="text-[#ff7a00]/70 font-black text-[10px]">↓</span>
                                 )}
                               </React.Fragment>
                             ))}
                           </div>
 
                           {/* Stats Grid */}
-                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-stone-900/60 text-center text-[9px] font-bold text-neutral-400 uppercase font-mono">
+                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-[#353534] text-center text-[9px] font-bold text-neutral-400 uppercase font-mono">
                             <div className="space-y-0.5">
                               <p className="text-[8px] text-neutral-500 tracking-wider">Per Head</p>
                               <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
@@ -880,7 +788,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             </div>
                             <div className="space-y-0.5">
                               <p className="text-[8px] text-neutral-500 tracking-wider">Score</p>
-                              <p className="text-xs font-bold text-[#EB690B]">{(plan.score * 10).toFixed(1)}</p>
+                              <p className="text-xs font-bold text-[#ff7a00]">{(plan.score * 10).toFixed(1)}</p>
                             </div>
                           </div>
                         </div>
@@ -891,15 +799,15 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             size="sm"
                             disabled={isCasting || userVotedPlanId === plan.id}
                             onClick={() => handleVoteCast(plan.id)}
-                            className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[9px] py-3 shadow-md transition-all duration-200 cursor-pointer ${
+                            className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[9px] py-3 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
-                                ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
-                                : 'bg-[#EB690B] hover:bg-[#D4590A] text-white'
+                                ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
+                                : 'bg-[#ff7a00] hover:bg-[#e06b00] text-black'
                             }`}
                           >
                             {userVotedPlanId === plan.id ? (
                               <>
-                                <Check className="mr-1.5 h-3.5 w-3.5 text-[#00E5A0]" /> VOTED
+                                <Check className="mr-1.5 h-3.5 w-3.5 text-[#00E1AB]" /> VOTED
                               </>
                             ) : (
                               <>
@@ -922,7 +830,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   variant="destructive"
                   onClick={handleCloseVoting}
                   disabled={isClosing}
-                  className="w-full bg-red-950/45 text-red-500 border border-red-900/50 hover:bg-red-950/80 hover:text-red-400 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-3.5 transition-all cursor-pointer"
+                  className="w-full bg-red-950/45 text-red-500 border border-red-900/50 hover:bg-red-950/80 hover:text-red-400 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all cursor-pointer"
                 >
                   Close Voting & Declare Winner
                 </Button>
@@ -933,313 +841,226 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
         {/* 4. Details Submission & Member overview (Locked post-generation to avoid clutter) */}
         {!isVotingOrClosed && (
-          <Tabs defaultValue="workspace" className="space-y-6">
-            <TabsList className="bg-stone-950 border border-stone-900 p-1 w-full max-w-md justify-start grid grid-cols-2 rounded-[8px] font-mono">
-              <TabsTrigger 
-                value="workspace" 
-                className="text-[10px] font-mono font-bold uppercase tracking-widest py-2.5 rounded-[6px] data-[state=active]:bg-[#EB690B] data-[state=active]:text-white text-neutral-400 hover:text-white transition-all"
-              >
-                Workspace Overview
-              </TabsTrigger>
-              <TabsTrigger 
-                value="inputs" 
-                className="text-[10px] font-mono font-bold uppercase tracking-widest py-2.5 rounded-[6px] data-[state=active]:bg-[#EB690B] data-[state=active]:text-white text-neutral-400 hover:text-white transition-all"
-              >
-                Submit My Details
-              </TabsTrigger>
-            </TabsList>
-
-            {/* TAB 1: OVERVIEW */}
-            <TabsContent value="workspace" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="flex flex-col md:grid md:grid-cols-12 gap-6 pt-4 text-left">
+            
+            {/* Left: Sidebar Member Sync Status */}
+            <aside className="md:col-span-3 space-y-6">
               
-              {/* Members List */}
-              <div className="lg:col-span-2 space-y-6">
-                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
-                  <CardHeader>
-                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                      <Users className="h-4 w-4 text-[#EB690B]" />
-                      Members Sync Status ({members.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="divide-y divide-stone-900/60 p-0 px-6 pb-6">
-                    {members.map((member: any) => {
-                      const isOwner = member.role === 'ADMIN';
-                      
-                      return (
-                        <div key={member.userId} className="flex items-center justify-between py-3">
-                          <div className="flex items-center gap-3">
-                            {member.imageUrl ? (
-                              <img
-                                src={member.imageUrl}
-                                alt={member.name}
-                                className="h-9 w-9 rounded-[6px] object-cover border border-stone-900"
-                              />
-                            ) : (
-                              <div className="h-9 w-9 rounded-[6px] bg-stone-900 border border-stone-850 flex items-center justify-center font-mono font-bold text-xs uppercase text-[#EB690B]">
-                                {member.name.charAt(0)}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-bold text-white flex items-center gap-2 font-mono">
-                                {member.name.toUpperCase()}
-                                {isOwner && (
-                                  <Badge variant="outline" className="bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 text-[9px] font-mono font-bold uppercase rounded-[4px] py-0.5 px-2 flex items-center gap-0.5">
-                                    <Shield className="h-2.5 w-2.5 text-[#EB690B]" />
-                                    ADMIN
-                                  </Badge>
-                                )}
-                              </p>
-                              <p className="text-[10px] text-neutral-400 font-mono">{member.email}</p>
-                            </div>
-                          </div>
+              {/* Member Sync Card */}
+              <div className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] p-6 relative overflow-hidden rounded-[8px]">
+                <div className="scanning-line opacity-20" />
+                
+                <h3 className="font-mono text-xs font-bold text-[#ff7a00] uppercase mb-6 flex justify-between items-center tracking-wider">
+                  Member Sync
+                  <span className="text-neutral-400 text-[9px] font-bold">
+                    {members.length > 0 
+                      ? Math.round((members.filter((m: any) => submittedBudgetUserIds.includes(m.userId) && locations.some((l: any) => l.userId === m.userId)).length / members.length) * 100)
+                      : 0}% ACTIVE
+                  </span>
+                </h3>
 
-                          <div className="flex items-center gap-3">
-                            {member.vibes && (
-                              <span className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">
-                                {JSON.parse(member.vibes).slice(0, 2).join(' • ').toUpperCase()}
-                              </span>
-                            )}
-                            <span className="flex items-center text-[9px] uppercase text-[#00E5A0] font-mono font-bold">
-                              <span className="h-1.5 w-1.5 rounded-full bg-[#00E5A0] mr-1.5" />
-                              CONNECTED
+                <ul className="space-y-4">
+                  {members.map((member: any) => {
+                    const hasBudget = submittedBudgetUserIds.includes(member.userId);
+                    const hasLocation = locations.some((l: any) => l.userId === member.userId);
+                    const isSynced = hasBudget && hasLocation;
+
+                    return (
+                      <li key={member.userId} className={`flex items-center gap-3 transition-all ${isSynced ? '' : 'opacity-70 grayscale hover:grayscale-0 hover:opacity-100'}`}>
+                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#ff7a00] shadow-[0_0_8px_rgba(255,122,0,0.25)] bg-[#ff7a00]/5' : 'border-[#353534]'}`}>
+                          {member.imageUrl ? (
+                            <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover rounded-[2px]" />
+                          ) : (
+                            <div className="w-full h-full bg-stone-900 border border-[#353534] flex items-center justify-center font-mono font-bold text-[10px] uppercase text-[#ff7a00] rounded-[2px]">
+                              {member.name.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-mono font-bold text-[11px] text-white uppercase truncate">{member.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
+                            <span className={`text-[8.5px] font-mono font-bold uppercase ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
+                              {isSynced ? 'Synced' : 'Pending'}
                             </span>
                           </div>
                         </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
+                      </li>
+                    );
+                  })}
+                </ul>
 
-                {/* Locations List */}
-                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
-                  <CardHeader>
-                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-[#EB690B]" />
-                      Geographic Node Registry
-                    </CardTitle>
-                    <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
-                      Outing starting nodes submitted by lobby participants. Specific coordinates are masked for privacy unless you are the lobby Admin.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 font-medium">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      {locations.map((loc: any, idx: number) => {
-                        return (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-stone-950/90 border border-stone-900 rounded-[8px] font-mono text-[11px]">
-                            <span className="font-bold text-white uppercase tracking-wide">{loc.name}</span>
-                            <span className="text-[#EB690B] text-[11px] font-semibold flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5 text-[#EB690B]" /> {loc.locationName || 'Location Saved'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
+                {isAdmin && (
+                  <div className="pt-6 border-t border-[#353534]/50 mt-6">
+                    <Button
+                      onClick={handlePlanGeneration}
+                      disabled={isGenerating || members.filter((m: any) => {
+                        const hasBudget = submittedBudgetUserIds.includes(m.userId);
+                        const hasLocation = locations.some((l: any) => l.userId === m.userId);
+                        return hasBudget && hasLocation;
+                      }).length !== members.length}
+                      className="w-full bg-[#ff7a00] hover:bg-[#e06b00] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(255,122,0,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin text-black" />
+                          COOKING ITINERARIES...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4 text-black fill-black" />
+                          GENERATE ITINERARIES
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {/* Aggregates Dashboard */}
-              <div className="space-y-6">
-                <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] text-[11px] font-mono">
-                  <CardHeader>
-                    <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B]">Budget Analysis</CardTitle>
-                    <CardDescription className="text-[10px] text-neutral-400 uppercase leading-relaxed font-light font-mono">
-                      Calculated limits from submitted envelopes.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-2 font-medium">
-                    <div className="flex justify-between py-2 border-b border-stone-900/60">
-                      <span className="text-neutral-400">ENVELOPES RECEIVED</span>
-                      <span className="font-bold text-white">
-                        {budgetSummary?.submittedCount || 0} OF {members.length}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-stone-900/60">
-                      <span className="text-neutral-400">FLOOR LIMIT (MIN)</span>
-                      <span className="font-bold text-white">₹{budgetSummary?.min || 0}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-stone-900/60">
-                      <span className="text-neutral-400">CEILING LIMIT (MAX)</span>
-                      <span className="font-bold text-white">₹{budgetSummary?.max || 0}</span>
-                    </div>
-                    <div className="flex justify-between py-2.5 border border-[#EB690B]/20 bg-[#EB690B]/10 px-3 rounded-[8px] text-[#EB690B] font-bold uppercase">
-                      <span>GROUP PROTOCOL BUDGET CAP</span>
-                      <span>₹{budgetSummary?.avg || 0}</span>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="bg-black/20 pt-4 border-t border-stone-900/60 flex flex-col items-stretch rounded-b-[12px]">
-                    <span className="text-[9px] text-neutral-500 text-center italic font-sans leading-relaxed">
-                      Note: Budgets are guide-ranges. The system constructs various target strategies.
-                    </span>
-                  </CardFooter>
-                </Card>
-              </div>
+            </aside>
 
-            </TabsContent>
-
-            {/* TAB 2: INPUTS FORM */}
-            <TabsContent value="inputs" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Center/Right: Data Collection Flow */}
+            <form onSubmit={handleUnifiedSubmit} className="md:col-span-9 space-y-6">
               
-              {/* Submit Budget */}
-              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
-                <CardHeader>
-                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-[#EB690B]" />
-                    Budget Thresholds
-                  </CardTitle>
-                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
-                    Enter your maximum spending cap for this outing (₹50 — ₹100,000).
-                  </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleBudgetSubmit}>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="budgetInput" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Your Max Budget (INR)</Label>
-                      <div className="relative">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#EB690B] font-bold">₹</span>
-                        <Input
-                          id="budgetInput"
-                          type="number"
-                          min={50}
-                          max={100000}
-                          value={budgetVal}
-                          onChange={(e) => setBudgetVal(e.target.value)}
-                          placeholder="500"
-                          className="pl-8 bg-stone-950/80 border border-stone-850 text-white rounded-[8px] font-mono text-xs focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B]"
+              {/* Protocol Step 1: Location */}
+              <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
+                  <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                    <span className="text-[#ff7a00]">01</span> Phase: Extraction Point
+                  </h2>
+                  <MapPin className="text-[#ff7a00] h-4 w-4" />
+                </div>
+                <div className="p-5 space-y-4">
+                  <div className="relative h-40 w-full bg-[#1c1b1b] border border-[#353534] rounded-[4px] overflow-hidden flex flex-col justify-center px-6 sm:px-10 space-y-5">
+                    <div className="absolute inset-0 hud-grid opacity-20 pointer-events-none"></div>
+                    <div className="scanning-line opacity-10"></div>
+                    
+                    <div className="space-y-1.5 relative z-10">
+                      <label className="font-mono text-[8.5px] text-[#ff7a00] uppercase tracking-widest font-bold">Primary Search neighborhood</label>
+                      <div className="relative flex items-center">
+                        <Input 
+                          value={addressVal}
+                          onChange={(e) => setAddressVal(e.target.value)}
+                          className="w-full bg-black/60 border border-[#353534] py-5 pl-10 pr-24 text-xs font-mono focus-visible:ring-[#ff7a00] focus-visible:border-[#ff7a00] text-white rounded-[4px]" 
+                          placeholder="QUERY COORDINATES (CITY, AREA, OR NEIGHBORHOOD)" 
+                          type="text"
                           required
-                          disabled={isSubmittingBudget}
+                          disabled={isSubmittingDetails}
                         />
+                        <button
+                          type="button"
+                          onClick={handleAutoDetect}
+                          disabled={isSubmittingDetails}
+                          className="absolute right-2.5 px-3 py-1.5 bg-stone-900 hover:bg-stone-850 text-[8.5px] font-mono font-bold text-neutral-300 rounded-[4px] border border-stone-800 transition-colors uppercase tracking-wider"
+                        >
+                          Auto Detect
+                        </button>
                       </div>
                     </div>
-                  </CardContent>
-                  <CardFooter>
-                    {currentUser.budget !== null ? (
-                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5">
-                        <Check className="h-3.5 w-3.5" /> Budget Registered
-                      </div>
-                    ) : (
-                      <Button 
-                        type="submit" 
-                        disabled={isSubmittingBudget} 
-                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                      >
-                        {isSubmittingBudget ? 'Saving...' : 'Submit Budget'}
-                      </Button>
-                    )}
-                  </CardFooter>
-                </form>
-              </Card>
+                  </div>
+                  <div className="flex justify-between items-center text-[9px] font-mono text-neutral-500 uppercase px-1">
+                    <span>Signal Strength: Optimal</span>
+                    <span className="text-[#00E1AB]">GPS_LOCKED_V2.4</span>
+                  </div>
+                </div>
+              </section>
 
-              {/* Submit Location Name */}
-              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
-                <CardHeader>
-                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-[#EB690B]" />
-                    Starting Coordinates
-                  </CardTitle>
-                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
-                    Enter your starting location name/neighborhood (e.g. Dadar, Indiranagar) or auto-detect it.
-                  </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleLocationSubmit}>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2.5">
-                      <Label htmlFor="locationInput" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Location Name or Neighborhood</Label>
-                      <Input
-                        id="locationInput"
-                        type="text"
-                        value={addressVal}
-                        onChange={(e) => setAddressVal(e.target.value)}
-                        placeholder="e.g. Dadar, Mumbai or Koramangala, Bengaluru"
-                        className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] font-mono text-xs focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B]"
+              <div className="grid md:grid-cols-2 gap-6">
+                
+                {/* Protocol Step 2: Budget */}
+                <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
+                    <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                      <span className="text-[#ff7a00]">02</span> Resource Tier
+                    </h2>
+                    <DollarSign className="text-[#ff7a00] h-4 w-4" />
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col justify-center space-y-2">
+                    <label className="font-mono text-[8.5px] text-neutral-500 uppercase tracking-widest font-bold">Max Budget (INR)</label>
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 text-neutral-400 font-mono text-xs">₹</span>
+                      <Input 
+                        value={budgetVal}
+                        onChange={(e) => setBudgetVal(e.target.value)}
+                        className="w-full bg-black/60 border border-[#353534] py-5 pl-7 pr-4 text-xs font-mono focus-visible:ring-[#ff7a00] focus-visible:border-[#ff7a00] text-white rounded-[4px]" 
+                        placeholder="MAXIMUM OUTING SPEND PER HEAD" 
+                        type="number"
+                        min="0"
                         required
-                        disabled={isSubmittingLocation || isCollectingMembers}
+                        disabled={isSubmittingDetails}
                       />
                     </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-2 pt-0">
-                    {currentUser.location !== null ? (
-                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5 mb-1">
-                        <Check className="h-3.5 w-3.5" /> Coordinates Synced
-                      </div>
-                    ) : (
-                      <Button 
-                        type="submit" 
-                        disabled={isSubmittingLocation || isCollectingMembers} 
-                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                      >
-                        {isSubmittingLocation ? 'Saving Node...' : 'Save Location Name'}
-                      </Button>
-                    )}
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={handleAutoDetect}
-                      disabled={isSubmittingLocation || isCollectingMembers} 
-                      className="border border-stone-855 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all"
-                    >
-                      Auto-Detect Coordinates
-                    </Button>
-                  </CardFooter>
-                </form>
-              </Card>
+                  </div>
+                </section>
 
-              {/* Submit Vibe Preferences */}
-              <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                    <Heart className="h-4 w-4 text-[#EB690B]" />
-                    Outing Vibes Selection
-                  </CardTitle>
-                  <CardDescription className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light">
-                    Choose the target vibe properties. These guide the experience-matching vector score.
-                  </CardDescription>
-                </CardHeader>
-                <form onSubmit={handleVibesSubmit}>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {AVAILABLE_VIBES.map((vibe) => {
-                        const isSelected = selectedVibes.includes(vibe);
-                        return (
-                          <button
-                            type="button"
-                            key={vibe}
-                            onClick={() => toggleVibe(vibe)}
-                            disabled={isSubmittingVibes}
-                            className={`px-3 py-1.5 rounded-[6px] border text-[9px] font-mono font-bold uppercase tracking-widest transition-all duration-200 cursor-pointer ${
-                              isSelected 
-                                ? 'bg-[#EB690B] border-[#EB690B] text-white shadow-sm shadow-[#EB690B]/25'
-                                : 'bg-stone-950/80 border-stone-850 hover:border-[#EB690B]/50 text-neutral-400 hover:text-white'
-                            }`}
-                          >
+                {/* Protocol Step 3: Vibes */}
+                <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
+                    <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                      <span className="text-[#ff7a00]">03</span> Atmospheric Profile
+                    </h2>
+                    <Heart className="text-[#ff7a00] h-4 w-4" />
+                  </div>
+                  <div className="p-5 flex-1 flex flex-wrap gap-2 content-center items-center justify-start bg-[#0e0e0e]/40">
+                    {AVAILABLE_VIBES.map((vibe) => {
+                      const isSelected = selectedVibes.includes(vibe);
+                      return (
+                        <label key={vibe} className="cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleVibe(vibe)}
+                            disabled={isSubmittingDetails}
+                            className="peer sr-only" 
+                          />
+                          <span className="inline-block px-3 py-1.5 font-mono text-[9px] font-bold border border-[#353534] bg-[#1c1b1b] text-neutral-400 peer-checked:border-[#ff7a00] peer-checked:text-[#ff7a00] peer-checked:bg-[#ff7a00]/10 transition-all uppercase rounded-[4px] hover:border-stone-850">
                             {vibe}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    {hasVibes ? (
-                      <div className="w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] py-2.5 text-center flex items-center justify-center gap-1.5">
-                        <Check className="h-3.5 w-3.5" /> Vibes Locked & Saved
-                      </div>
-                    ) : (
-                      <Button 
-                        type="submit" 
-                        disabled={isSubmittingVibes} 
-                        className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] w-full py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                      >
-                        {isSubmittingVibes ? 'Saving...' : 'Save Vibes Preference'}
-                      </Button>
-                    )}
-                  </CardFooter>
-                </form>
-              </Card>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
 
-            </TabsContent>
-          </Tabs>
+              </div>
+
+              {/* Submission Action */}
+              <div className="flex flex-col md:flex-row items-center gap-6 pt-5 border-t border-[#353534]/50">
+                <div className="flex-1 text-left">
+                  <div className="flex items-center gap-3 text-neutral-400 font-mono text-[9px] uppercase tracking-wide">
+                    <span className="w-1.5 h-1.5 bg-[#ff7a00] rounded-full shadow-[0_0_6px_#ff7a00]"></span>
+                    Encryption Level: AES-256
+                    <span className="w-1.5 h-1.5 bg-[#ff7a00] rounded-full shadow-[0_0_6px_#ff7a00] ml-2"></span>
+                    Protocol: Double-Blind Consensus Selection
+                  </div>
+                  <p className="text-[10px] text-neutral-500 font-sans italic mt-1.5 leading-normal">
+                    Your location, budget threshold, and vibe criteria are compiled privately to isolate a coordinates centroid and optimal itineraries.
+                  </p>
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  disabled={isSubmittingDetails || isSubmittingBudget || isSubmittingLocation || isSubmittingVibes}
+                  className="w-full md:w-auto px-10 py-5 bg-[#ff7a00] hover:bg-[#e06b00] text-black font-mono font-bold text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,122,0,0.3)] hover:shadow-[0_0_20px_rgba(255,122,0,0.55)] rounded-[4px] flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  {isSubmittingDetails ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-black" />
+                      SYNCING DETAILS...
+                    </>
+                  ) : (
+                    <>
+                      SUBMIT MY DETAILS
+                      <ArrowRight className="h-4 w-4 text-black" />
+                    </>
+                  )}
+                </Button>
+              </div>
+
+            </form>
+          </div>
         )}
       </div>
-    </PageContainer>
+    </main>
   );
 }
