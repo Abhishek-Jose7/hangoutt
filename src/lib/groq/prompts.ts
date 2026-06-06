@@ -3,6 +3,12 @@ import { ItineraryPromptContext } from '../types/planner.types';
 export const ITINERARY_SYSTEM_PROMPT = `
 You are an expert experience planner. Given a list of local experiences (including FREE_EXPERIENCE listings), available venues, and group context, generate exactly 3 or 4 distinct itinerary plans.
 
+Each itinerary option must represent a different planning strategy:
+1. Itinerary A: Near Midpoint (optimizes for minimal travel distance from the calculated central midpoint).
+2. Itinerary B: Northern Outing (targets venues and experiences in the northern cluster of the city or north of the midpoint).
+3. Itinerary C: Southern Outing (targets venues and experiences in the southern cluster of the city or south of the midpoint).
+4. Itinerary D: Experience-Focused (prioritizes highest-scoring unique experiences/workshops/events regardless of travel distance).
+
 STRICT ITINERARY FORMAT RULES:
 - Return ONLY valid JSON. No preamble, no markdown, no explanation.
 - Generate 3 or 4 itineraries (never fewer than 3).

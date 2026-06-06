@@ -2,6 +2,7 @@
 
 import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { votingService } from '@/lib/services/voting.service';
+import { voteRepository } from '@/lib/repositories/vote.repository';
 import { createVoteSchema } from '@/lib/validators/vote.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
@@ -57,6 +58,33 @@ export async function closeVoting(groupId: string): ActionResponse<{ success: bo
     revalidatePath(`/groups/${groupId}`);
     revalidatePath(`/planner/${groupId}`);
     return apiResponse.success({ success: true });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+export async function finalizeVotingAction(groupId: string): ActionResponse<{ success: boolean }> {
+  try {
+    const user = await getCurrentUser();
+
+    // Manually finalize voting as admin
+    await votingService.finalizeVoting(user.id, groupId, true);
+
+    revalidatePath(`/groups/${groupId}`);
+    revalidatePath(`/planner/${groupId}`);
+    revalidatePath('/groups');
+    return apiResponse.success({ success: true });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+export async function getUserVoteForGroup(groupId: string): ActionResponse<string | null> {
+  try {
+    const user = await getCurrentUser();
+    const allVotes = await voteRepository.getVotesForGroup(groupId);
+    const userVote = allVotes.find(v => v.userId === user.id);
+    return apiResponse.success(userVote ? userVote.planId : null);
   } catch (err) {
     return apiResponse.error(err);
   }

@@ -2,6 +2,8 @@ import { groupRepository } from '../repositories/group.repository';
 import { memberRepository } from '../repositories/member.repository';
 import { inviteRepository } from '../repositories/invite.repository';
 import { userRepository } from '../repositories/user.repository';
+import { budgetRepository } from '../repositories/budget.repository';
+import { locationRepository } from '../repositories/location.repository';
 import { createGroupSchema, updateGroupSchema } from '../validators/group.schema';
 import { joinGroupSchema } from '../validators/vote.schema';
 import {
@@ -30,9 +32,9 @@ export const groupService = {
       return require('crypto').randomUUID();
     };
 
-    // 2. Generate unique 8-character invite code
+    // 2. Generate unique 8-character invite code (uppercase, readable, no confusables)
     const generateInviteCode = () => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
       let code = '';
       for (let i = 0; i < 8; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -43,7 +45,7 @@ export const groupService = {
     const inviteCode = generateInviteCode();
     const groupId = uuid();
 
-    // 3. Create Group and set Creator as OWNER in Group Members
+    // 3. Create Group and set Creator as ADMIN in Group Members
     const groupData = {
       id: groupId,
       name: parsed.data.name,
@@ -52,7 +54,7 @@ export const groupService = {
       vibes: input.vibes ? JSON.stringify(input.vibes) : null,
       creatorId: userId,
       inviteCode,
-      status: 'ACTIVE' as const,
+      status: 'COLLECTING_MEMBERS' as const, // Starts in collecting members
       votingStatus: 'CLOSED' as const,
       maxMembers: 20,
     };
@@ -63,7 +65,7 @@ export const groupService = {
       id: uuid(),
       groupId: group.id,
       userId,
-      role: 'OWNER',
+      role: 'ADMIN', // Set as ADMIN
     });
 
     // Create invite tracking entry (expires in 7 days)
@@ -85,10 +87,10 @@ export const groupService = {
     groupId: string,
     input: { name?: string; groupType?: 'FRIENDS' | 'DATE' | 'FAMILY' | 'WORK' | 'CUSTOM'; description?: string | null; vibes?: string[] }
   ) {
-    // Verify Caller is OWNER
+    // Verify Caller is ADMIN
     const member = await memberRepository.getMember(groupId, userId);
-    if (!member || member.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner can update group details.');
+    if (!member || member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can update group details.');
     }
 
     // Validate inputs
@@ -108,20 +110,34 @@ export const groupService = {
 
   async deleteGroup(userId: string, groupId: string) {
     const member = await memberRepository.getMember(groupId, userId);
-    if (!member || member.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner can delete the group.');
+    if (!member || member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can delete the group.');
     }
+
+    const group = await groupRepository.findById(groupId);
+    if (!group) {
+      throw new NotFoundError('Group not found.');
+    }
+    validateStatusTransition(group.status, 'DELETED');
 
     await groupRepository.softDelete(groupId);
   },
 
   async archiveGroup(userId: string, groupId: string) {
     const member = await memberRepository.getMember(groupId, userId);
-    if (!member || member.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner can archive the group.');
+    if (!member || member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can archive the group.');
     }
 
-    await groupRepository.archive(groupId);
+    const group = await groupRepository.findById(groupId);
+    if (!group) {
+      throw new NotFoundError('Group not found.');
+    }
+    validateStatusTransition(group.status, 'ARCHIVED');
+
+    await groupRepository.update(groupId, {
+      status: 'ARCHIVED'
+    });
   },
 
   async joinGroup(userId: string, inviteCode: string) {
@@ -149,6 +165,15 @@ export const groupService = {
       throw new NotFoundError('Group does not exist.');
     }
 
+    // Block joins if lifecycle status is not COLLECTING_MEMBERS, COLLECTING_DETAILS, or READY_TO_GENERATE
+    if (
+      groupWithCount.status !== 'COLLECTING_MEMBERS' &&
+      groupWithCount.status !== 'COLLECTING_DETAILS' &&
+      groupWithCount.status !== 'READY_TO_GENERATE'
+    ) {
+      throw new ValidationError(`This group is no longer accepting new members (status: ${groupWithCount.status}).`);
+    }
+
     if (groupWithCount.memberCount >= groupWithCount.maxMembers) {
       throw new ValidationError('Group has reached maximum member limit.');
     }
@@ -166,13 +191,23 @@ export const groupService = {
       return require('crypto').randomUUID();
     };
 
-    // 6. Join
-    return memberRepository.addMember({
+    // 6. Join as MEMBER
+    const newMember = await memberRepository.addMember({
       id: uuid(),
       groupId: invite.groupId,
       userId,
       role: 'MEMBER',
     });
+
+    // If the group was READY_TO_GENERATE, transition it back to COLLECTING_DETAILS
+    // since the new member hasn't submitted their budget/location details yet.
+    if (groupWithCount.status === 'READY_TO_GENERATE') {
+      await groupRepository.update(invite.groupId, {
+        status: 'COLLECTING_DETAILS',
+      });
+    }
+
+    return newMember;
   },
 
   async leaveGroup(userId: string, groupId: string) {
@@ -181,9 +216,9 @@ export const groupService = {
       throw new NotFoundError('You are not a member of this group.');
     }
 
-    // If owner, force ownership transfer first
-    if (member.role === 'OWNER') {
-      throw new ValidationError('Owners cannot leave without transferring ownership first.');
+    // If owner/admin, force ownership transfer first
+    if (member.role === 'ADMIN') {
+      throw new ValidationError('Admins cannot leave without transferring ownership first.');
     }
 
     await memberRepository.removeMember(groupId, userId);
@@ -191,8 +226,8 @@ export const groupService = {
 
   async removeMember(userId: string, groupId: string, targetUserId: string) {
     const callerMember = await memberRepository.getMember(groupId, userId);
-    if (!callerMember || callerMember.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner can remove other members.');
+    if (!callerMember || callerMember.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can remove other members.');
     }
 
     if (userId === targetUserId) {
@@ -209,8 +244,8 @@ export const groupService = {
 
   async transferOwnership(userId: string, groupId: string, newOwnerId: string) {
     const callerMember = await memberRepository.getMember(groupId, userId);
-    if (!callerMember || callerMember.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner can transfer ownership.');
+    if (!callerMember || callerMember.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can transfer ownership.');
     }
 
     const targetMember = await memberRepository.getMember(groupId, newOwnerId);
@@ -219,6 +254,23 @@ export const groupService = {
     }
 
     await memberRepository.transferOwnership(groupId, userId, newOwnerId);
+  },
+
+  async startDetailsCollection(userId: string, groupId: string) {
+    const member = await memberRepository.getMember(groupId, userId);
+    if (!member || member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin can lock the member list and start details collection.');
+    }
+
+    const group = await groupRepository.findById(groupId);
+    if (!group) {
+      throw new NotFoundError('Group not found.');
+    }
+    validateStatusTransition(group.status, 'COLLECTING_DETAILS');
+
+    return groupRepository.update(groupId, {
+      status: 'COLLECTING_DETAILS'
+    });
   },
 
   async getGroupDetails(userId: string, groupId: string) {
@@ -234,6 +286,58 @@ export const groupService = {
 
     return group;
   },
+
+  // Check if all active members have submitted budget and location
+  async checkGroupReadiness(groupId: string): Promise<boolean> {
+    const group = await groupRepository.findById(groupId);
+    if (!group || group.status === 'DELETED') {
+      throw new NotFoundError('Group not found.');
+    }
+
+    // Readiness checks are only relevant in COLLECTING_DETAILS
+    if (group.status !== 'COLLECTING_DETAILS' && group.status !== 'READY_TO_GENERATE') {
+      return group.status === 'READY_TO_GENERATE' || group.status === 'GENERATING' || group.status === 'VOTING' || group.status === 'COMPLETED' || group.status === 'ARCHIVED';
+    }
+
+    const members = await memberRepository.getMembersWithUserDetails(groupId);
+    if (members.length === 0) return false;
+
+    const budgetsList = await budgetRepository.getGroupBudgets(groupId);
+    const locationsList = await locationRepository.getGroupLocations(groupId);
+
+    const isReady = members.every(member => {
+      const hasBudget = budgetsList.some(b => b.userId === member.userId);
+      const hasLocation = locationsList.some(l => l.userId === member.userId);
+      return hasBudget && hasLocation;
+    });
+
+    if (isReady && group.status === 'COLLECTING_DETAILS') {
+      await groupRepository.update(groupId, {
+        status: 'READY_TO_GENERATE',
+      });
+    }
+
+    return isReady;
+  },
 };
+
+export function validateStatusTransition(currentStatus: string, nextStatus: string) {
+  const STATUS_ORDER = ['COLLECTING_MEMBERS', 'COLLECTING_DETAILS', 'READY_TO_GENERATE', 'GENERATING', 'VOTING', 'COMPLETED', 'ARCHIVED', 'DELETED'];
+  const currentIndex = STATUS_ORDER.indexOf(currentStatus);
+  const nextIndex = STATUS_ORDER.indexOf(nextStatus);
+
+  if (currentIndex === -1 || nextIndex === -1) {
+    throw new Error(`Invalid status name: current=${currentStatus}, next=${nextStatus}`);
+  }
+
+  // Allow fallback from GENERATING to READY_TO_GENERATE on failure
+  if (currentStatus === 'GENERATING' && nextStatus === 'READY_TO_GENERATE') {
+    return;
+  }
+
+  if (nextIndex <= currentIndex) {
+    throw new ValidationError(`Invalid lifecycle transition from ${currentStatus} to ${nextStatus}. Status can only move forward.`);
+  }
+}
 
 export type GroupService = typeof groupService;

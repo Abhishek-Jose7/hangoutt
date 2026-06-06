@@ -1,6 +1,7 @@
+'use client';
+
 import React from 'react';
 import Navbar from '@/components/shared/Navbar';
-import Sidebar from '@/components/shared/Sidebar';
 import BottomNavigation from '@/components/shared/BottomNavigation';
 
 export default function AppShellLayout({
@@ -13,12 +14,9 @@ export default function AppShellLayout({
       {/* Top Header */}
       <Navbar />
       
-      <div className="flex flex-1 relative">
-        {/* Sidebar Navigation (Desktop) */}
-        <Sidebar />
-        
-        {/* Core Content Body (offsets for desktop sidebar) */}
-        <main className="flex-1 md:pl-64 min-w-0 flex flex-col">
+      <div className="flex flex-1 relative justify-center">
+        {/* Core Content Body */}
+        <main className="flex-1 min-w-0 flex flex-col md:pl-0 max-w-7xl w-full">
           {children}
         </main>
       </div>

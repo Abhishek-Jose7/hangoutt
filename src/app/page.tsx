@@ -21,10 +21,10 @@ export default async function HomePage() {
           <nav className="flex items-center gap-6">
             {isSignedIn ? (
               <Link
-                href="/dashboard"
+                href="/groups"
                 className="text-xs uppercase tracking-wider px-5 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-semibold rounded-lg"
               >
-                Dashboard
+                Lobbies
               </Link>
             ) : (
               <>
@@ -73,10 +73,10 @@ export default async function HomePage() {
                 <div className="mt-10 flex flex-wrap gap-4">
                   {isSignedIn ? (
                     <Link
-                      href="/dashboard"
+                      href="/groups"
                       className="text-xs uppercase tracking-wider px-8 py-4 bg-primary text-primary-foreground hover:bg-primary/95 transition-all font-bold rounded-lg shadow-sm"
                     >
-                      Go to Dashboard
+                      Go to Lobbies
                     </Link>
                   ) : (
                     <>

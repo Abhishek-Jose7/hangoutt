@@ -6,7 +6,7 @@ export type Location = typeof locations.$inferSelect;
 export type NewLocation = typeof locations.$inferInsert;
 
 export const locationRepository = {
-  async upsertLocation(data: { id: string; groupId: string; userId: string; lat: number; lng: number }): Promise<Location> {
+  async upsertLocation(data: { id: string; groupId: string; userId: string; lat: number; lng: number; locationName?: string | null }): Promise<Location> {
     const now = new Date().toISOString();
     const result = await db
       .insert(locations)
@@ -16,6 +16,7 @@ export const locationRepository = {
         userId: data.userId,
         lat: data.lat,
         lng: data.lng,
+        locationName: data.locationName || null,
         createdAt: now,
         updatedAt: now,
       })
@@ -24,6 +25,7 @@ export const locationRepository = {
         set: {
           lat: data.lat,
           lng: data.lng,
+          locationName: data.locationName || null,
           updatedAt: now,
         },
       })

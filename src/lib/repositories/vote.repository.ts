@@ -66,5 +66,9 @@ export const voteRepository = {
   async clearGroupVotes(groupId: string): Promise<void> {
     await db.delete(votes).where(eq(votes.groupId, groupId));
   },
+
+  async getVotesForGroup(groupId: string): Promise<Vote[]> {
+    return db.select().from(votes).where(eq(votes.groupId, groupId));
+  },
 };
 export type VoteRepository = typeof voteRepository;

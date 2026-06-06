@@ -1,19 +1,39 @@
 import { locationRepository } from '../repositories/location.repository';
 import { memberRepository } from '../repositories/member.repository';
+import { groupService } from './group.service';
 import { calculateMidpoint } from '../algorithms/midpoint';
 import { saveLocationSchema } from '../validators/location.schema';
 import { ForbiddenError, ValidationError, NotFoundError, InsufficientLocationsError } from '../errors';
+import { geocodeAddress, reverseGeocode } from '../maps/geocoding';
 
 export const locationService = {
-  async saveLocation(userId: string, groupId: string, lat: number, lng: number) {
+  async saveLocation(userId: string, groupId: string, lat?: number, lng?: number, locationName?: string) {
     // 1. Verify user is member
     const member = await memberRepository.getMember(groupId, userId);
     if (!member) {
       throw new ForbiddenError('You are not a member of this planning group.');
     }
 
-    // 2. Validate coordinates via Zod
-    const parsed = saveLocationSchema.safeParse({ groupId, lat, lng });
+    let resolvedLat = lat;
+    let resolvedLng = lng;
+    let resolvedName = locationName;
+
+    // 2. Resolve coordinates/address
+    if (locationName && (resolvedLat === undefined || resolvedLng === undefined)) {
+      const geocoded = await geocodeAddress(locationName);
+      resolvedLat = geocoded.lat;
+      resolvedLng = geocoded.lng;
+      resolvedName = geocoded.formattedAddress;
+    } else if (resolvedLat !== undefined && resolvedLng !== undefined && !resolvedName) {
+      resolvedName = await reverseGeocode(resolvedLat, resolvedLng);
+    }
+
+    if (resolvedLat === undefined || resolvedLng === undefined) {
+      throw new ValidationError('Could not resolve coordinates for the provided location.');
+    }
+
+    // Validate coordinates via Zod
+    const parsed = saveLocationSchema.safeParse({ groupId, lat: resolvedLat, lng: resolvedLng, locationName: resolvedName });
     if (!parsed.success) {
       throw new ValidationError('Invalid location coordinates', parsed.error.flatten());
     }
@@ -25,24 +45,31 @@ export const locationService = {
       return require('crypto').randomUUID();
     };
 
-    return locationRepository.upsertLocation({
+    // 3. Upsert location
+    const result = await locationRepository.upsertLocation({
       id: uuid(),
       groupId,
       userId,
-      lat: parsed.data.lat,
-      lng: parsed.data.lng,
+      lat: resolvedLat,
+      lng: resolvedLng,
+      locationName: resolvedName,
     });
+
+    // 4. Trigger readiness check
+    await groupService.checkGroupReadiness(groupId);
+
+    return result;
   },
 
   async getGroupLocations(userId: string, groupId: string) {
-    // Only the group OWNER can see individual coordinates list
+    // Only the group ADMIN can see individual coordinates list
     const member = await memberRepository.getMember(groupId, userId);
     if (!member) {
       throw new ForbiddenError('You are not authorized.');
     }
 
-    if (member.role !== 'OWNER') {
-      throw new ForbiddenError('Only the group owner is authorized to view individual member coordinates.');
+    if (member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only the group admin is authorized to view individual member coordinates.');
     }
 
     return locationRepository.getGroupLocations(groupId);

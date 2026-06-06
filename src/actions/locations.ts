@@ -8,6 +8,8 @@ import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { ActionResponse } from '@/lib/types/api.types';
 
+import { reverseGeocode } from '@/lib/maps/geocoding';
+
 export async function saveLocation(rawInput: unknown): ActionResponse<any> {
   try {
     const user = await getCurrentUser();
@@ -18,9 +20,9 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
       throw new ValidationError('Validation failed', parsed.error.flatten());
     }
 
-    const { groupId, lat, lng } = parsed.data;
+    const { groupId, lat, lng, locationName } = parsed.data;
 
-    const location = await locationService.saveLocation(user.id, groupId, lat, lng);
+    const location = await locationService.saveLocation(user.id, groupId, lat, lng, locationName);
 
     revalidatePath(`/groups/${groupId}`);
     return apiResponse.success(location);
@@ -32,4 +34,13 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
 export async function updateLocation(rawInput: unknown): ActionResponse<any> {
   // saveLocation handles both create and update (upsert)
   return saveLocation(rawInput);
+}
+
+export async function reverseGeocodeAction(lat: number, lng: number): ActionResponse<string> {
+  try {
+    const address = await reverseGeocode(lat, lng);
+    return apiResponse.success(address);
+  } catch (err) {
+    return apiResponse.error(err);
+  }
 }

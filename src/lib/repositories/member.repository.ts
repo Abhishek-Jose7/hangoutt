@@ -12,6 +12,7 @@ export interface MemberDetail {
   email: string;
   imageUrl: string | null;
   role: string;
+  vibes: string | null;
   joinedAt: string;
 }
 
@@ -48,6 +49,7 @@ export const memberRepository = {
         email: users.email,
         imageUrl: users.imageUrl,
         role: groupMembers.role,
+        vibes: groupMembers.vibes,
         joinedAt: groupMembers.createdAt,
       })
       .from(groupMembers)
@@ -57,7 +59,19 @@ export const memberRepository = {
     return result as MemberDetail[];
   },
 
-  async updateRole(groupId: string, userId: string, role: 'OWNER' | 'MEMBER'): Promise<GroupMember> {
+  async updateVibes(groupId: string, userId: string, vibes: string[]): Promise<GroupMember> {
+    const result = await db
+      .update(groupMembers)
+      .set({ vibes: JSON.stringify(vibes) })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+      .returning();
+    if (!result[0]) {
+      throw new Error('Failed to update member vibes');
+    }
+    return result[0];
+  },
+
+  async updateRole(groupId: string, userId: string, role: 'ADMIN' | 'MEMBER'): Promise<GroupMember> {
     const result = await db
       .update(groupMembers)
       .set({ role })
@@ -79,7 +93,7 @@ export const memberRepository = {
 
       await tx
         .update(groupMembers)
-        .set({ role: 'OWNER' })
+        .set({ role: 'ADMIN' })
         .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, newOwnerId)));
     });
   },

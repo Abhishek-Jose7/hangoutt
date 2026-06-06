@@ -1,5 +1,6 @@
 import { budgetRepository } from '../repositories/budget.repository';
 import { memberRepository } from '../repositories/member.repository';
+import { groupService } from './group.service';
 import { submitBudgetSchema } from '../validators/budget.schema';
 import { ForbiddenError, ValidationError, NotFoundError } from '../errors';
 
@@ -25,12 +26,17 @@ export const budgetService = {
     };
 
     // 3. Upsert budget
-    return budgetRepository.upsertBudget({
+    const result = await budgetRepository.upsertBudget({
       id: uuid(),
       groupId,
       userId,
       maxBudget: parsed.data.maxBudget,
     });
+
+    // 4. Trigger readiness check
+    await groupService.checkGroupReadiness(groupId);
+
+    return result;
   },
 
   async getGroupBudgetSummary(userId: string, groupId: string) {

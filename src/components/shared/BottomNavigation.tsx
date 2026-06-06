@@ -9,8 +9,7 @@ export default function BottomNavigation() {
   const pathname = usePathname();
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Groups', href: '/groups', icon: Users },
+    { name: 'Lobbies', href: '/groups', icon: Users },
     { name: 'History', href: '/history', icon: History },
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Settings', href: '/settings', icon: Settings },
@@ -20,7 +19,7 @@ export default function BottomNavigation() {
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background md:hidden safe-bottom">
       <div className="flex h-16 items-center justify-around px-2">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          const isActive = pathname === item.href || (item.href !== '/groups' && pathname.startsWith(item.href));
           return (
             <Link
               key={item.name}

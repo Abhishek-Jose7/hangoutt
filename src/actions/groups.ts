@@ -68,3 +68,110 @@ export async function archiveGroup(groupId: string): ActionResponse<{ success: b
     return apiResponse.error(err);
   }
 }
+
+import { groupRepository } from '@/lib/repositories/group.repository';
+import { historyRepository } from '@/lib/repositories/history.repository';
+
+export async function getUserGroupsAction(): ActionResponse<any[]> {
+  try {
+    const user = await getCurrentUser();
+    const groupsList = await groupRepository.getUserGroups(user.id);
+    
+    const groupsWithDetails = await Promise.all(
+      groupsList.map(async (g) => {
+        const details = await groupRepository.getGroupWithMemberCount(g.id);
+        return details || { ...g, memberCount: 1 };
+      })
+    );
+    
+    return apiResponse.success(groupsWithDetails);
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+export async function getUserHistoryAction(): ActionResponse<any[]> {
+  try {
+    const user = await getCurrentUser();
+    const historyList = await historyRepository.getHistoryForUser(user.id);
+    return apiResponse.success(historyList);
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+import { memberRepository } from '@/lib/repositories/member.repository';
+import { budgetRepository } from '@/lib/repositories/budget.repository';
+import { locationRepository } from '@/lib/repositories/location.repository';
+
+export async function getGroupDetailsAction(groupId: string): ActionResponse<any> {
+  try {
+    const user = await getCurrentUser();
+    
+    // Fetch group details
+    const group = await groupService.getGroupDetails(user.id, groupId);
+    
+    // Fetch members detail
+    const members = await memberRepository.getMembersWithUserDetails(groupId);
+    
+    // Fetch budget aggregates
+    const budgetSummary = await budgetRepository.getGroupBudgetSummary(groupId);
+    
+    // Fetch budgets list to see who submitted (and get the current user's submitted budget)
+    const budgets = await budgetRepository.getGroupBudgets(groupId);
+    const currentUserBudget = budgets.find(b => b.userId === user.id)?.maxBudget || null;
+
+    // Fetch locations list to see who submitted (and get current user's submitted coordinates)
+    const locations = await locationRepository.getGroupLocations(groupId);
+    const currentUserLocation = locations.find(l => l.userId === user.id) || null;
+
+    // Fetch caller role
+    const callerMember = members.find(m => m.userId === user.id);
+    const callerRole = callerMember ? callerMember.role : 'MEMBER';
+
+    // Verify readiness
+    const isReady = await groupService.checkGroupReadiness(groupId);
+
+    // Apply coordinate privacy envelope
+    const isAdmin = callerRole === 'ADMIN';
+    const cleanLocations = locations.map(l => {
+      const member = members.find(m => m.userId === l.userId);
+      return {
+        name: member ? member.name : 'Participant',
+        locationName: l.locationName || `${l.lat.toFixed(2)}, ${l.lng.toFixed(2)}`,
+        lat: isAdmin || l.userId === user.id ? l.lat : 0,
+        lng: isAdmin || l.userId === user.id ? l.lng : 0,
+        userId: l.userId,
+      };
+    });
+
+    return apiResponse.success({
+      group: {
+        ...group,
+        isReady,
+      },
+      members,
+      budgetSummary,
+      locations: cleanLocations,
+      currentUser: {
+        id: user.id,
+        role: callerRole,
+        budget: currentUserBudget,
+        location: currentUserLocation,
+      }
+    });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+export async function startDetailsCollectionAction(groupId: string): ActionResponse<any> {
+  try {
+    const user = await getCurrentUser();
+    const updated = await groupService.startDetailsCollection(user.id, groupId);
+    revalidatePath(`/groups/${groupId}`);
+    return apiResponse.success(updated);
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}

@@ -84,5 +84,9 @@ export const budgetRepository = {
       totalMembers,
     };
   },
+
+  async getGroupBudgets(groupId: string): Promise<Budget[]> {
+    return db.select().from(budgets).where(eq(budgets.groupId, groupId));
+  },
 };
 export type BudgetRepository = typeof budgetRepository;

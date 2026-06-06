@@ -26,9 +26,10 @@ export const groups = sqliteTable('groups', {
     .notNull()
     .references(() => users.id),
   inviteCode: text('invite_code').notNull().unique(), // 8 characters
-  status: text('status').default('ACTIVE').notNull(), // Enum: ACTIVE | ARCHIVED | DELETED
+  status: text('status').default('CREATED').notNull(), // Enum: CREATED | COLLECTING_DETAILS | READY_TO_GENERATE | GENERATING | VOTING | COMPLETED | ARCHIVED
   votingStatus: text('voting_status').default('CLOSED').notNull(), // Enum: OPEN | CLOSED
   maxMembers: integer('max_members').default(20).notNull(),
+  winningPlanId: text('winning_plan_id'),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -42,7 +43,8 @@ export const groupMembers = sqliteTable('group_members', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  role: text('role').default('MEMBER').notNull(), // Enum: OWNER | MEMBER
+  role: text('role').default('MEMBER').notNull(), // Enum: ADMIN | MEMBER
+  vibes: text('vibes'), // JSON array of user-specific outing vibes (e.g. ["CHILL", "CREATIVE"])
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
   uniqueGroupUser: uniqueIndex('group_members_group_user_idx').on(table.groupId, table.userId),
@@ -87,6 +89,7 @@ export const locations = sqliteTable('locations', {
     .references(() => users.id, { onDelete: 'cascade' }),
   lat: real('lat').notNull(),
   lng: real('lng').notNull(),
+  locationName: text('location_name'), // Readable address or name
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
@@ -161,9 +164,28 @@ export const plans = sqliteTable('plans', {
   planIndex: integer('plan_index').notNull(), // 1, 2, 3, or 4
   name: text('name').notNull(),
   tagline: text('tagline').notNull(),
+  meetupZone: text('meetup_zone').notNull(), // Meetup zone name (e.g., Dadar)
   budgetTier: text('budget_tier').default('BALANCED').notNull(), // BUDGET_FRIENDLY | BALANCED | PREMIUM
   totalEstimatedCostPerHead: integer('total_estimated_cost_per_head').notNull(),
   totalDurationMinutes: integer('total_duration_minutes').notNull(),
+  score: real('score').default(0.0).notNull(),
+  // Plan Score Breakdown
+  experienceScore: real('experience_score').default(0.0).notNull(),
+  travelScore: real('travel_score').default(0.0).notNull(),
+  budgetScore: real('budget_score').default(0.0).notNull(),
+  fairnessScore: real('fairness_score').default(0.0).notNull(),
+  popularityScore: real('popularity_score').default(0.0).notNull(),
+  groupTypeMatchScore: real('group_type_match_score').default(0.0).notNull(),
+  vibeMatchScore: real('vibe_match_score').default(0.0).notNull(),
+  compositeScore: real('composite_score').default(0.0).notNull(),
+  // Group Travel Aggregate Metrics
+  avgTrainTime: integer('avg_train_time').default(0).notNull(),
+  avgCabTime: integer('avg_cab_time').default(0).notNull(),
+  avgTrainCost: integer('avg_train_cost').default(0).notNull(),
+  avgCabCost: integer('avg_cab_cost').default(0).notNull(),
+  longestTravelTime: integer('longest_travel_time').default(0).notNull(),
+  shortestTravelTime: integer('shortest_travel_time').default(0).notNull(),
+  travelFairnessScore: real('travel_fairness_score').default(1.0).notNull(),
   generatedAt: text('generated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
   uniqueGroupPlanIndex: uniqueIndex('plans_group_plan_idx').on(table.groupId, table.planIndex),
@@ -224,5 +246,22 @@ export const history = sqliteTable('history', {
   venuesJson: text('venues_json').notNull(), // JSON list of venues
   participantsJson: text('participants_json').notNull(), // JSON list of user details
   totalCostPerHead: integer('total_cost_per_head').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 13. Member Travel Metrics Table
+export const memberTravelMetrics = sqliteTable('member_travel_metrics', {
+  id: text('id').primaryKey(),
+  planId: text('plan_id')
+    .notNull()
+    .references(() => plans.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  trainTime: integer('train_time').notNull(), // in minutes
+  trainCost: integer('train_cost').notNull(), // in INR
+  cabTime: integer('cab_time').notNull(), // in minutes
+  cabCost: integer('cab_cost').notNull(), // in INR
+  walkTime: integer('walk_time').notNull(), // in minutes
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
