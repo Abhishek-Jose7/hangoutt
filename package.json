@@ -12,7 +12,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:d1:local": "wrangler d1 migrations apply hangout-dev --local",
-    "db:d1:remote": "wrangler d1 migrations apply hangout-dev --remote"
+    "db:d1:remote": "wrangler d1 migrations apply hangout-dev --remote",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "worker:dry-run": "wrangler deploy --dry-run"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

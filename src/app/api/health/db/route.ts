@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
+import { hangoutApi, isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
+
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
+    if (isHangoutApiConfigured()) {
+      const response = await hangoutApi('/health/db');
+      return NextResponse.json(response);
+    }
+
     const [{ db }, { users }] = await Promise.all([
       import('@/lib/db/client'),
       import('@/lib/db/schema'),

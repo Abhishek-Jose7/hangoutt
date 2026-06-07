@@ -1,20 +1,16 @@
 'use server';
 
 import { getCurrentUser } from '@/lib/auth/getCurrentUser';
-import { locationService } from '@/lib/services/location.service';
 import { saveLocationSchema } from '@/lib/validators/location.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { ActionResponse } from '@/lib/types/api.types';
-
 import { reverseGeocode } from '@/lib/maps/geocoding';
+import { getCurrentApiUser, hangoutApi, isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
 export async function saveLocation(rawInput: unknown): ActionResponse<any> {
   try {
-    const user = await getCurrentUser();
-    
-    // Validate inputs
     const parsed = saveLocationSchema.safeParse(rawInput);
     if (!parsed.success) {
       throw new ValidationError('Validation failed', parsed.error.flatten());
@@ -22,6 +18,24 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
 
     const { groupId, lat, lng, locationName } = parsed.data;
 
+    if (isHangoutApiConfigured()) {
+      const user = await getCurrentApiUser();
+      const location = await hangoutApi<any>(`/groups/${groupId}/location`, {
+        method: 'POST',
+        body: {
+          clerkId: user.clerkId,
+          lat,
+          lng,
+          locationName,
+        },
+      });
+
+      revalidatePath(`/groups/${groupId}`);
+      return location;
+    }
+
+    const user = await getCurrentUser();
+    const { locationService } = await import('@/lib/services/location.service');
     const location = await locationService.saveLocation(user.id, groupId, lat, lng, locationName);
 
     revalidatePath(`/groups/${groupId}`);
@@ -32,7 +46,6 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
 }
 
 export async function updateLocation(rawInput: unknown): ActionResponse<any> {
-  // saveLocation handles both create and update (upsert)
   return saveLocation(rawInput);
 }
 

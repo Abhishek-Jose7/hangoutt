@@ -1,4 +1,11 @@
 {
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "hangout-api",
+    "main": "workers/api.ts",
+    "compatibility_date": "2026-06-07",
+    "observability": {
+        "enabled": true
+    },
     "d1_databases": [
         {
             "binding": "DB",
