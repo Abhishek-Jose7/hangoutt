@@ -512,7 +512,6 @@ export default function HomePage() {
             </svg>
             <div className="text-left leading-none">
               <h1 className="font-campus text-[16px] font-extrabold tracking-[0.1em] text-white uppercase leading-none">Hangoutt</h1>
-              <p className="font-campus text-[10px] tracking-[0.2em] text-neutral-400 uppercase mt-1 leading-none">Mumbai Noir</p>
             </div>
           </div>
 
