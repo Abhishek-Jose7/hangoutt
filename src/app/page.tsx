@@ -370,7 +370,7 @@ export default function HomePage() {
   const [weather, setWeather] = useState<{ temp: number; windSpeed: number; windDirection: string } | null>(null);
 
   // Map zoom and center states (Centered on Mumbai)
-  const [mapCenter, setMapCenter] = useState<[number, number]>([72.8777, 19.076]);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([72.895, 19.076]);
   const [mapZoom, setMapZoom] = useState<number>(11);
 
   // Filter spots belonging to the currently active category
@@ -423,7 +423,7 @@ export default function HomePage() {
   };
 
   const handleRecenter = () => {
-    setMapCenter([72.8777, 19.076]);
+    setMapCenter([72.895, 19.076]);
     setMapZoom(11);
   };
 
@@ -534,7 +534,7 @@ export default function HomePage() {
         </header>
 
         {/* Left Side Category Rail */}
-        <aside className="absolute left-4 lg:left-12 top-[85px] lg:top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none lg:h-[420px]">
+        <aside className="absolute left-6 sm:left-8 lg:left-20 xl:left-24 top-[85px] lg:top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none lg:h-[420px]">
           {/* Sidebar vertical rail */}
           <div className="hidden lg:flex flex-col gap-28 items-center mr-10 border-r border-stone-800/40 pr-8 justify-center">
             <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
