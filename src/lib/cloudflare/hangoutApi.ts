@@ -27,7 +27,8 @@ function apiUrl(path: string) {
     throw new Error('HANGOUT_API_URL is not configured.');
   }
 
-  return `${base.replace(/\/$/, '')}${path}`;
+  const normalizedBase = /^https?:\/\//i.test(base) ? base : `https://${base}`;
+  return `${normalizedBase.replace(/\/$/, '')}${path}`;
 }
 
 export async function hangoutApi<T>(path: string, options: RequestOptions = {}) {
