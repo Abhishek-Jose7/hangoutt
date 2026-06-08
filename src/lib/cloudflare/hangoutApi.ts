@@ -56,9 +56,30 @@ export async function hangoutApi<T>(path: string, options: RequestOptions = {}) 
 }
 
 export async function getCurrentApiUser(): Promise<ApiCurrentUser> {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) {
     throw new UnauthorizedError();
+  }
+
+  const claims = sessionClaims as Record<string, any> | null;
+  const claimEmail =
+    claims?.email ||
+    claims?.email_address ||
+    claims?.primary_email_address ||
+    claims?.['https://clerk.dev/email'];
+  const claimName =
+    claims?.name ||
+    claims?.full_name ||
+    [claims?.first_name, claims?.last_name].filter(Boolean).join(' ');
+  const claimImage = claims?.image_url || claims?.picture || null;
+
+  if (claimEmail && claimName) {
+    return {
+      clerkId: userId,
+      email: String(claimEmail),
+      name: String(claimName),
+      imageUrl: claimImage ? String(claimImage) : null,
+    };
   }
 
   const client = await clerkClient();

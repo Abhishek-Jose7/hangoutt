@@ -24,7 +24,6 @@ export async function createGroup(rawInput: unknown): ActionResponse<any> {
         },
       });
 
-      revalidatePath('/groups');
       return response;
     }
 

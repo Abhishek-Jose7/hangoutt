@@ -65,16 +65,16 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md rounded-[4px] border border-[#353534] bg-[#0e0e0e] text-white shadow-[0_0_30px_rgba(0,0,0,0.55)]">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-slate-900">Create Outing Group</DialogTitle>
-          <DialogDescription className="text-sm text-slate-500">
+          <DialogTitle className="text-sm font-mono font-bold text-white uppercase tracking-widest">Create Lobby Protocol</DialogTitle>
+          <DialogDescription className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">
             Start planning your next meetup. Give your group a name and choose a type.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Group Name</Label>
+            <Label htmlFor="name" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Group Name</Label>
             <Input
               id="name"
               type="text"
@@ -83,6 +83,7 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
               placeholder="e.g. Koramangala Crew, Date Night"
               required
               disabled={isLoading}
+              className="bg-black/60 border border-[#353534] text-white rounded-[4px] font-mono text-xs focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C]"
             />
             {errorFields.name && (
               <p className="text-xs text-red-500 font-medium">{errorFields.name[0]}</p>
@@ -90,13 +91,13 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="groupType">Outing Type</Label>
+            <Label htmlFor="groupType" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Outing Type</Label>
             <select
               id="groupType"
               value={groupType}
               onChange={(e) => setGroupType(e.target.value)}
               disabled={isLoading}
-              className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:focus-visible:ring-slate-300"
+              className="flex h-10 w-full rounded-[4px] border border-[#353534] bg-black/60 px-3 py-2 text-xs text-white font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#DC143C] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="FRIENDS">Friends</option>
               <option value="DATE">Date Night</option>
@@ -107,14 +108,14 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description (Optional)</Label>
+            <Label htmlFor="description" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Description (Optional)</Label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What are we planning?"
               disabled={isLoading}
-              className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:focus-visible:ring-slate-300"
+              className="flex min-h-[80px] w-full rounded-[4px] border border-[#353534] bg-black/60 px-3 py-2 text-xs text-white font-mono ring-offset-black placeholder:text-neutral-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#DC143C] disabled:cursor-not-allowed disabled:opacity-50"
               maxLength={300}
             />
             {errorFields.description && (
@@ -128,13 +129,14 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
               variant="outline"
               onClick={onClose}
               disabled={isLoading}
+              className="rounded-[4px] border-[#353534] bg-black/40 text-neutral-300 hover:bg-stone-900 hover:text-white font-mono text-[10px] uppercase tracking-widest"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isLoading || !name.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white shadow"
+              className="bg-[#DC143C] hover:bg-[#B80F2E] text-white shadow-[0_0_15px_rgba(220,20,60,0.28)] rounded-[4px] font-mono text-[10px] uppercase tracking-widest"
             >
               {isLoading ? (
                 <>

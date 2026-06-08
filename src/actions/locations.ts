@@ -5,7 +5,7 @@ import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { ActionResponse } from '@/lib/types/api.types';
-import { reverseGeocode } from '@/lib/maps/geocoding';
+import { geocodeAddress, reverseGeocode } from '@/lib/maps/geocoding';
 import { getCurrentApiUser, hangoutApi, isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
 export async function saveLocation(rawInput: unknown): ActionResponse<any> {
@@ -15,7 +15,18 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
       throw new ValidationError('Validation failed', parsed.error.flatten());
     }
 
-    const { groupId, lat, lng, locationName } = parsed.data;
+    const { groupId, locationName } = parsed.data;
+    let { lat, lng } = parsed.data;
+    let resolvedLocationName = locationName;
+
+    if (resolvedLocationName && (lat === undefined || lat === null || lng === undefined || lng === null)) {
+      const geocoded = await geocodeAddress(resolvedLocationName);
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+      resolvedLocationName = geocoded.formattedAddress;
+    } else if (lat !== undefined && lat !== null && lng !== undefined && lng !== null && !resolvedLocationName) {
+      resolvedLocationName = await reverseGeocode(lat, lng);
+    }
 
     if (isHangoutApiConfigured()) {
       const user = await getCurrentApiUser();
@@ -25,7 +36,7 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
           clerkId: user.clerkId,
           lat,
           lng,
-          locationName,
+          locationName: resolvedLocationName,
         },
       });
 
@@ -36,7 +47,7 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { locationService } = await import('@/lib/services/location.service');
-    const location = await locationService.saveLocation(user.id, groupId, lat, lng, locationName);
+    const location = await locationService.saveLocation(user.id, groupId, lat, lng, resolvedLocationName);
 
     revalidatePath(`/groups/${groupId}`);
     return apiResponse.success(location);

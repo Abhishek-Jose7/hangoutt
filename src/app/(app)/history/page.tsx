@@ -39,7 +39,7 @@ export default function HistoryPage() {
       <div className="space-y-6 font-sans text-sm">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
-            <Loader2 className="h-7 w-7 animate-spin text-[#EB690B] mb-4" />
+            <Loader2 className="h-7 w-7 animate-spin text-[#DC143C] mb-4" />
             <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Loading outing history...</p>
           </div>
         ) : historyEntries.length > 0 ? (
@@ -55,11 +55,11 @@ export default function HistoryPage() {
               }
               
               return (
-                <Card key={entry.id} className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg hover:border-[#EB690B]/30 hover:bg-stone-950/85 transition-all duration-300">
+                <Card key={entry.id} className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg hover:border-[#DC143C]/30 hover:bg-stone-950/85 transition-all duration-300">
                   <CardHeader className="pb-3">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                       <div>
-                        <span className="text-[10px] font-mono text-[#EB690B] font-bold uppercase flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-[#DC143C] font-bold uppercase flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5" />
                           {entry.outingDate}
                         </span>
@@ -76,7 +76,7 @@ export default function HistoryPage() {
                     {/* Venues checklist */}
                     {venues.length > 0 && (
                       <div>
-                        <h4 className="text-[9px] font-bold text-[#EB690B] uppercase tracking-wider mb-2">Venues Visited</h4>
+                        <h4 className="text-[9px] font-bold text-[#DC143C] uppercase tracking-wider mb-2">Venues Visited</h4>
                         <div className="flex flex-wrap gap-2">
                           {venues.map((venue: any, idx: number) => {
                             const name = typeof venue === 'object' && venue !== null ? (venue.name || venue.venueName) : venue;
@@ -93,14 +93,14 @@ export default function HistoryPage() {
                     {/* Participants list */}
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-[10px] pt-3 border-t border-stone-900/30">
                       <div className="flex items-center gap-1.5 text-neutral-400">
-                        <Users className="h-3.5 w-3.5 text-[#EB690B]" />
+                        <Users className="h-3.5 w-3.5 text-[#DC143C]" />
                         <span>
                           {participants.length} Participants: {participants.map((p: any) => typeof p === 'object' && p !== null ? p.name : p).join(', ')}
                         </span>
                       </div>
                       
                       <span className="text-white flex items-center gap-0.5 font-bold">
-                        <DollarSign className="h-3.5 w-3.5 text-[#EB690B]" />
+                        <DollarSign className="h-3.5 w-3.5 text-[#DC143C]" />
                         ₹{entry.totalCostPerHead} spent per head
                       </span>
                     </div>

@@ -11,7 +11,7 @@ export default function LoadingState({
 }: LoadingStateProps) {
   const content = (
     <div className="flex flex-col items-center justify-center p-8 gap-3 text-center">
-      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      <Loader2 className="h-8 w-8 animate-spin text-rose-700" />
       <p className="text-sm font-medium text-slate-500">{message}</p>
     </div>
   );

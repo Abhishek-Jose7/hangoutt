@@ -153,6 +153,7 @@ async function createGroup(request: Request, env: Env) {
   const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
   const description = body.group.description || null;
   const vibes = body.group.vibes ? JSON.stringify(body.group.vibes) : null;
+  const now = new Date().toISOString();
 
   await env.DB.batch([
     env.DB
@@ -176,7 +177,23 @@ async function createGroup(request: Request, env: Env) {
       .bind(inviteId, groupId, code, expiresAt),
   ]);
 
-  const group = await getGroupById(env.DB, groupId);
+  const group = {
+    id: groupId,
+    name: body.group.name,
+    description,
+    groupType: body.group.groupType,
+    vibes,
+    creatorId: user.id,
+    inviteCode: code,
+    status: 'COLLECTING_MEMBERS',
+    votingStatus: 'CLOSED',
+    maxMembers: 20,
+    winningPlanId: null,
+    createdAt: now,
+    updatedAt: now,
+    memberCount: 1,
+  };
+
   return json({ success: true, data: group }, { headers: corsHeaders(env) });
 }
 

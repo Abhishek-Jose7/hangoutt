@@ -49,7 +49,7 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <Card className="text-center border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
               <CardContent className="pt-6 flex flex-col items-center">
-                <div className="h-20 w-20 rounded-full bg-[#EB690B]/10 border border-[#EB690B]/30 text-[#EB690B] flex items-center justify-center text-2xl font-campus font-bold overflow-hidden">
+                <div className="h-20 w-20 rounded-full bg-[#DC143C]/10 border border-[#DC143C]/30 text-[#DC143C] flex items-center justify-center text-2xl font-campus font-bold overflow-hidden">
                   AJ
                 </div>
                 <h3 className="mt-4 text-base font-bold text-white font-campus tracking-widest uppercase">{name}</h3>
@@ -61,7 +61,7 @@ export default function ProfilePage() {
                     <p className="text-neutral-500 text-[8px] uppercase tracking-wider">Outings</p>
                   </div>
                   <div>
-                    <p className="font-bold text-[#EB690B] text-sm">3</p>
+                    <p className="font-bold text-[#DC143C] text-sm">3</p>
                     <p className="text-neutral-500 text-[8px] uppercase tracking-wider">Groups</p>
                   </div>
                 </div>
@@ -75,8 +75,8 @@ export default function ProfilePage() {
             {/* Basic Information */}
             <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
               <CardHeader>
-                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                  <User className="h-4 w-4 text-[#EB690B]" />
+                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+                  <User className="h-4 w-4 text-[#DC143C]" />
                   Basic Information
                 </CardTitle>
               </CardHeader>
@@ -87,7 +87,7 @@ export default function ProfilePage() {
                     id="profileName"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B] h-9"
+                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
                     required
                   />
                 </div>
@@ -97,8 +97,8 @@ export default function ProfilePage() {
             {/* Budget & Location Preferences */}
             <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
               <CardHeader>
-                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-[#EB690B]" />
+                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-[#DC143C]" />
                   Budget & Travel Limits
                 </CardTitle>
                 <CardDescription className="text-xs text-neutral-450 font-sans font-light">
@@ -113,7 +113,7 @@ export default function ProfilePage() {
                     type="number"
                     value={minBudget}
                     onChange={(e) => setMinBudget(e.target.value)}
-                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B] h-9"
+                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
                   />
                 </div>
                 <div className="space-y-2">
@@ -123,7 +123,7 @@ export default function ProfilePage() {
                     type="number"
                     value={maxBudget}
                     onChange={(e) => setMaxBudget(e.target.value)}
-                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B] h-9"
+                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -133,7 +133,7 @@ export default function ProfilePage() {
                     type="number"
                     value={travelRadius}
                     onChange={(e) => setTravelRadius(e.target.value)}
-                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B] h-9"
+                    className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
                   />
                 </div>
               </CardContent>
@@ -142,8 +142,8 @@ export default function ProfilePage() {
             {/* Favorite Activities */}
             <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
               <CardHeader>
-                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-                  <Heart className="h-4 w-4 text-[#EB690B]" />
+                <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-[#DC143C]" />
                   Favorite Activities
                 </CardTitle>
                 <CardDescription className="text-xs text-neutral-450 font-sans font-light">
@@ -161,7 +161,7 @@ export default function ProfilePage() {
                         onClick={() => handleToggleActivity(cat)}
                         className={`px-3.5 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-wider border transition cursor-pointer ${
                           isSelected
-                            ? 'bg-[#EB690B] text-white border-transparent shadow-md'
+                            ? 'bg-[#DC143C] text-white border-transparent shadow-md'
                             : 'bg-stone-950 border-stone-850 text-neutral-500 hover:bg-stone-900 hover:text-white'
                         }`}
                       >
@@ -174,7 +174,7 @@ export default function ProfilePage() {
               <CardFooter className="flex justify-end pt-4 border-t border-stone-900/40 pb-4">
                 <Button 
                   type="submit" 
-                  className="bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-6 py-2.5 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  className="bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-6 py-2.5 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
                 >
                   Save Preferences
                 </Button>

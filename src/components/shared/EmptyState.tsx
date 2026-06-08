@@ -27,7 +27,7 @@ export default function EmptyState({
         <p className="text-sm text-slate-500">{description}</p>
       </div>
       {actionText && onAction && (
-        <Button onClick={onAction} className="bg-indigo-600 hover:bg-indigo-500 text-white shadow">
+        <Button onClick={onAction} className="bg-rose-700 hover:bg-rose-600 text-white shadow">
           {actionText}
         </Button>
       )}

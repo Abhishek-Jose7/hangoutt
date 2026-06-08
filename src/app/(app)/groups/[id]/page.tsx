@@ -232,7 +232,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
   const handleAutoDetect = () => {
     if (navigator.geolocation) {
-      toast.loading("Detecting your location name...");
+      toast.loading("Detecting your precise location...");
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
@@ -257,6 +257,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
         (error) => {
           toast.dismiss();
           toast.error("Failed to detect location: " + error.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
         }
       );
     } else {
@@ -399,7 +404,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#EB690B] mb-4" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
         <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing Workspace Module...</p>
       </div>
     );
@@ -443,9 +448,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6 relative z-10">
         
         {/* Protocol Header */}
-        <div className="border-l-4 border-[#ff7a00] pl-6 py-3 bg-[#0e0e0e]/40 rounded-r-[4px] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="border-l-4 border-[#DC143C] pl-6 py-3 bg-[#0e0e0e]/40 rounded-r-[4px] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 text-[#ff7a00] mb-1.5">
+            <div className="flex items-center gap-3 text-[#DC143C] mb-1.5">
               <Shield className="h-4.5 w-4.5" />
               <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
                 STATUS: {group.status.replace('_', ' ')}
@@ -458,7 +463,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               <span>UUID: {group.id.substring(0, 8).toUpperCase()}</span>
               <span className="text-neutral-600">|</span>
               <span>INVITE CODE:</span>
-              <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#ff7a00] font-mono select-all font-bold text-[11px]">{group.inviteCode}</code>
+              <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#DC143C] font-mono select-all font-bold text-[11px]">{group.inviteCode}</code>
             </p>
           </div>
           
@@ -470,7 +475,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 onClick={handleShareCode} 
                 className="border-[#353534] bg-[#1c1b1b]/55 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
               >
-                <Share2 className="h-3.5 w-3.5 text-[#ff7a00]" />
+                <Share2 className="h-3.5 w-3.5 text-[#DC143C]" />
                 Share Code
               </Button>
             </div>
@@ -479,10 +484,10 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
         {/* Status Notification Banner (Cooking status) */}
         {isGeneratingState && (
-          <div className="flex items-center gap-3 bg-[#ff7a00]/10 border border-[#ff7a00]/20 p-4 rounded-[4px] text-[#ff7a00] text-[10px] font-bold uppercase tracking-wider animate-pulse">
-            <Loader2 className="h-4 w-4 animate-spin text-[#ff7a00]" />
+          <div className="flex items-center gap-3 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[4px] text-[#DC143C] text-[10px] font-bold uppercase tracking-wider animate-pulse">
+            <Loader2 className="h-4 w-4 animate-spin text-[#DC143C]" />
             <span>AI Itineraries are currently being cooked. Check back shortly...</span>
-            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1 text-[9px] hover:bg-[#ff7a00]/20 text-[#ff7a00] hover:text-[#ff7a00]">
+            <Button size="xs" variant="ghost" onClick={loadData} className="ml-auto flex items-center gap-1 text-[9px] hover:bg-[#DC143C]/20 text-[#DC143C] hover:text-[#DC143C]">
               <RefreshCw className="h-3 w-3 animate-spin" /> Reload
             </Button>
           </div>
@@ -516,7 +521,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       {/* Left: Final Itinerary slots flow */}
                       <div className="lg:col-span-2 space-y-4">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#ff7a00] flex items-center gap-1.5 font-mono">
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5 font-mono">
                           📍 Primary Node: {winner.meetupZone.toUpperCase()}
                         </h3>
                         
@@ -551,7 +556,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
                       {/* Right: Summary details */}
                       <div className="space-y-4 bg-[#1c1b1b] border border-[#353534] rounded-[4px] p-5 h-fit text-[11px]">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#ff7a00] font-mono">Itinerary Analysis</h3>
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C] font-mono">Itinerary Analysis</h3>
                         
                         <div className="divide-y divide-[#353534] text-[11px] font-mono space-y-3">
                           <div className="flex justify-between py-2">
@@ -564,7 +569,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           </div>
                           <div className="flex justify-between py-2">
                             <span className="text-neutral-400">ITINERARY SCORE</span>
-                            <span className="font-extrabold text-[#ff7a00]">{(winner.score * 10).toFixed(1)}/10</span>
+                            <span className="font-extrabold text-[#DC143C]">{(winner.score * 10).toFixed(1)}/10</span>
                           </div>
                           <div className="flex justify-between py-2 border-b border-[#353534]">
                             <span className="text-neutral-400">MEETUP ZONE</span>
@@ -583,7 +588,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <Card className="block md:hidden border border-[#353534] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-4 space-y-4 rounded-[8px]">
                   <div className="flex justify-between items-center pb-2 border-b border-[#353534]">
                     <div className="space-y-0.5">
-                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#ff7a00] flex items-center gap-1.5">
+                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
                         Outing Options
                       </CardTitle>
@@ -593,7 +598,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     </div>
                     <Badge variant="outline" className={`rounded-[4px] py-0.5 px-2.5 text-[9px] font-mono font-bold uppercase tracking-widest shrink-0 ${
                       group.votingStatus === 'OPEN' 
-                        ? 'bg-[#ff7a00]/10 text-[#ff7a00] border-[#ff7a00]/20 animate-pulse' 
+                        ? 'bg-[#DC143C]/10 text-[#DC143C] border-[#DC143C]/20 animate-pulse' 
                         : 'bg-stone-900/40 text-neutral-400 border-stone-850'
                     }`}>
                       Voting: {group.votingStatus.toLowerCase()}
@@ -626,13 +631,13 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           <Card className="bg-[#1c1b1b] border border-[#353534] rounded-[8px] p-5 shadow-inner">
                             <div className="flex justify-between items-start gap-2">
                               <div>
-                                <span className="text-[9px] uppercase font-bold text-[#ff7a00] tracking-widest flex items-center gap-1 font-mono">
+                                <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1 font-mono">
                                   📍 Zone: {plan.meetupZone.toUpperCase()}
                                 </span>
                                 <h3 className="text-sm font-bold text-white mt-1.5 uppercase tracking-wider font-mono">{plan.name}</h3>
                                 <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-1">{plan.tagline}</p>
                               </div>
-                              <Badge variant="secondary" className="bg-[#ff7a00]/10 text-[#ff7a00] border border-[#ff7a00]/20 hover:bg-[#ff7a00]/10 hover:text-[#ff7a00] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
+                              <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 hover:bg-[#DC143C]/10 hover:text-[#DC143C] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
                                 <Vote className="h-3 w-3" />
                                 {voteCount} VOTES
                               </Badge>
@@ -649,7 +654,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                                     </p>
                                   </div>
                                   {sIdx < (plan.slots.length - 1) && (
-                                    <span className="text-[#ff7a00]/70 font-black text-xs">↓</span>
+                                    <span className="text-[#DC143C]/70 font-black text-xs">↓</span>
                                   )}
                                 </React.Fragment>
                               ))}
@@ -667,7 +672,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               </div>
                               <div className="space-y-0.5">
                                 <p className="text-[9px] text-neutral-500 tracking-wider">Score</p>
-                                <p className="text-xs font-bold text-[#ff7a00]">{(plan.score * 10).toFixed(1)}/10</p>
+                                <p className="text-xs font-bold text-[#DC143C]">{(plan.score * 10).toFixed(1)}/10</p>
                               </div>
                             </div>
                           </Card>
@@ -681,7 +686,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                               className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[10px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                                 userVotedPlanId === plan.id
                                   ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                  : 'bg-[#ff7a00] hover:bg-[#e06b00] text-black font-bold'
+                                  : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
                               }`}
                             >
                               {userVotedPlanId === plan.id ? (
@@ -719,7 +724,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           key={idx} 
                           onClick={() => scrollToPlan(idx)}
                           className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
-                            idx === activePlanIdx ? 'bg-[#ff7a00] scale-125' : 'bg-stone-900 hover:bg-stone-800'
+                            idx === activePlanIdx ? 'bg-[#DC143C] scale-125' : 'bg-stone-900 hover:bg-stone-800'
                           }`}
                         />
                       ))}
@@ -747,13 +752,13 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         <div className="space-y-4">
                           <div className="flex justify-between items-start gap-2 border-b border-[#353534] pb-3">
                             <div>
-                              <span className="text-[9px] uppercase font-bold text-[#ff7a00] tracking-widest flex items-center gap-1 font-mono">
+                              <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1 font-mono">
                                 📍 Zone: {plan.meetupZone.toUpperCase()}
                               </span>
                               <h3 className="text-xs font-bold text-white mt-1.5 uppercase tracking-widest font-mono line-clamp-1">{plan.name}</h3>
                               <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-2 min-h-[2.5rem]">{plan.tagline}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-[#ff7a00]/10 text-[#ff7a00] border border-[#ff7a00]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
+                            <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
                               <Vote className="h-3 w-3" />
                               {voteCount}
                             </Badge>
@@ -770,7 +775,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                                   </p>
                                 </div>
                                 {sIdx < (plan.slots.length - 1) && (
-                                  <span className="text-[#ff7a00]/70 font-black text-[10px]">↓</span>
+                                  <span className="text-[#DC143C]/70 font-black text-[10px]">↓</span>
                                 )}
                               </React.Fragment>
                             ))}
@@ -788,7 +793,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             </div>
                             <div className="space-y-0.5">
                               <p className="text-[8px] text-neutral-500 tracking-wider">Score</p>
-                              <p className="text-xs font-bold text-[#ff7a00]">{(plan.score * 10).toFixed(1)}</p>
+                              <p className="text-xs font-bold text-[#DC143C]">{(plan.score * 10).toFixed(1)}</p>
                             </div>
                           </div>
                         </div>
@@ -802,7 +807,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[9px] py-3 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
                                 ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                : 'bg-[#ff7a00] hover:bg-[#e06b00] text-black'
+                                : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black'
                             }`}
                           >
                             {userVotedPlanId === plan.id ? (
@@ -850,7 +855,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               <div className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] p-6 relative overflow-hidden rounded-[8px]">
                 <div className="scanning-line opacity-20" />
                 
-                <h3 className="font-mono text-xs font-bold text-[#ff7a00] uppercase mb-6 flex justify-between items-center tracking-wider">
+                <h3 className="font-mono text-xs font-bold text-[#DC143C] uppercase mb-6 flex justify-between items-center tracking-wider">
                   Member Sync
                   <span className="text-neutral-400 text-[9px] font-bold">
                     {members.length > 0 
@@ -867,11 +872,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
                     return (
                       <li key={member.userId} className={`flex items-center gap-3 transition-all ${isSynced ? '' : 'opacity-70 grayscale hover:grayscale-0 hover:opacity-100'}`}>
-                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#ff7a00] shadow-[0_0_8px_rgba(255,122,0,0.25)] bg-[#ff7a00]/5' : 'border-[#353534]'}`}>
+                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
                           {member.imageUrl ? (
                             <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover rounded-[2px]" />
                           ) : (
-                            <div className="w-full h-full bg-stone-900 border border-[#353534] flex items-center justify-center font-mono font-bold text-[10px] uppercase text-[#ff7a00] rounded-[2px]">
+                            <div className="w-full h-full bg-stone-900 border border-[#353534] flex items-center justify-center font-mono font-bold text-[10px] uppercase text-[#DC143C] rounded-[2px]">
                               {member.name.charAt(0)}
                             </div>
                           )}
@@ -899,7 +904,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         const hasLocation = locations.some((l: any) => l.userId === m.userId);
                         return hasBudget && hasLocation;
                       }).length !== members.length}
-                      className="w-full bg-[#ff7a00] hover:bg-[#e06b00] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(255,122,0,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="w-full bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isGenerating ? (
                         <>
@@ -926,9 +931,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                   <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                    <span className="text-[#ff7a00]">01</span> Phase: Extraction Point
+                    <span className="text-[#DC143C]">01</span> Phase: Extraction Point
                   </h2>
-                  <MapPin className="text-[#ff7a00] h-4 w-4" />
+                  <MapPin className="text-[#DC143C] h-4 w-4" />
                 </div>
                 <div className="p-5 space-y-4">
                   <div className="relative h-40 w-full bg-[#1c1b1b] border border-[#353534] rounded-[4px] overflow-hidden flex flex-col justify-center px-6 sm:px-10 space-y-5">
@@ -936,12 +941,12 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     <div className="scanning-line opacity-10"></div>
                     
                     <div className="space-y-1.5 relative z-10">
-                      <label className="font-mono text-[8.5px] text-[#ff7a00] uppercase tracking-widest font-bold">Primary Search neighborhood</label>
+                      <label className="font-mono text-[8.5px] text-[#DC143C] uppercase tracking-widest font-bold">Primary Search neighborhood</label>
                       <div className="relative flex items-center">
                         <Input 
                           value={addressVal}
                           onChange={(e) => setAddressVal(e.target.value)}
-                          className="w-full bg-black/60 border border-[#353534] py-5 pl-10 pr-24 text-xs font-mono focus-visible:ring-[#ff7a00] focus-visible:border-[#ff7a00] text-white rounded-[4px]" 
+                          className="w-full bg-black/60 border border-[#353534] py-5 pl-10 pr-24 text-xs font-mono focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] text-white rounded-[4px]" 
                           placeholder="QUERY COORDINATES (CITY, AREA, OR NEIGHBORHOOD)" 
                           type="text"
                           required
@@ -971,9 +976,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                      <span className="text-[#ff7a00]">02</span> Resource Tier
+                      <span className="text-[#DC143C]">02</span> Resource Tier
                     </h2>
-                    <DollarSign className="text-[#ff7a00] h-4 w-4" />
+                    <DollarSign className="text-[#DC143C] h-4 w-4" />
                   </div>
                   <div className="p-5 flex-1 flex flex-col justify-center space-y-2">
                     <label className="font-mono text-[8.5px] text-neutral-500 uppercase tracking-widest font-bold">Max Budget (INR)</label>
@@ -982,7 +987,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       <Input 
                         value={budgetVal}
                         onChange={(e) => setBudgetVal(e.target.value)}
-                        className="w-full bg-black/60 border border-[#353534] py-5 pl-7 pr-4 text-xs font-mono focus-visible:ring-[#ff7a00] focus-visible:border-[#ff7a00] text-white rounded-[4px]" 
+                        className="w-full bg-black/60 border border-[#353534] py-5 pl-7 pr-4 text-xs font-mono focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] text-white rounded-[4px]" 
                         placeholder="MAXIMUM OUTING SPEND PER HEAD" 
                         type="number"
                         min="0"
@@ -997,9 +1002,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                      <span className="text-[#ff7a00]">03</span> Atmospheric Profile
+                      <span className="text-[#DC143C]">03</span> Atmospheric Profile
                     </h2>
-                    <Heart className="text-[#ff7a00] h-4 w-4" />
+                    <Heart className="text-[#DC143C] h-4 w-4" />
                   </div>
                   <div className="p-5 flex-1 flex flex-wrap gap-2 content-center items-center justify-start bg-[#0e0e0e]/40">
                     {AVAILABLE_VIBES.map((vibe) => {
@@ -1013,7 +1018,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                             disabled={isSubmittingDetails}
                             className="peer sr-only" 
                           />
-                          <span className="inline-block px-3 py-1.5 font-mono text-[9px] font-bold border border-[#353534] bg-[#1c1b1b] text-neutral-400 peer-checked:border-[#ff7a00] peer-checked:text-[#ff7a00] peer-checked:bg-[#ff7a00]/10 transition-all uppercase rounded-[4px] hover:border-stone-850">
+                          <span className="inline-block px-3 py-1.5 font-mono text-[9px] font-bold border border-[#353534] bg-[#1c1b1b] text-neutral-400 peer-checked:border-[#DC143C] peer-checked:text-[#DC143C] peer-checked:bg-[#DC143C]/10 transition-all uppercase rounded-[4px] hover:border-stone-850">
                             {vibe}
                           </span>
                         </label>
@@ -1028,9 +1033,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               <div className="flex flex-col md:flex-row items-center gap-6 pt-5 border-t border-[#353534]/50">
                 <div className="flex-1 text-left">
                   <div className="flex items-center gap-3 text-neutral-400 font-mono text-[9px] uppercase tracking-wide">
-                    <span className="w-1.5 h-1.5 bg-[#ff7a00] rounded-full shadow-[0_0_6px_#ff7a00]"></span>
+                    <span className="w-1.5 h-1.5 bg-[#DC143C] rounded-full shadow-[0_0_6px_#DC143C]"></span>
                     Encryption Level: AES-256
-                    <span className="w-1.5 h-1.5 bg-[#ff7a00] rounded-full shadow-[0_0_6px_#ff7a00] ml-2"></span>
+                    <span className="w-1.5 h-1.5 bg-[#DC143C] rounded-full shadow-[0_0_6px_#DC143C] ml-2"></span>
                     Protocol: Double-Blind Consensus Selection
                   </div>
                   <p className="text-[10px] text-neutral-500 font-sans italic mt-1.5 leading-normal">
@@ -1041,7 +1046,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <Button 
                   type="submit" 
                   disabled={isSubmittingDetails || isSubmittingBudget || isSubmittingLocation || isSubmittingVibes}
-                  className="w-full md:w-auto px-10 py-5 bg-[#ff7a00] hover:bg-[#e06b00] text-black font-mono font-bold text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,122,0,0.3)] hover:shadow-[0_0_20px_rgba(255,122,0,0.55)] rounded-[4px] flex items-center justify-center gap-3 cursor-pointer"
+                  className="w-full md:w-auto px-10 py-5 bg-[#DC143C] hover:bg-[#B80F2E] text-black font-mono font-bold text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(220,20,60,0.3)] hover:shadow-[0_0_20px_rgba(220,20,60,0.55)] rounded-[4px] flex items-center justify-center gap-3 cursor-pointer"
                 >
                   {isSubmittingDetails ? (
                     <>

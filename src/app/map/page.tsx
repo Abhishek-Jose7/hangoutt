@@ -9,7 +9,7 @@ const Map = dynamic(() => import('@/components/Map'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[600px] flex flex-col items-center justify-center bg-stone-950 border border-stone-850 rounded-xl">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#EB690B] mb-2" />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#DC143C] mb-2" />
       <span className="text-stone-500 font-mono text-[10px] uppercase tracking-widest">Loading Interactive Map...</span>
     </div>
   ),
@@ -25,7 +25,7 @@ export default function MapPage() {
             href="/"
             className="flex items-center gap-2 text-stone-400 hover:text-white transition-all text-xs font-mono font-bold uppercase tracking-widest border border-stone-850 bg-stone-950/50 hover:bg-stone-900 rounded-lg px-3.5 py-2"
           >
-            <ArrowLeft className="h-4 w-4 text-[#EB690B]" /> Back to Home
+            <ArrowLeft className="h-4 w-4 text-[#DC143C]" /> Back to Home
           </Link>
           <div>
             <h1 className="font-heading text-lg font-bold tracking-widest text-white uppercase leading-none">Interactive Map</h1>
@@ -40,7 +40,7 @@ export default function MapPage() {
       {/* Map Container */}
       <section className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#EB690B] font-mono">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C] font-mono">
             [ Geographic Telemetry ]
           </span>
           <h2 className="text-3xl font-heading font-normal italic tracking-wide text-white">
@@ -72,7 +72,7 @@ export default function MapPage() {
         {/* Legend / Info card */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs mt-2">
           <div className="bg-stone-950/45 border border-stone-900/60 p-4 rounded-xl backdrop-blur-md">
-            <h3 className="font-bold text-white uppercase tracking-wider mb-2 text-[#EB690B]">Center Coordinate</h3>
+            <h3 className="font-bold text-white uppercase tracking-wider mb-2 text-[#DC143C]">Center Coordinate</h3>
             <p className="text-neutral-400 font-light text-[11px] leading-relaxed">
               Mumbai Centroid:<br />
               Lng: 72.8777<br />
@@ -86,7 +86,7 @@ export default function MapPage() {
             </p>
           </div>
           <div className="bg-stone-950/45 border border-stone-900/60 p-4 rounded-xl backdrop-blur-md">
-            <h3 className="font-bold text-white uppercase tracking-wider mb-2 text-[#EB690B]">Interactive Controls</h3>
+            <h3 className="font-bold text-white uppercase tracking-wider mb-2 text-[#DC143C]">Interactive Controls</h3>
             <p className="text-neutral-400 font-light text-[11px] leading-relaxed">
               Drag to pan the viewport. Use mouse scroll wheel to zoom or use the top-right controls to adjust zoom and orientation.
             </p>

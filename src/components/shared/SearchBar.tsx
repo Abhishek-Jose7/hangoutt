@@ -24,7 +24,7 @@ export default function SearchBar({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="pl-9 pr-8 w-full bg-stone-950/80 border border-stone-850 focus-visible:ring-1 focus-visible:ring-[#EB690B] focus-visible:border-[#EB690B] rounded-[8px] text-xs font-mono uppercase tracking-wider text-white placeholder-neutral-600 h-9"
+        className="pl-9 pr-8 w-full bg-stone-950/80 border border-stone-850 focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] rounded-[8px] text-xs font-mono uppercase tracking-wider text-white placeholder-neutral-600 h-9"
         placeholder={placeholder}
       />
       {value && (

@@ -139,7 +139,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#EB690B] mb-4" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
         <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing AI Planner Module...</p>
       </div>
     );
@@ -149,7 +149,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
     return (
       <PageContainer title="Planner Not Ready">
         <Card className="border border-stone-900 bg-stone-950/45 text-center p-8 rounded-[12px] backdrop-blur-md">
-          <Sparkles className="h-8 w-8 text-[#EB690B] mx-auto mb-4" />
+          <Sparkles className="h-8 w-8 text-[#DC143C] mx-auto mb-4" />
           <p className="text-xs font-mono uppercase tracking-widest text-neutral-400 mb-4">No plans generated yet. Complete detail collection to allow the Admin to build itineraries.</p>
           <Link href={`/groups/${groupId}`} className={buttonVariants({ variant: 'outline', size: 'sm', className: 'border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 transition-all' })}>
             Back to Workspace
@@ -172,7 +172,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
             href={`/groups/${group.id}`} 
             className={buttonVariants({ variant: 'outline', size: 'sm', className: 'border-stone-855 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md' })}
           >
-            <ArrowLeft className="h-3.5 w-3.5 text-[#EB690B]" /> BACK TO WORKSPACE
+            <ArrowLeft className="h-3.5 w-3.5 text-[#DC143C]" /> BACK TO WORKSPACE
           </Link>
           {isAdmin && votingStatus === 'OPEN' && (
             <Button
@@ -194,11 +194,11 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
         {/* Navigation / List Panel */}
         <div className="space-y-4">
           <div className="flex justify-between items-center px-1">
-            <h2 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-1.5">
+            <h2 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5">
               <Sparkles className="h-4 w-4" />
               Itinerary Choices
             </h2>
-            <Badge variant="outline" className={votingStatus === 'OPEN' ? 'bg-[#EB690B]/10 text-[#EB690B] border-[#EB690B]/20 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]' : 'bg-stone-900/40 text-neutral-400 border border-stone-850 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]'}>
+            <Badge variant="outline" className={votingStatus === 'OPEN' ? 'bg-[#DC143C]/10 text-[#DC143C] border-[#DC143C]/20 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]' : 'bg-stone-900/40 text-neutral-400 border border-stone-850 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]'}>
               VOTING: {votingStatus.toLowerCase()}
             </Badge>
           </div>
@@ -214,8 +214,8 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                 <Card 
                   key={plan.id}
                   onClick={() => setActivePlanId(plan.id)}
-                  className={`cursor-pointer transition duration-200 border rounded-[12px] bg-stone-950/45 backdrop-blur-md shadow-lg hover:border-[#EB690B]/50 ${
-                    isActive ? 'border-[#EB690B] shadow-[#EB690B]/5' : 'border-stone-900/60'
+                  className={`cursor-pointer transition duration-200 border rounded-[12px] bg-stone-950/45 backdrop-blur-md shadow-lg hover:border-[#DC143C]/50 ${
+                    isActive ? 'border-[#DC143C] shadow-[#DC143C]/5' : 'border-stone-900/60'
                   }`}
                 >
                   <CardHeader className="p-4 pb-2">
@@ -227,7 +227,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                           Winner
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="bg-[#EB690B]/10 text-[#EB690B] border border-[#EB690B]/20 hover:bg-[#EB690B]/10 hover:text-[#EB690B] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2">
+                        <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 hover:bg-[#DC143C]/10 hover:text-[#DC143C] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2">
                           <Vote className="h-2.5 w-2.5" />
                           {voteCount} votes
                         </Badge>
@@ -237,7 +237,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                   </CardHeader>
                   <CardContent className="p-4 pt-0 text-[10px] text-neutral-400 flex justify-between font-mono font-medium">
                     <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-[#EB690B]" />
+                      <Clock className="h-3.5 w-3.5 text-[#DC143C]" />
                       {Math.round(plan.totalDurationMinutes / 60)}h {plan.totalDurationMinutes % 60}m
                     </span>
                     <span className="font-bold text-white">
@@ -285,7 +285,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                     className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] px-5 py-2 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer ${
                       userVotedPlanId === selectedPlan.id
                         ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
-                        : 'bg-[#EB690B] hover:bg-[#D4590A] text-white'
+                        : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
                     }`}
                   >
                     {userVotedPlanId === selectedPlan.id ? (
@@ -304,7 +304,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
             <CardContent className="pt-6 space-y-6">
               
               {/* Cost & Duration Banner */}
-              <div className="grid grid-cols-3 gap-4 bg-[#EB690B]/10 border border-[#EB690B]/20 p-4 rounded-[8px] text-center font-mono">
+              <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
                 <div>
                   <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
                   <p className="text-base font-bold text-white mt-1">₹{selectedPlan.totalEstimatedCostPerHead} <span className="text-[9px] text-neutral-500 font-normal">/ HEAD</span></p>
@@ -317,7 +317,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                 </div>
                 <div>
                   <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
-                  <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[9px] font-bold text-[#EB690B] py-0.5 px-2.5 rounded-[4px] font-mono">
+                  <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[9px] font-bold text-[#DC143C] py-0.5 px-2.5 rounded-[4px] font-mono">
                     {selectedPlan.budgetTier.replace('_', ' ')}
                   </Badge>
                 </div>
@@ -329,7 +329,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                   return (
                     <div key={index} className="relative">
                       {/* Timeline point */}
-                      <span className="absolute -left-[35px] top-1 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#EB690B] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
+                      <span className="absolute -left-[35px] top-1 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
                         {slot.slotOrder}
                       </span>
                       
@@ -341,7 +341,7 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                               {slot.category}
                             </span>
                           </div>
-                          <span className="text-[9px] font-bold text-[#EB690B] bg-[#EB690B]/10 border border-[#EB690B]/20 px-2 py-0.5 rounded-[4px] font-mono">
+                          <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono">
                             {slot.arrivalTime} ({slot.durationMinutes}M)
                           </span>
                         </div>
@@ -350,11 +350,11 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
                         </p>
                         <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
                           <span className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-[#EB690B]" />
+                            <DollarSign className="h-3 w-3 text-[#DC143C]" />
                             ESTIMATED: ₹{slot.estimatedCostPerHead}
                           </span>
                           {slot.travelToNextMinutes !== null && (
-                            <span className="text-[#EB690B] font-bold flex items-center gap-1 uppercase text-[9px]">
+                            <span className="text-[#DC143C] font-bold flex items-center gap-1 uppercase text-[9px]">
                               TRANSIT: {slot.travelToNextMinutes} MINS
                             </span>
                           )}

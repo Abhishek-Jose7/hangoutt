@@ -14,8 +14,8 @@ export default function SettingsPage() {
         {/* Account settings */}
         <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
           <CardHeader>
-            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-              <User className="h-4 w-4 text-[#EB690B]" />
+            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+              <User className="h-4 w-4 text-[#DC143C]" />
               Account Settings
             </CardTitle>
             <CardDescription className="text-xs text-neutral-450 font-sans font-light">
@@ -30,8 +30,8 @@ export default function SettingsPage() {
         {/* Privacy & Permissions */}
         <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
           <CardHeader>
-            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-              <Shield className="h-4 w-4 text-[#EB690B]" />
+            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+              <Shield className="h-4 w-4 text-[#DC143C]" />
               Privacy & Location Permissions
             </CardTitle>
             <CardDescription className="text-xs text-neutral-450 font-sans font-light">
@@ -56,8 +56,8 @@ export default function SettingsPage() {
         {/* Notification details */}
         <Card className="border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
           <CardHeader>
-            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#EB690B] flex items-center gap-2">
-              <Bell className="h-4 w-4 text-[#EB690B]" />
+            <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+              <Bell className="h-4 w-4 text-[#DC143C]" />
               Notification Settings
             </CardTitle>
             <CardDescription className="text-xs text-neutral-450 font-sans font-light">

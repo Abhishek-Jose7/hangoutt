@@ -8,7 +8,7 @@ const Map = dynamic(() => import('@/components/Map'), {
   ssr: false,
   loading: () => (
     <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-stone-950 border border-stone-850 z-0">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#EB690B] mb-2" />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#DC143C] mb-2" />
       <span className="text-stone-500 font-mono text-[10px] uppercase tracking-widest">Booting Cartography Engine...</span>
     </div>
   ),
@@ -67,7 +67,7 @@ interface GlowCardProps {
   glowColor?: string;
 }
 
-function GlowCard({ children, className = '', glowColor = 'rgba(235, 105, 11, 0.12)' }: GlowCardProps) {
+function GlowCard({ children, className = '', glowColor = 'rgba(220, 20, 60, 0.12)' }: GlowCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
@@ -111,9 +111,9 @@ function GlowCard({ children, className = '', glowColor = 'rgba(235, 105, 11, 0.
 // ── 4. Scroll-linked Vertical Progress Timeline ──
 function ScrollTimeline() {
   const steps = [
-    { num: '01', phase: 'SETUP', title: 'Create Lobby', desc: 'Initialize a group planning workspace in under 30 seconds and define the category profile parameters.', glow: 'rgba(235, 105, 11, 0.12)' },
+    { num: '01', phase: 'SETUP', title: 'Create Lobby', desc: 'Initialize a group planning workspace in under 30 seconds and define the category profile parameters.', glow: 'rgba(220, 20, 60, 0.12)' },
     { num: '02', phase: 'SYNC', title: 'Distribute Link', desc: 'Share a unique 8-character invite code. Members enter coordinate pins and budgets privately.', glow: 'rgba(0, 229, 160, 0.12)' },
-    { num: '03', phase: 'COMPUTE', title: 'Synthesize', desc: 'Ola Maps calculates travel times. AI layer compiles three tailored, narrative itinerary options.', glow: 'rgba(235, 105, 11, 0.12)' },
+    { num: '03', phase: 'COMPUTE', title: 'Synthesize', desc: 'Ola Maps calculates travel times. AI layer compiles three tailored, narrative itinerary options.', glow: 'rgba(220, 20, 60, 0.12)' },
     { num: '04', phase: 'LOCK', title: 'Consensus', desc: 'Cast votes in the shared planner lobby. The winning plan is confirmed and locked automatically.', glow: 'rgba(0, 229, 160, 0.12)' },
   ];
 
@@ -156,7 +156,7 @@ function ScrollTimeline() {
       {/* Vertical Connection Track */}
       <div className="absolute left-6 md:left-10 top-0 bottom-0 w-[2px] bg-stone-900">
         <div
-          className="absolute top-0 w-full bg-gradient-to-b from-[#EB690B] to-[#00E5A0] transition-all duration-150 ease-out shadow-[0_0_8px_#EB690B]"
+          className="absolute top-0 w-full bg-gradient-to-b from-[#DC143C] to-[#00E5A0] transition-all duration-150 ease-out shadow-[0_0_8px_#DC143C]"
           style={{ height: `${scrollProgress * 100}%` }}
         />
       </div>
@@ -176,12 +176,12 @@ function ScrollTimeline() {
             {/* Dot Node */}
             <div
               className={`absolute -left-[30px] md:-left-[46px] top-2.5 w-4 h-4 rounded-full bg-stone-950 border-2 transition-all duration-300 flex items-center justify-center ${isActive
-                ? idx % 2 === 0 ? 'border-[#EB690B] scale-110' : 'border-[#00E5A0] scale-110'
+                ? idx % 2 === 0 ? 'border-[#DC143C] scale-110' : 'border-[#00E5A0] scale-110'
                 : 'border-stone-800'
                 }`}
             >
               {isActive && (
-                <span className={`w-1.5 h-1.5 rounded-full ${idx % 2 === 0 ? 'bg-[#EB690B]' : 'bg-[#00E5A0]'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${idx % 2 === 0 ? 'bg-[#DC143C]' : 'bg-[#00E5A0]'}`} />
               )}
             </div>
 
@@ -189,12 +189,12 @@ function ScrollTimeline() {
             <GlowCard
               glowColor={step.glow}
               className={`p-6 md:p-8 bg-stone-950/45 border ${isCurrent
-                ? idx % 2 === 0 ? 'border-[#EB690B]/30' : 'border-[#00E5A0]/30'
+                ? idx % 2 === 0 ? 'border-[#DC143C]/30' : 'border-[#00E5A0]/30'
                 : 'border-stone-900/30'
                 } rounded-[12px]`}
             >
               <span className={`text-[10px] font-mono font-bold uppercase tracking-wider block transition-colors duration-300 ${isCurrent
-                ? idx % 2 === 0 ? 'text-[#EB690B]' : 'text-[#00E5A0]'
+                ? idx % 2 === 0 ? 'text-[#DC143C]' : 'text-[#00E5A0]'
                 : 'text-neutral-500'
                 }`}>
                 {step.num} / {step.phase}
@@ -478,7 +478,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0A0A0C] text-foreground font-sans selection:bg-[#EB690B]/20 selection:text-[#EB690B]">
+    <div className="flex flex-col min-h-screen bg-[#0A0A0C] text-foreground font-sans selection:bg-[#DC143C]/20 selection:text-[#DC143C]">
 
       {/* ── SECTION 1: FULL VIEWPORT INTERACTIVE MAP CONSOLE ── */}
       <section className="h-screen w-screen relative overflow-hidden bg-[#0D0A08] border-b border-stone-900/60 z-20">
@@ -506,7 +506,7 @@ export default function HomePage() {
         <header className="absolute top-0 left-0 w-full z-20 px-4 py-6 sm:px-8 lg:px-12 lg:py-8 flex items-center justify-between pointer-events-auto">
           <div className="flex items-center gap-3.5">
             {/* Custom logo shield */}
-            <svg viewBox="0 0 24 28" className="w-9 h-10 text-[#EB690B]" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 28" className="w-9 h-10 text-[#DC143C]" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 2C12 2 20 4 20 10C20 17 12 24 12 24C12 24 4 17 4 10C4 4 12 2 12 2Z" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" />
               <path d="M8 8V13C8 15.2 9.8 17 12 17C14.2 17 16 15.2 16 13V8" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
@@ -521,11 +521,11 @@ export default function HomePage() {
             <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
             <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
             {isSignedIn ? (
-              <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+              <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
                 Go to Lobby
               </Link>
             ) : (
-              <Link href="/sign-up" className="px-5 py-2.5 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+              <Link href="/sign-up" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
                 Start Hangout
               </Link>
             )}
@@ -576,7 +576,7 @@ export default function HomePage() {
         {/* Bottom-Left Telemetry / Weather Widget */}
         <footer className="hidden lg:flex absolute bottom-10 left-12 z-20 pointer-events-auto select-none items-center gap-10 bg-stone-950/60 backdrop-blur-md px-6 py-4 border border-stone-900/60 shadow-lg rounded-[12px]">
           <div className="flex items-center gap-4">
-            <CloudSun className="w-9 h-9 text-[#EB690B]" />
+            <CloudSun className="w-9 h-9 text-[#DC143C]" />
             <div className="flex items-start gap-1">
               <span className="font-sans text-[38px] font-light text-white leading-none">{weather ? `${weather.temp}\u00b0` : '--\u00b0'}</span>
               <div className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest leading-tight">
@@ -645,7 +645,7 @@ export default function HomePage() {
             type="button"
             onClick={handleRecenter}
             title="Recenter"
-            className="w-10 h-10 bg-[#EB690B] hover:bg-[#D4590A] text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
+            className="w-10 h-10 bg-[#DC143C] hover:bg-[#B80F2E] text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
           >
             <Target className="w-4.5 h-4.5" />
           </button>
@@ -683,21 +683,21 @@ export default function HomePage() {
                     alt={activeVenue.name}
                     className="w-full h-full object-cover grayscale opacity-85"
                   />
-                  <div className="absolute inset-0 bg-[#EB690B]/10 mix-blend-color" />
+                  <div className="absolute inset-0 bg-[#DC143C]/10 mix-blend-color" />
                 </div>
 
                 <div className="space-y-0.5 flex-1 min-w-0">
-                  <span className="font-mono text-[6.5px] sm:text-[7px] text-[#EB690B] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
+                  <span className="font-mono text-[6.5px] sm:text-[7px] text-[#DC143C] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
                   <h3 className="font-campus text-sm sm:text-base font-bold text-white tracking-wide leading-tight mt-0.5 truncate">{activeVenue.name}</h3>
                   <p className="text-[8px] sm:text-[8.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1 truncate">{activeVenue.address}, {activeVenue.place}</p>
 
                   <div className="flex items-center gap-3 text-[8px] sm:text-[8.5px] font-mono text-neutral-400 mt-1.5">
                     <span className="flex items-center gap-1 sm:gap-1.5">
-                      <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B] transform rotate-45" />
+                      <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#DC143C] transform rotate-45" />
                       <span className="truncate max-w-[95px]">{activeVenue.connections}</span>
                     </span>
                     <span className="flex items-center gap-1 sm:gap-1.5">
-                      <Phone className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#EB690B]" />
+                      <Phone className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#DC143C]" />
                       <span>{activeVenue.phone}</span>
                     </span>
                   </div>
@@ -729,12 +729,12 @@ export default function HomePage() {
 
       {/* ── SECTION 2: THE CORE COORDINATION TECHNOLOGY (BENTO GRID WITH GLOW) ── */}
       <section id="about" className="bg-[#0A0A0C] py-24 md:py-32 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#EB690B]/5 rounded-full filter blur-[100px] pointer-events-none" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#DC143C]/5 rounded-full filter blur-[100px] pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#00E5A0]/2 rounded-full filter blur-[100px] pointer-events-none" />
 
         <div className="mx-auto max-w-7xl px-8 relative z-10" id="features">
           <ScrollReveal className="text-center max-w-3xl mx-auto mb-20 space-y-4">
-            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#EB690B] font-mono">
+            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#DC143C] font-mono">
               [ COORDINATION PLATFORM ARCHITECTURE ]
             </span>
             <h2 className="font-heading text-4xl sm:text-6xl text-white font-normal leading-tight italic">
@@ -749,11 +749,11 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
             {/* Card 1 */}
             <ScrollReveal>
-              <GlowCard glowColor="rgba(235, 105, 11, 0.15)" className="h-full">
-                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#EB690B]/30 tracking-widest">PROTO_01</div>
+              <GlowCard glowColor="rgba(220, 20, 60, 0.15)" className="h-full">
+                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#DC143C]/30 tracking-widest">PROTO_01</div>
                 <div>
-                  <div className="w-10 h-10 rounded-lg bg-[#EB690B]/10 border border-[#EB690B]/30 flex items-center justify-center mb-6">
-                    <Navigation className="w-5 h-5 text-[#EB690B] transform rotate-45" />
+                  <div className="w-10 h-10 rounded-lg bg-[#DC143C]/10 border border-[#DC143C]/30 flex items-center justify-center mb-6">
+                    <Navigation className="w-5 h-5 text-[#DC143C] transform rotate-45" />
                   </div>
                   <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
                     Fair travel midpoints
@@ -764,7 +764,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
                   <span>METRIC: TRAVEL AVERAGES</span>
-                  <span className="text-[#EB690B] group-hover:translate-x-1 transition-transform">→</span>
+                  <span className="text-[#DC143C] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
               </GlowCard>
             </ScrollReveal>
@@ -793,11 +793,11 @@ export default function HomePage() {
 
             {/* Card 3 */}
             <ScrollReveal>
-              <GlowCard glowColor="rgba(235, 105, 11, 0.15)" className="h-full">
-                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#EB690B]/30 tracking-widest">PROTO_03</div>
+              <GlowCard glowColor="rgba(220, 20, 60, 0.15)" className="h-full">
+                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#DC143C]/30 tracking-widest">PROTO_03</div>
                 <div>
-                  <div className="w-10 h-10 rounded-lg bg-[#EB690B]/10 border border-[#EB690B]/30 flex items-center justify-center mb-6">
-                    <Sparkles className="w-5 h-5 text-[#EB690B]" />
+                  <div className="w-10 h-10 rounded-lg bg-[#DC143C]/10 border border-[#DC143C]/30 flex items-center justify-center mb-6">
+                    <Sparkles className="w-5 h-5 text-[#DC143C]" />
                   </div>
                   <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
                     Itinerary compiler
@@ -808,7 +808,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
                   <span>SYSTEM: COMPILER CORES</span>
-                  <span className="text-[#EB690B] group-hover:translate-x-1 transition-transform">→</span>
+                  <span className="text-[#DC143C] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
               </GlowCard>
             </ScrollReveal>
@@ -846,7 +846,7 @@ export default function HomePage() {
 
         <div className="relative z-10 max-w-4xl mx-auto px-8 space-y-10">
           <ScrollReveal className="space-y-4">
-            <span className="inline-block text-xs font-mono font-bold uppercase tracking-widest text-[#EB690B]">
+            <span className="inline-block text-xs font-mono font-bold uppercase tracking-widest text-[#DC143C]">
               [ LAUNCH INITIALIZATION ]
             </span>
             <h2 className="font-heading text-5xl sm:text-7xl text-white font-normal italic leading-none">
@@ -862,7 +862,7 @@ export default function HomePage() {
               <Link href="/groups" passHref>
                 <button
                   type="button"
-                  className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                  className="px-14 py-6 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
                 >
                   Go to lobbies
                 </button>
@@ -871,7 +871,7 @@ export default function HomePage() {
               <Link href="/sign-up" passHref>
                 <button
                   type="button"
-                  className="px-14 py-6 bg-gradient-to-r from-[#EB690B] to-[#FBBF24] hover:from-[#F97316] hover:to-[#F5A623] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                  className="px-14 py-6 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
                 >
                   START A HANGOUT
                 </button>
@@ -897,7 +897,7 @@ export default function HomePage() {
                 <li><Link href="#about" className="hover:text-white transition-colors">Venue Discovery</Link></li>
                 <li><Link href="#steps" className="hover:text-white transition-colors">Transit Intelligence</Link></li>
                 <li><Link href="#cta" className="hover:text-white transition-colors">Group Consensus</Link></li>
-                <li><Link href="/map" className="text-[#EB690B] hover:text-[#00E5A0] font-bold transition-colors">Live Map</Link></li>
+                <li><Link href="/map" className="text-[#DC143C] hover:text-[#00E5A0] font-bold transition-colors">Live Map</Link></li>
               </ul>
             </div>
             <div>

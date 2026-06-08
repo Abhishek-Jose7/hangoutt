@@ -103,7 +103,7 @@ export default function JoinGroupDialog({ isOpen, onClose }: JoinGroupDialogProp
             <Button
               type="submit"
               disabled={isLoading || inviteCode.trim().length !== 8}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white shadow"
+              className="bg-rose-700 hover:bg-rose-600 text-white shadow"
             >
               {isLoading ? (
                 <>

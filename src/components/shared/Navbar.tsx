@@ -28,7 +28,7 @@ export default function Navbar() {
         <div className="flex items-center gap-8">
           <Link href="/groups" className="flex items-center gap-2">
             <span className="text-[17px] font-campus font-bold uppercase tracking-[0.15em] text-white">
-              Hang<span className="text-[#EB690B] font-serif-display lowercase italic font-normal">out</span>
+              Hang<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span>
             </span>
           </Link>
           
@@ -43,7 +43,7 @@ export default function Navbar() {
                   className={cn(
                     "text-[10px] font-mono uppercase tracking-widest font-bold transition-all py-1.5 px-3 rounded-[6px] flex items-center gap-2",
                     isActive 
-                      ? "bg-stone-900 text-[#EB690B] border border-stone-800" 
+                      ? "bg-stone-900 text-[#DC143C] border border-stone-800" 
                       : "text-neutral-400 hover:bg-stone-900/50 hover:text-white"
                   )}
                 >
@@ -60,7 +60,7 @@ export default function Navbar() {
           <Button
             onClick={() => setIsCreateOpen(true)}
             size="sm"
-            className="hidden sm:flex bg-[#EB690B] hover:bg-[#D4590A] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+            className="hidden sm:flex bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
           >
             <Plus className="h-3.5 w-3.5" />
             New Lobby
@@ -72,7 +72,7 @@ export default function Navbar() {
             variant="outline"
             className="border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
-            <LogIn className="h-3.5 w-3.5 text-[#EB690B]" />
+            <LogIn className="h-3.5 w-3.5 text-[#DC143C]" />
             Join Lobby
           </Button>
 

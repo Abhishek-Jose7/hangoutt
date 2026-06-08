@@ -135,8 +135,8 @@ export default function Map({
       if (markerData.isActive) {
         el.innerHTML = `
           <div style="position: relative; width: 40px; height: 40px; transform: translate(-20px, -20px); display: flex; items-center; justify-content: center;">
-            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #EB690B; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
-            <div style="position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 50%; background-color: #EB690B; border: 3px solid #0D0A08; box-shadow: 0 0 10px #EB690B;"></div>
+            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #DC143C; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
+            <div style="position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 50%; background-color: #DC143C; border: 3px solid #0D0A08; box-shadow: 0 0 10px #DC143C;"></div>
           </div>
         `;
       } else {

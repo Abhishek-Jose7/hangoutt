@@ -58,7 +58,7 @@
   --card-foreground: oklch(0.98 0.01 25);
   --popover: oklch(0.12 0.005 25);
   --popover-foreground: oklch(0.98 0.01 25);
-  --primary: oklch(0.65 0.22 35); /* #EB690B Sunset Orange */
+  --primary: oklch(0.58 0.23 18); /* #DC143C Scarlet */
   --primary-foreground: oklch(0 0 0);
   --secondary: oklch(0.45 0.18 10); /* Crimson */
   --secondary-foreground: oklch(0.98 0.01 25);
@@ -69,8 +69,8 @@
   --destructive: oklch(0.40 0.18 20);
   --border: oklch(0.15 0.008 25);
   --input: oklch(0.12 0.005 25);
-  --ring: oklch(0.65 0.22 35);
-  --chart-1: oklch(0.65 0.22 35);
+  --ring: oklch(0.58 0.23 18);
+  --chart-1: oklch(0.58 0.23 18);
   --chart-2: oklch(0.06 0.02 25);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
@@ -78,12 +78,12 @@
   --radius: 0.25rem; /* SOFT ROUND_FOUR matching Stitch specification */
   --sidebar: oklch(0.12 0.005 25);
   --sidebar-foreground: oklch(0.98 0.01 25);
-  --sidebar-primary: oklch(0.65 0.22 35);
+  --sidebar-primary: oklch(0.58 0.23 18);
   --sidebar-primary-foreground: oklch(0 0 0);
   --sidebar-accent: oklch(0.08 0.02 25);
-  --sidebar-accent-foreground: oklch(0.65 0.22 35);
+  --sidebar-accent-foreground: oklch(0.58 0.23 18);
   --sidebar-border: oklch(0.15 0.008 25);
-  --sidebar-ring: oklch(0.65 0.22 35);
+  --sidebar-ring: oklch(0.58 0.23 18);
 }
 
 .dark {
@@ -162,7 +162,7 @@
 }
 
 .text-glow {
-  text-shadow: 0 0 10px rgba(255, 182, 144, 0.3);
+  text-shadow: 0 0 10px rgba(255, 128, 160, 0.3);
 }
 
 /* HUD Grid & Scanning Line Styles */
@@ -174,7 +174,7 @@
 
 .scanning-line {
   height: 2px;
-  background: linear-gradient(to right, transparent, #ff7a00, transparent);
+  background: linear-gradient(to right, transparent, #DC143C, transparent);
   animation: scan 4s linear infinite;
   position: absolute;
   width: 100%;
@@ -187,7 +187,7 @@
 }
 
 .active-glow {
-  box-shadow: 0 0 15px rgba(255, 122, 0, 0.4);
+  box-shadow: 0 0 15px rgba(220, 20, 60, 0.4);
 }
 
 /* Custom scrollbar matching the moody UI */
@@ -206,6 +206,6 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #f97316;
+  background: #E11D48;
 }
-
+
