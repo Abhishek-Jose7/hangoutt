@@ -221,7 +221,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
         toast.error(res.error.message || 'Failed to start details collection');
         return;
       }
-      toast.success('Lobby locked! Details collection has started.');
+      toast.success('Group locked! Details collection has started.');
       await loadData();
     } catch (_err) {
       toast.error('An error occurred starting details collection.');
@@ -343,7 +343,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
       const vibesRes = await submitMemberVibes(groupId, selectedVibes);
 
       if (budgetRes.success && locationRes.success && vibesRes.success) {
-        toast.success("Lobby details synced successfully!");
+        toast.success("Group details synced successfully!");
       } else {
         const errorMsg = (!budgetRes.success ? (budgetRes as any).error?.message : '') || 
                          (!locationRes.success ? (locationRes as any).error?.message : '') || 
@@ -412,11 +412,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
 
   if (!data) {
     return (
-      <PageContainer title="Lobby Workspace">
+      <PageContainer title="Group Workspace">
         <Card className="border border-stone-900 bg-stone-950/45 text-center p-8 rounded-[12px] backdrop-blur-md">
           <p className="text-xs font-mono uppercase tracking-widest text-neutral-400 mb-4">Workspace not found or you are not a member.</p>
           <Link href="/groups" className={buttonVariants({ variant: 'outline', size: 'sm', className: 'border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 transition-all' })}>
-            Back to Lobbies
+            Back to Groups
           </Link>
         </Card>
       </PageContainer>
@@ -457,7 +457,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               </span>
             </div>
             <h1 className="font-sans text-3xl font-normal text-white uppercase leading-none tracking-wide">
-              LOBBY: {group.name}
+              Group: {group.name}
             </h1>
             <p className="font-mono text-[10px] text-neutral-400 mt-2 flex flex-wrap items-center gap-2">
               <span>UUID: {group.id.substring(0, 8).toUpperCase()}</span>
@@ -931,7 +931,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                   <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                    <span className="text-[#DC143C]">01</span> Phase: Extraction Point
+                    <span className="text-[#DC143C]"></span>Enter Location
                   </h2>
                   <MapPin className="text-[#DC143C] h-4 w-4" />
                 </div>
@@ -941,7 +941,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     <div className="scanning-line opacity-10"></div>
                     
                     <div className="space-y-1.5 relative z-10">
-                      <label className="font-mono text-[8.5px] text-[#DC143C] uppercase tracking-widest font-bold">Primary Search neighborhood</label>
+                      <label className="font-mono text-[8.5px] text-[#DC143C] uppercase tracking-widest font-bold">Enter nearest local station</label>
                       <div className="relative flex items-center">
                         <Input 
                           value={addressVal}
@@ -963,10 +963,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center text-[9px] font-mono text-neutral-500 uppercase px-1">
-                    <span>Signal Strength: Optimal</span>
-                    <span className="text-[#00E1AB]">GPS_LOCKED_V2.4</span>
-                  </div>
+
                 </div>
               </section>
 
@@ -976,7 +973,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                      <span className="text-[#DC143C]">02</span> Resource Tier
+                      <span className="text-[#DC143C]"></span> Budget
                     </h2>
                     <DollarSign className="text-[#DC143C] h-4 w-4" />
                   </div>
@@ -988,7 +985,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         value={budgetVal}
                         onChange={(e) => setBudgetVal(e.target.value)}
                         className="w-full bg-black/60 border border-[#353534] py-5 pl-7 pr-4 text-xs font-mono focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] text-white rounded-[4px]" 
-                        placeholder="MAXIMUM OUTING SPEND PER HEAD" 
+                        placeholder="Enter your budget(doesnt include travel)" 
                         type="number"
                         min="0"
                         required
@@ -1002,7 +999,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <section className="bg-[#0e0e0e]/80 backdrop-blur-md border border-[#353534] rounded-[8px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                      <span className="text-[#DC143C]">03</span> Atmospheric Profile
+                      <span className="text-[#DC143C]"></span>Vibe
                     </h2>
                     <Heart className="text-[#DC143C] h-4 w-4" />
                   </div>
@@ -1032,12 +1029,6 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               {/* Submission Action */}
               <div className="flex flex-col md:flex-row items-center gap-6 pt-5 border-t border-[#353534]/50">
                 <div className="flex-1 text-left">
-                  <div className="flex items-center gap-3 text-neutral-400 font-mono text-[9px] uppercase tracking-wide">
-                    <span className="w-1.5 h-1.5 bg-[#DC143C] rounded-full shadow-[0_0_6px_#DC143C]"></span>
-                    Encryption Level: AES-256
-                    <span className="w-1.5 h-1.5 bg-[#DC143C] rounded-full shadow-[0_0_6px_#DC143C] ml-2"></span>
-                    Protocol: Double-Blind Consensus Selection
-                  </div>
                   <p className="text-[10px] text-neutral-500 font-sans italic mt-1.5 leading-normal">
                     Your location, budget threshold, and vibe criteria are compiled privately to isolate a coordinates centroid and optimal itineraries.
                   </p>

@@ -111,10 +111,10 @@ function GlowCard({ children, className = '', glowColor = 'rgba(220, 20, 60, 0.1
 // ── 4. Scroll-linked Vertical Progress Timeline ──
 function ScrollTimeline() {
   const steps = [
-    { num: '01', phase: 'SETUP', title: 'Create Lobby', desc: 'Initialize a group planning workspace in under 30 seconds and define the category profile parameters.', glow: 'rgba(220, 20, 60, 0.12)' },
+    { num: '01', phase: 'SETUP', title: 'Create Group', desc: 'Initialize a group planning workspace in under 30 seconds and define the category profile parameters.', glow: 'rgba(220, 20, 60, 0.12)' },
     { num: '02', phase: 'SYNC', title: 'Distribute Link', desc: 'Share a unique 8-character invite code. Members enter coordinate pins and budgets privately.', glow: 'rgba(0, 229, 160, 0.12)' },
     { num: '03', phase: 'COMPUTE', title: 'Synthesize', desc: 'Ola Maps calculates travel times. AI layer compiles three tailored, narrative itinerary options.', glow: 'rgba(220, 20, 60, 0.12)' },
-    { num: '04', phase: 'LOCK', title: 'Consensus', desc: 'Cast votes in the shared planner lobby. The winning plan is confirmed and locked automatically.', glow: 'rgba(0, 229, 160, 0.12)' },
+    { num: '04', phase: 'LOCK', title: 'Consensus', desc: 'Cast votes in the shared planner Group. The winning plan is confirmed and locked automatically.', glow: 'rgba(0, 229, 160, 0.12)' },
   ];
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -521,7 +521,7 @@ export default function HomePage() {
           <div className="hidden md:flex items-center">
             {isSignedIn ? (
               <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
-                Go to Lobby
+                Go to Group
               </Link>
             ) : (
               <Link href="/sign-up" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
@@ -804,7 +804,7 @@ export default function HomePage() {
                   type="button"
                   className="px-14 py-6 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
                 >
-                  Go to lobbies
+                  Go to Groups
                 </button>
               </Link>
             ) : (

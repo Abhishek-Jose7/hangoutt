@@ -67,7 +67,7 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md rounded-[4px] border border-[#353534] bg-[#0e0e0e] text-white shadow-[0_0_30px_rgba(0,0,0,0.55)]">
         <DialogHeader>
-          <DialogTitle className="text-sm font-mono font-bold text-white uppercase tracking-widest">Create Lobby Protocol</DialogTitle>
+          <DialogTitle className="text-sm font-mono font-bold text-white uppercase tracking-widest">Create Group Protocol</DialogTitle>
           <DialogDescription className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">
             Start planning your next meetup. Give your group a name and choose a type.
           </DialogDescription>

@@ -30,7 +30,7 @@ export default function GroupsPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('An error occurred while loading lobbies.');
+      toast.error('An error occurred while loading Groups.');
     } finally {
       setLoading(false);
     }
@@ -61,7 +61,7 @@ export default function GroupsPage() {
 
   return (
     <PageContainer
-      title="Lobby Control"
+      title="Group Control"
       subtitle="SYNC GROUP WORKSPACES // CREATE OR JOIN A PLANNING PROTOCOL"
       actions={
         <div className="flex gap-3 w-full sm:w-auto font-mono text-[10px]">
@@ -72,7 +72,7 @@ export default function GroupsPage() {
             className="flex items-center gap-1.5 rounded-[4px] border-[#353534] bg-[#0e0e0e]/70 hover:bg-stone-900 text-neutral-300 font-bold uppercase tracking-widest px-4 py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
             <LogIn className="h-3.5 w-3.5 text-[#DC143C]" />
-            Join Lobby
+            Join Group
           </Button>
           <Button
             size="sm"
@@ -80,7 +80,7 @@ export default function GroupsPage() {
             className="bg-[#DC143C] hover:bg-[#B80F2E] text-white flex items-center gap-1.5 rounded-[4px] font-bold uppercase tracking-widest px-4 py-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.25)]"
           >
             <Plus className="h-3.5 w-3.5" />
-            New Lobby
+            New Group
           </Button>
         </div>
       }
@@ -91,7 +91,7 @@ export default function GroupsPage() {
         <div className="relative overflow-hidden flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-[#0e0e0e]/70 p-4 rounded-[4px] border border-[#353534] backdrop-blur-md">
           <div className="absolute left-0 top-0 h-full w-1 bg-[#DC143C]" />
           <div className="w-full md:max-w-md">
-            <SearchBar value={search} onChange={setSearch} placeholder="Search lobbies..." />
+            <SearchBar value={search} onChange={setSearch} placeholder="Search Groups..." />
           </div>
           
           <div className="flex rounded-[4px] border border-[#353534] p-0.5 bg-black/60">
@@ -115,7 +115,7 @@ export default function GroupsPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
             <Loader2 className="h-7 w-7 animate-spin text-[#DC143C] mb-4" />
-            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing Lobby Registry...</p>
+            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing Group Registry...</p>
           </div>
         ) : filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -169,9 +169,9 @@ export default function GroupsPage() {
         ) : (
           <div className="text-center py-20 bg-[#0e0e0e]/70 rounded-[4px] border border-[#353534] backdrop-blur-md">
             <Users className="h-8 w-8 text-stone-850 mx-auto mb-3" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">No Lobbies Found</h3>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">No Groups Found</h3>
             <p className="text-[10px] text-neutral-500 max-w-xs mx-auto mt-1 font-mono uppercase tracking-wider">
-              Create a lobby or enter an invite code to start collaborating.
+              Create a Group or enter an invite code to start collaborating.
             </p>
           </div>
         )}

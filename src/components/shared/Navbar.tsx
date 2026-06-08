@@ -16,7 +16,7 @@ export default function Navbar() {
   const [isJoinOpen, setIsJoinOpen] = useState(false);
 
   const navItems = [
-    { name: 'My Lobbies', href: '/groups', icon: Users },
+    { name: 'My Groups', href: '/groups', icon: Users },
     { name: 'History', href: '/history', icon: Clock },
   ];
 
@@ -63,7 +63,7 @@ export default function Navbar() {
             className="hidden sm:flex bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
           >
             <Plus className="h-3.5 w-3.5" />
-            New Lobby
+            New Group
           </Button>
           
           <Button
@@ -73,7 +73,7 @@ export default function Navbar() {
             className="border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
             <LogIn className="h-3.5 w-3.5 text-[#DC143C]" />
-            Join Lobby
+            Join Group
           </Button>
 
           <div className="pl-2 border-l border-stone-900">
