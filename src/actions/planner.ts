@@ -1,15 +1,20 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
-import { memberRepository } from '@/lib/repositories/member.repository';
-import { planRepository } from '@/lib/repositories/plan.repository';
-import { plannerService } from '@/lib/services/planner.service';
 import { apiResponse } from '@/lib/utils/apiResponse';
-import { ForbiddenError } from '@/lib/errors';
+import { ForbiddenError, ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
+import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
+import { ActionResponse } from '@/lib/types/api.types';
 
 export async function generatePlan(groupId: string): ActionResponse<any> {
   try {
+    if (isHangoutApiConfigured()) {
+      throw new ValidationError('Plan generation is not available through the D1 Worker API yet.');
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { memberRepository } = await import('@/lib/repositories/member.repository');
+    const { plannerService } = await import('@/lib/services/planner.service');
     const user = await getCurrentUser();
 
     // Verify caller is a member of the group
@@ -31,6 +36,13 @@ export async function generatePlan(groupId: string): ActionResponse<any> {
 
 export async function getPlansForGroupAction(groupId: string): ActionResponse<any[]> {
   try {
+    if (isHangoutApiConfigured()) {
+      return apiResponse.success([]);
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { memberRepository } = await import('@/lib/repositories/member.repository');
+    const { planRepository } = await import('@/lib/repositories/plan.repository');
     const user = await getCurrentUser();
 
     // Verify caller is a member of the group
@@ -45,5 +57,3 @@ export async function getPlansForGroupAction(groupId: string): ActionResponse<an
     return apiResponse.error(err);
   }
 }
-
-import { ActionResponse } from '@/lib/types/api.types';

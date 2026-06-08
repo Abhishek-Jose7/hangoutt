@@ -1,6 +1,5 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { saveLocationSchema } from '@/lib/validators/location.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
@@ -34,6 +33,7 @@ export async function saveLocation(rawInput: unknown): ActionResponse<any> {
       return location;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { locationService } = await import('@/lib/services/location.service');
     const location = await locationService.saveLocation(user.id, groupId, lat, lng, locationName);

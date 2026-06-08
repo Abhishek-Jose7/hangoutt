@@ -1,6 +1,5 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { submitBudgetSchema } from '@/lib/validators/budget.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
@@ -31,6 +30,7 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
       return budget;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { budgetService } = await import('@/lib/services/budget.service');
     const budget = await budgetService.submitBudget(user.id, groupId, maxBudget);

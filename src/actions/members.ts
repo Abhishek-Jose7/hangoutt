@@ -1,6 +1,5 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { joinGroupSchema } from '@/lib/validators/vote.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
@@ -35,6 +34,7 @@ export async function joinGroup(rawInput: unknown): ActionResponse<any> {
       return newMember;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     const newMember = await groupService.joinGroup(user.id, inviteCode);
@@ -54,6 +54,7 @@ export async function leaveGroup(groupId: string): ActionResponse<{ success: boo
       throw new ValidationError('Leaving groups is not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     await groupService.leaveGroup(user.id, groupId);
@@ -71,6 +72,7 @@ export async function removeMember(groupId: string, targetUserId: string): Actio
       throw new ValidationError('Removing members is not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     await groupService.removeMember(user.id, groupId, targetUserId);
@@ -88,6 +90,7 @@ export async function transferOwnership(groupId: string, newOwnerId: string): Ac
       throw new ValidationError('Transferring ownership is not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     await groupService.transferOwnership(user.id, groupId, newOwnerId);
@@ -118,6 +121,7 @@ export async function submitMemberVibes(groupId: string, vibes: string[]): Actio
       return updatedMember;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { memberRepository } = await import('@/lib/repositories/member.repository');
     const member = await memberRepository.getMember(parsedGroupId, user.id);

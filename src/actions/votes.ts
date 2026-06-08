@@ -1,18 +1,14 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
-import { votingService } from '@/lib/services/voting.service';
-import { voteRepository } from '@/lib/repositories/vote.repository';
 import { createVoteSchema } from '@/lib/validators/vote.schema';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { ActionResponse } from '@/lib/types/api.types';
+import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
 export async function createVote(rawInput: unknown): ActionResponse<any> {
   try {
-    const user = await getCurrentUser();
-    
     // Validate inputs
     const parsed = createVoteSchema.safeParse(rawInput);
     if (!parsed.success) {
@@ -20,6 +16,14 @@ export async function createVote(rawInput: unknown): ActionResponse<any> {
     }
 
     const { groupId, planId } = parsed.data;
+
+    if (isHangoutApiConfigured()) {
+      throw new ValidationError('Voting is not available through the D1 Worker API yet.');
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { votingService } = await import('@/lib/services/voting.service');
+    const user = await getCurrentUser();
 
     // Delegate to service
     const vote = await votingService.castVote(user.id, groupId, planId);
@@ -38,6 +42,12 @@ export async function updateVote(rawInput: unknown): ActionResponse<any> {
 
 export async function countVotes(groupId: string): ActionResponse<any> {
   try {
+    if (isHangoutApiConfigured()) {
+      return apiResponse.success([]);
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { votingService } = await import('@/lib/services/voting.service');
     const user = await getCurrentUser();
 
     // Delegate to service
@@ -50,6 +60,12 @@ export async function countVotes(groupId: string): ActionResponse<any> {
 
 export async function closeVoting(groupId: string): ActionResponse<{ success: boolean }> {
   try {
+    if (isHangoutApiConfigured()) {
+      throw new ValidationError('Voting is not available through the D1 Worker API yet.');
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { votingService } = await import('@/lib/services/voting.service');
     const user = await getCurrentUser();
 
     // Delegate to service
@@ -65,6 +81,12 @@ export async function closeVoting(groupId: string): ActionResponse<{ success: bo
 
 export async function finalizeVotingAction(groupId: string): ActionResponse<{ success: boolean }> {
   try {
+    if (isHangoutApiConfigured()) {
+      throw new ValidationError('Voting is not available through the D1 Worker API yet.');
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { votingService } = await import('@/lib/services/voting.service');
     const user = await getCurrentUser();
 
     // Manually finalize voting as admin
@@ -81,6 +103,12 @@ export async function finalizeVotingAction(groupId: string): ActionResponse<{ su
 
 export async function getUserVoteForGroup(groupId: string): ActionResponse<string | null> {
   try {
+    if (isHangoutApiConfigured()) {
+      return apiResponse.success(null);
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { voteRepository } = await import('@/lib/repositories/vote.repository');
     const user = await getCurrentUser();
     const allVotes = await voteRepository.getVotesForGroup(groupId);
     const userVote = allVotes.find(v => v.userId === user.id);

@@ -1,6 +1,5 @@
 'use server';
 
-import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { createGroupSchema, updateGroupSchema } from '@/lib/validators/group.schema';
 import { ValidationError } from '@/lib/errors';
@@ -29,6 +28,7 @@ export async function createGroup(rawInput: unknown): ActionResponse<any> {
       return response;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     const newGroup = await groupService.createGroup(user.id, rawInput as any);
@@ -46,6 +46,7 @@ export async function updateGroup(rawInput: unknown): ActionResponse<any> {
       throw new ValidationError('Group updates are not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const parsed = updateGroupSchema.safeParse(rawInput);
     if (!parsed.success) {
@@ -70,6 +71,7 @@ export async function deleteGroup(groupId: string): ActionResponse<{ success: bo
       throw new ValidationError('Deleting groups is not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     await groupService.deleteGroup(user.id, groupId);
@@ -87,6 +89,7 @@ export async function archiveGroup(groupId: string): ActionResponse<{ success: b
       throw new ValidationError('Archiving groups is not available through the D1 Worker API yet.');
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     await groupService.archiveGroup(user.id, groupId);
@@ -106,6 +109,7 @@ export async function getUserGroupsAction(): ActionResponse<any[]> {
       return hangoutApi<any>(`/groups?clerkId=${encodeURIComponent(user.clerkId)}`);
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupRepository } = await import('@/lib/repositories/group.repository');
     const groupsList = await groupRepository.getUserGroups(user.id);
@@ -129,6 +133,7 @@ export async function getUserHistoryAction(): ActionResponse<any[]> {
       return apiResponse.success([]);
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { historyRepository } = await import('@/lib/repositories/history.repository');
     const historyList = await historyRepository.getHistoryForUser(user.id);
@@ -145,6 +150,7 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
       return hangoutApi<any>(`/groups/${groupId}?clerkId=${encodeURIComponent(user.clerkId)}`);
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     const { memberRepository } = await import('@/lib/repositories/member.repository');
@@ -207,6 +213,7 @@ export async function startDetailsCollectionAction(groupId: string): ActionRespo
       return updated;
     }
 
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
     const updated = await groupService.startDetailsCollection(user.id, groupId);
