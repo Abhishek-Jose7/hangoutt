@@ -624,7 +624,7 @@ export default function HomePage() {
         </div>
 
         {/* Bottom-Right Selected Venue Details Card */}
-        <div className="absolute bottom-[140px] sm:bottom-20 lg:bottom-24 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
+        <div className="absolute bottom-[210px] sm:bottom-20 lg:bottom-13 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
           {activeVenue && (
             <Card className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left">
               <div className="flex gap-3 items-start">
