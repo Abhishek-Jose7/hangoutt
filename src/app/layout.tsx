@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
+import { Cormorant_Garamond, Space_Grotesk, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 
@@ -10,7 +10,7 @@ const cormorant = Cormorant_Garamond({
   style: ['normal', 'italic'],
 });
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+const spaceGrotesk = Space_Grotesk({
   variable: '--font-plus-jakarta',
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
@@ -43,7 +43,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${cormorant.variable} ${plusJakartaSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
+        className={`${cormorant.variable} ${spaceGrotesk.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
       >
         <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
           {children}

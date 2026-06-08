@@ -26,9 +26,9 @@ export default function Navbar() {
         
         {/* Logo */}
         <div className="flex items-center gap-8">
-          <Link href="/groups" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <span className="text-[17px] font-campus font-bold uppercase tracking-[0.15em] text-white">
-              Hang<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span>
+              HANG<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span>
             </span>
           </Link>
           

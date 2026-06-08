@@ -502,24 +502,23 @@ export default function HomePage() {
           DRAG TO PAN // MOUSE WHEEL TO ZOOM
         </div>
 
-        {/* Top Header Navigation */}
         <header className="absolute top-0 left-0 w-full z-20 px-4 py-6 sm:px-8 lg:px-12 lg:py-8 flex items-center justify-between pointer-events-auto">
           <div className="flex items-center gap-3.5">
-            {/* Custom logo shield */}
-            <svg viewBox="0 0 24 28" className="w-9 h-10 text-[#DC143C]" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2C12 2 20 4 20 10C20 17 12 24 12 24C12 24 4 17 4 10C4 4 12 2 12 2Z" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" />
-              <path d="M8 8V13C8 15.2 9.8 17 12 17C14.2 17 16 15.2 16 13V8" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-            <div className="text-left leading-none">
-              <h1 className="font-campus text-[16px] font-extrabold tracking-[0.1em] text-white uppercase leading-none">Hangoutt</h1>
-            </div>
+            <Link href="/">
+              <div className="text-left leading-none">
+                <h1 className="font-campus text-[16px] font-extrabold tracking-[0.1em] text-white uppercase leading-none">HANG<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span></h1>
+              </div>
+            </Link>
           </div>
 
-          {/* Spaced horizontal navigation */}
-          <nav className="hidden md:flex items-center gap-10 lg:gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase">
+          {/* Centered horizontal navigation */}
+          <nav className="hidden md:flex items-center gap-10 lg:gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase absolute left-1/2 -translate-x-1/2">
             <Link href="#about" className="hover:text-white transition-colors duration-200">About</Link>
             <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
             <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
+          </nav>
+
+          <div className="hidden md:flex items-center">
             {isSignedIn ? (
               <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
                 Go to Lobby
@@ -529,22 +528,16 @@ export default function HomePage() {
                 Start Hangout
               </Link>
             )}
-          </nav>
-
+          </div>
         </header>
 
         {/* Left Side Category Rail */}
         <aside className="absolute left-6 sm:left-8 lg:left-20 xl:left-24 top-[85px] lg:top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none lg:h-[420px]">
           {/* Sidebar vertical rail */}
           <div className="hidden lg:flex flex-col gap-28 items-center mr-10 border-r border-stone-800/40 pr-8 justify-center">
-            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
-              • .
-            </span>
-            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">
-              • .
-            </span>
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">• .</span>
+            <span className="transform -rotate-90 origin-center whitespace-nowrap text-[9px] tracking-[0.35em] font-mono text-neutral-500 uppercase">• .</span>
           </div>
-
           {/* Categories Selector */}
           <div className="flex flex-row lg:flex-col items-center lg:items-start justify-start lg:justify-center gap-4 text-left overflow-x-auto w-full no-scrollbar pb-2 lg:pb-0">
             {CATEGORIES.map((cat) => {
@@ -555,10 +548,7 @@ export default function HomePage() {
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
-                  className={`text-left transition-all duration-300 relative group cursor-pointer block focus:outline-none whitespace-nowrap ${isActive
-                    ? 'text-white py-1 font-bold'
-                    : 'text-neutral-500 hover:text-neutral-300 tracking-wider py-1 font-campus text-xs'
-                    }`}
+                  className={`text-left transition-all duration-300 relative group cursor-pointer block focus:outline-none whitespace-nowrap ${isActive ? 'text-white py-1 font-bold' : 'text-neutral-500 hover:text-neutral-300 tracking-wider py-1 font-campus text-xs'}`}
                 >
                   {isActive ? (
                     <span className="font-serif-display text-2xl lg:text-5xl font-normal tracking-tight relative block leading-none">
@@ -585,112 +575,67 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-
           <div className="text-left font-mono text-[9px] text-neutral-400 tracking-wider leading-relaxed">
             <div>{currentDateTime?.date || 'Loading date'}</div>
             <div className="text-neutral-600 mt-0.5">{currentDateTime?.time || 'Loading time'}</div>
           </div>
-
           <div className="w-[1px] h-8 bg-stone-800" />
-
           <div className="text-left font-mono text-[9px] tracking-widest uppercase leading-relaxed">
             <div className="text-neutral-500">Spots</div>
             <div className="text-[#00E5A0] font-bold">{filteredPins.length} / {CATEGORY_VENUES[activeCategory]?.length || filteredPins.length}</div>
           </div>
         </footer>
 
-        {/* Right Selected Pins Carousel (Filtered dynamically, vertical stack, placed below HUD Info Helper) */}
-        <div className="absolute top-[116px] right-4 lg:right-12 z-20 flex max-h-[calc(100vh-330px)] flex-col gap-3.5 overflow-y-auto pr-1 pointer-events-auto max-w-[calc(100vw-32px)] sm:max-w-[360px] py-1 items-end">
-          {carouselVenues.map((venue) => {
-            return (
-              <button
-                key={venue.id}
-                type="button"
-                onClick={() => setSelectedPinId(venue.id)}
-                className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.02] rounded-[12px] w-full sm:w-auto sm:min-w-[240px]"
-              >
-                {/* Thumbnail with overlay badge */}
-                <div className="relative w-10 h-10 flex-shrink-0">
-                  <img
-                    src={venue.image}
-                    alt={venue.name}
-                    className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]"
-                  />
-                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border-2 border-[#00E5A0]">
-                    {venue.num}
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="font-campus text-[10px] font-bold text-white uppercase tracking-wider leading-none">{venue.name}</p>
-                  <p className="font-mono text-[8px] text-neutral-400 leading-none">{venue.address}</p>
-                </div>
-              </button>
-            );
-          })}
+        {/* Right Selected Pins Carousel */}
+        <div className="absolute top-[116px] right-4 lg:right-12 z-20 flex max-h-[calc(100vh-330px)] flex-col gap-3.5 overflow-y-auto pr-1 pointer-events-auto sm:w-[320px] py-1 items-stretch">
+          {carouselVenues.map((venue) => (
+            <button
+              key={venue.id}
+              type="button"
+              onClick={() => setSelectedPinId(venue.id)}
+              className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.02] rounded-[12px] w-full"
+            >
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <img src={venue.image} alt={venue.name} className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]" />
+                <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border-2 border-[#00E5A0]">{venue.num}</span>
+              </div>
+              <div className="space-y-1 flex-1 min-w-0">
+                <p className="font-campus text-[10px] font-bold text-white uppercase tracking-wider leading-none truncate">{venue.name}</p>
+                <p className="font-mono text-[8px] text-neutral-400 leading-none truncate">{venue.address}</p>
+              </div>
+            </button>
+          ))}
         </div>
 
-        {/* Bottom-Center Map Controls Stack (Horizontal Layout) */}
+        {/* Bottom-Center Map Controls */}
         <div className="absolute bottom-4 lg:bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-3 pointer-events-auto items-center bg-stone-950/70 backdrop-blur-md px-4 py-2 border border-stone-850 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
-          <button
-            type="button"
-            onClick={handleRecenter}
-            title="Recenter Map Viewport"
-            className="w-10 h-10 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none border border-neutral-300"
-          >
+          <button type="button" onClick={handleRecenter} title="Recenter Map Viewport" className="w-10 h-10 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none border border-neutral-300">
             <MapPin className="w-4.5 h-4.5" />
           </button>
-
-          <button
-            type="button"
-            onClick={handleRecenter}
-            title="Recenter"
-            className="w-10 h-10 bg-[#DC143C] hover:bg-[#B80F2E] text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]"
-          >
+          <button type="button" onClick={handleRecenter} title="Recenter" className="w-10 h-10 bg-[#DC143C] hover:bg-[#B80F2E] text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer focus:outline-none rounded-[8px]">
             <Target className="w-4.5 h-4.5" />
           </button>
-
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            title="Zoom In"
-            className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]"
-          >
+          <button type="button" onClick={handleZoomIn} title="Zoom In" className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]">
             <Plus className="w-4.5 h-4.5" />
           </button>
-
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            title="Zoom Out"
-            className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]"
-          >
+          <button type="button" onClick={handleZoomOut} title="Zoom Out" className="w-10 h-10 bg-white hover:bg-neutral-100 text-neutral-900 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer font-bold text-lg focus:outline-none rounded-[8px]">
             <Minus className="w-4.5 h-4.5" />
           </button>
         </div>
 
-        {/* Bottom-Right Selected Venue Details Card (aligned right on desktop, stacked on mobile) */}
-        <div className="absolute bottom-[112px] sm:bottom-14 lg:bottom-16 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
+        {/* Bottom-Right Selected Venue Details Card */}
+        <div className="absolute bottom-[140px] sm:bottom-20 lg:bottom-24 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
           {activeVenue && (
-            <Card
-              className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left"
-            >
+            <Card className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left">
               <div className="flex gap-3 items-start">
-                {/* Thumbnail Image */}
                 <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[8px] overflow-hidden flex-shrink-0 border border-stone-800">
-                  <img
-                    src={activeVenue.image}
-                    alt={activeVenue.name}
-                    className="w-full h-full object-cover grayscale opacity-85"
-                  />
+                  <img src={activeVenue.image} alt={activeVenue.name} className="w-full h-full object-cover grayscale opacity-85" />
                   <div className="absolute inset-0 bg-[#DC143C]/10 mix-blend-color" />
                 </div>
-
                 <div className="space-y-0.5 flex-1 min-w-0">
                   <span className="font-mono text-[6.5px] sm:text-[7px] text-[#DC143C] tracking-[0.25em] uppercase font-bold">SELECTED MIDPOINT JUNCTION</span>
                   <h3 className="font-campus text-sm sm:text-base font-bold text-white tracking-wide leading-tight mt-0.5 truncate">{activeVenue.name}</h3>
                   <p className="text-[8px] sm:text-[8.5px] text-neutral-400 font-mono leading-none tracking-wider uppercase mt-1 truncate">{activeVenue.address}, {activeVenue.place}</p>
-
                   <div className="flex items-center gap-3 text-[8px] sm:text-[8.5px] font-mono text-neutral-400 mt-1.5">
                     <span className="flex items-center gap-1 sm:gap-1.5">
                       <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-[#DC143C] transform rotate-45" />
@@ -703,12 +648,8 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
-
               <Link href={isSignedIn ? '/groups' : '/sign-up'} passHref className="w-full mt-2">
-                <button
-                  type="button"
-                  className="w-full py-1.5 sm:py-2 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[8px] sm:text-[8.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[6px]"
-                >
+                <button type="button" className="w-full py-1.5 sm:py-2 bg-[#FBEBE2] hover:bg-[#F2D6C5] text-[#1E1511] font-mono text-[8px] sm:text-[8.5px] font-bold uppercase tracking-[0.25em] hover:tracking-[0.28em] transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] rounded-[6px]">
                   Get More Information
                 </button>
               </Link>
@@ -723,9 +664,8 @@ export default function HomePage() {
           <span>100 m</span>
         </div>
 
-
-
       </section>
+
 
       {/* ── SECTION 2: THE CORE COORDINATION TECHNOLOGY (BENTO GRID WITH GLOW) ── */}
       <section id="about" className="bg-[#0A0A0C] py-24 md:py-32 relative overflow-hidden">
@@ -886,7 +826,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
             <div className="md:col-span-2 space-y-4">
-              <span className="font-heading text-2xl text-primary block leading-none">HANGOUTT</span>
+              <span className="font-campus text-2xl text-white block leading-none uppercase">HANG<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span></span>
               <p className="text-neutral-500 text-[10px] tracking-wider max-w-sm">
                 AI COORDINATION PLATFORM 4.0 // ENGINEERED FOR THE METROPOLIS THAT NEVER SLEEPS.
               </p>
