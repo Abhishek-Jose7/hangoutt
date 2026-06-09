@@ -502,34 +502,56 @@ export default function HomePage() {
           DRAG TO PAN // MOUSE WHEEL TO ZOOM
         </div>
 
-        <header className="absolute top-0 left-0 w-full z-20 px-4 py-6 sm:px-8 lg:px-12 lg:py-8 flex items-center justify-between pointer-events-auto">
-          <div className="flex items-center gap-3.5">
+        <header className="absolute top-0 left-0 w-full z-20 px-4 py-4 sm:px-8 lg:px-12 lg:py-8 flex items-center justify-between pointer-events-auto">
+          {/* Logo — bigger and shifted right */}
+          <div className="flex items-center ml-1 sm:ml-3">
             <Link href="/">
-              <div className="text-left leading-none">
-                <h1 className="font-campus text-[16px] font-extrabold tracking-[0.1em] text-white uppercase leading-none">HANG<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span></h1>
-              </div>
+              <h1 className="font-campus text-[26px] sm:text-[32px] font-extrabold tracking-[0.08em] text-white uppercase leading-none">HANG<span className="text-[#DC143C] font-serif-display lowercase italic font-normal">out</span></h1>
             </Link>
           </div>
 
-          {/* Centered horizontal navigation */}
-          <nav className="hidden md:flex items-center gap-10 lg:gap-14 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase absolute left-1/2 -translate-x-1/2">
+          {/* Desktop nav — links + CTA button together, centered */}
+          <nav className="hidden md:flex items-center gap-8 lg:gap-12 font-campus text-[11px] font-medium tracking-[0.22em] text-neutral-300 select-none uppercase absolute left-1/2 -translate-x-1/2">
             <Link href="#about" className="hover:text-white transition-colors duration-200">About</Link>
             <Link href="#features" className="hover:text-white transition-colors duration-200">Bento Features</Link>
             <Link href="#steps" className="hover:text-white transition-colors duration-200">Protocols</Link>
-          </nav>
-
-          <div className="hidden md:flex items-center">
             {isSignedIn ? (
-              <Link href="/groups" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+              <Link href="/groups" className="px-5 py-2 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md">
                 Go to Group
               </Link>
             ) : (
-              <Link href="/sign-up" className="px-5 py-2.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md flex items-center">
+              <Link href="/sign-up" className="px-5 py-2 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-[10px] tracking-[0.1em] transition-all duration-300 rounded-[8px] hover:scale-105 active:scale-95 shadow-md">
                 Start Hangout
               </Link>
             )}
-          </div>
+          </nav>
+
+          {/* Mobile hamburger */}
+          <button type="button" className="md:hidden flex flex-col gap-[5px] p-2 pointer-events-auto" aria-label="Open menu" onClick={() => { const m = document.getElementById('mobile-menu'); if (m) m.classList.toggle('hidden'); }}>
+            <span className="block w-5 h-[2px] bg-white rounded" />
+            <span className="block w-5 h-[2px] bg-white rounded" />
+            <span className="block w-3.5 h-[2px] bg-white rounded" />
+          </button>
+
+          {/* Spacer div to keep header justify-between balanced on desktop */}
+          <div className="hidden md:block w-8" />
         </header>
+
+        {/* Mobile slide-down menu */}
+        <div id="mobile-menu" className="hidden md:hidden absolute top-[72px] left-0 w-full z-30 pointer-events-auto bg-black/95 backdrop-blur-xl border-b border-stone-800/60 px-6 py-6 flex flex-col gap-5 font-campus text-sm font-medium tracking-[0.18em] text-neutral-200 uppercase">
+          <Link href="#about" className="hover:text-white transition-colors" onClick={() => { document.getElementById('mobile-menu')?.classList.add('hidden'); }}>About</Link>
+          <Link href="#features" className="hover:text-white transition-colors" onClick={() => { document.getElementById('mobile-menu')?.classList.add('hidden'); }}>Bento Features</Link>
+          <Link href="#steps" className="hover:text-white transition-colors" onClick={() => { document.getElementById('mobile-menu')?.classList.add('hidden'); }}>Protocols</Link>
+          {isSignedIn ? (
+            <Link href="/groups" className="px-5 py-3 bg-gradient-to-r from-[#DC143C] to-[#FB7185] text-black font-mono font-bold text-[11px] tracking-[0.1em] rounded-[8px] shadow-md text-center w-full">
+              Go to Group
+            </Link>
+          ) : (
+            <Link href="/sign-up" className="px-5 py-3 bg-gradient-to-r from-[#DC143C] to-[#FB7185] text-black font-mono font-bold text-[11px] tracking-[0.1em] rounded-[8px] shadow-md text-center w-full">
+              Start Hangout
+            </Link>
+          )}
+        </div>
 
         {/* Left Side Category Rail */}
         <aside className="absolute left-6 sm:left-8 lg:left-20 xl:left-24 top-[85px] lg:top-[28%] z-20 flex flex-row items-stretch pointer-events-auto select-none lg:h-[420px]">
@@ -586,8 +608,8 @@ export default function HomePage() {
           </div>
         </footer>
 
-        {/* Right Selected Pins Carousel */}
-        <div className="absolute top-[116px] right-4 lg:right-12 z-20 flex max-h-[calc(100vh-330px)] flex-col gap-3.5 overflow-y-auto pr-1 pointer-events-auto sm:w-[320px] py-1 items-stretch">
+        {/* Right Selected Pins Carousel (hidden on mobile to prevent overlap) */}
+        <div className="absolute top-[116px] right-4 lg:right-12 z-20 hidden sm:flex max-h-[calc(100vh-330px)] flex-col gap-3.5 overflow-y-auto pr-1 pointer-events-auto sm:w-[320px] py-1 items-stretch">
           {carouselVenues.map((venue) => (
             <button
               key={venue.id}
@@ -624,7 +646,7 @@ export default function HomePage() {
         </div>
 
         {/* Bottom-Right Selected Venue Details Card */}
-        <div className="absolute bottom-[210px] sm:bottom-20 lg:bottom-13 right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
+        <div className="absolute bottom-20 sm:bottom-28 lg:bottom-[105px] right-4 left-4 sm:left-auto sm:right-12 z-20 pointer-events-auto flex justify-center lg:justify-end">
           {activeVenue && (
             <Card className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left">
               <div className="flex gap-3 items-start">
@@ -658,7 +680,7 @@ export default function HomePage() {
         </div>
 
         {/* Map scale indicator */}
-        <div className="absolute right-12 bottom-10 z-20 font-mono text-[8.5px] text-neutral-500 flex flex-col items-end pointer-events-none select-none">
+        <div className="absolute right-12 bottom-10 z-20 font-mono text-[8.5px] text-neutral-500 hidden lg:flex flex-col items-end pointer-events-none select-none">
           <span>1,000 ft</span>
           <div className="w-16 h-[5px] border-x border-b border-neutral-600 my-0.5" />
           <span>100 m</span>

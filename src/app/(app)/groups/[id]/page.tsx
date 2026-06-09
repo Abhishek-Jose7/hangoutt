@@ -444,7 +444,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const hasSubmittedSelf = currentUser.budget !== null && currentUser.location !== null;
 
   return (
-    <main className="hud-grid relative min-h-screen pt-10 pb-24 md:pb-10 bg-[#131313] text-[#e5e2e1] overflow-x-hidden">
+    <main className="relative min-h-screen pt-10 pb-24 md:pb-10 bg-black text-[#e5e2e1] overflow-x-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6 relative z-10">
         
         {/* Protocol Header */}
@@ -937,7 +937,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 </div>
                 <div className="p-5 space-y-4">
                   <div className="relative h-40 w-full bg-[#1c1b1b] border border-[#353534] rounded-[4px] overflow-hidden flex flex-col justify-center px-6 sm:px-10 space-y-5">
-                    <div className="absolute inset-0 hud-grid opacity-20 pointer-events-none"></div>
+                    <div className="absolute inset-0 opacity-20 pointer-events-none"></div>
                     <div className="scanning-line opacity-10"></div>
                     
                     <div className="space-y-1.5 relative z-10">

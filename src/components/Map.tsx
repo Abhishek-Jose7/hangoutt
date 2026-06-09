@@ -134,14 +134,14 @@ export default function Map({
       // Outer active ring
       if (markerData.isActive) {
         el.innerHTML = `
-          <div style="position: relative; width: 40px; height: 40px; transform: translate(-20px, -20px); display: flex; items-center; justify-content: center;">
-            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #DC143C; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
-            <div style="position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 50%; background-color: #DC143C; border: 3px solid #0D0A08; box-shadow: 0 0 10px #DC143C;"></div>
+          <div style="position: relative; width: 40px; height: 40px; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #DC143C; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
+            <div style="width: 20px; height: 20px; border-radius: 50%; background-color: #DC143C; border: 3px solid #0D0A08; box-shadow: 0 0 10px #DC143C;"></div>
           </div>
         `;
       } else {
         el.innerHTML = `
-          <div style="position: relative; width: 24px; height: 24px; transform: translate(-12px, -12px); display: flex; items-center; justify-content: center; cursor: pointer;">
+          <div style="position: relative; width: 24px; height: 24px; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; cursor: pointer;">
             <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #00E5A0; border: 2.5px solid #0D0A08; box-shadow: 0 0 6px #00E5A0;"></div>
           </div>
         `;
