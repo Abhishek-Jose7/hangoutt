@@ -5,7 +5,7 @@ import { submitBudgetSchema } from '../validators/budget.schema';
 import { ForbiddenError, ValidationError, NotFoundError } from '../errors';
 
 export const budgetService = {
-  async submitBudget(userId: string, groupId: string, maxBudget: number) {
+  async submitBudget(userId: string, groupId: string, maxBudget: number, travelIncluded?: boolean) {
     // 1. Verify user is member of the group
     const member = await memberRepository.getMember(groupId, userId);
     if (!member) {
@@ -13,7 +13,7 @@ export const budgetService = {
     }
 
     // 2. Validate input constraints via Zod
-    const parsed = submitBudgetSchema.safeParse({ groupId, maxBudget });
+    const parsed = submitBudgetSchema.safeParse({ groupId, maxBudget, travelIncluded });
     if (!parsed.success) {
       throw new ValidationError('Invalid budget value', parsed.error.flatten());
     }
@@ -31,6 +31,7 @@ export const budgetService = {
       groupId,
       userId,
       maxBudget: parsed.data.maxBudget,
+      travelIncluded: parsed.data.travelIncluded,
     });
 
     // 4. Trigger readiness check

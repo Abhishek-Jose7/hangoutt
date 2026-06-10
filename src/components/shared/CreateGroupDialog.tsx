@@ -27,6 +27,8 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
   const [name, setName] = useState('');
   const [groupType, setGroupType] = useState('FRIENDS');
   const [description, setDescription] = useState('');
+  const [outingDate, setOutingDate] = useState('');
+  const [outingTime, setOutingTime] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorFields, setErrorFields] = useState<Record<string, string[]>>({});
 
@@ -40,6 +42,8 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
         name,
         groupType,
         description: description || null,
+        outingDate: outingDate || null,
+        outingTime: outingTime || null,
       });
 
       if (!res.success) {
@@ -106,6 +110,40 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
               <option value="CUSTOM">Custom</option>
             </select>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="outingDate" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Date (Optional)</Label>
+              <Input
+                id="outingDate"
+                type="date"
+                value={outingDate}
+                onChange={(e) => setOutingDate(e.target.value)}
+                disabled={isLoading}
+                className="bg-black/60 border border-[#353534] text-white rounded-[4px] font-mono text-xs focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] [color-scheme:dark]"
+              />
+              {errorFields.outingDate && (
+                <p className="text-[10px] text-red-500 font-mono">{errorFields.outingDate[0]}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="outingTime" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Time (Optional)</Label>
+              <Input
+                id="outingTime"
+                type="time"
+                value={outingTime}
+                onChange={(e) => setOutingTime(e.target.value)}
+                disabled={isLoading}
+                className="bg-black/60 border border-[#353534] text-white rounded-[4px] font-mono text-xs focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] [color-scheme:dark]"
+              />
+              {errorFields.outingTime && (
+                <p className="text-[10px] text-red-500 font-mono">{errorFields.outingTime[0]}</p>
+              )}
+            </div>
+          </div>
+
+
 
           <div className="space-y-2">
             <Label htmlFor="description" className="text-[9px] font-mono font-bold uppercase tracking-widest text-neutral-400">Description (Optional)</Label>

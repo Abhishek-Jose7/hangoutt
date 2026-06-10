@@ -9,12 +9,12 @@ import { getCurrentApiUser, hangoutApi, isHangoutApiConfigured } from '@/lib/clo
 
 export async function createGroup(rawInput: unknown): ActionResponse<any> {
   try {
-    if (isHangoutApiConfigured()) {
-      const parsed = createGroupSchema.safeParse(rawInput);
-      if (!parsed.success) {
-        throw new ValidationError('Invalid group inputs', parsed.error.flatten());
-      }
+    const parsed = createGroupSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid group inputs', parsed.error.flatten());
+    }
 
+    if (isHangoutApiConfigured()) {
       const user = await getCurrentApiUser();
       const response = await hangoutApi<any>('/groups', {
         method: 'POST',
@@ -30,7 +30,7 @@ export async function createGroup(rawInput: unknown): ActionResponse<any> {
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { groupService } = await import('@/lib/services/group.service');
-    const newGroup = await groupService.createGroup(user.id, rawInput as any);
+    const newGroup = await groupService.createGroup(user.id, parsed.data as any);
 
     revalidatePath('/groups');
     return apiResponse.success(newGroup);
@@ -160,7 +160,9 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
     const members = await memberRepository.getMembersWithUserDetails(groupId);
     const budgetSummary = await budgetRepository.getGroupBudgetSummary(groupId);
     const budgets = await budgetRepository.getGroupBudgets(groupId);
-    const currentUserBudget = budgets.find((b) => b.userId === user.id)?.maxBudget || null;
+    const userBudgetRecord = budgets.find((b) => b.userId === user.id);
+    const currentUserBudget = userBudgetRecord?.maxBudget || null;
+    const currentUserTravelIncluded = userBudgetRecord ? userBudgetRecord.travelIncluded === 1 : true;
     const locations = await locationRepository.getGroupLocations(groupId);
     const currentUserLocation = locations.find((l) => l.userId === user.id) || null;
     const callerMember = members.find((m) => m.userId === user.id);
@@ -191,6 +193,7 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
         id: user.id,
         role: callerRole,
         budget: currentUserBudget,
+        travelIncluded: currentUserTravelIncluded,
         location: currentUserLocation,
       },
     });

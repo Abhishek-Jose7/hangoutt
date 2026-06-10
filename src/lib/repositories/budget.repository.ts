@@ -15,8 +15,9 @@ export interface BudgetSummary {
 }
 
 export const budgetRepository = {
-  async upsertBudget(data: { id: string; groupId: string; userId: string; maxBudget: number }): Promise<Budget> {
+  async upsertBudget(data: { id: string; groupId: string; userId: string; maxBudget: number; travelIncluded?: boolean }): Promise<Budget> {
     const now = new Date().toISOString();
+    const travelIncludedVal = data.travelIncluded === false ? 0 : 1;
     const result = await db
       .insert(budgets)
       .values({
@@ -24,6 +25,7 @@ export const budgetRepository = {
         groupId: data.groupId,
         userId: data.userId,
         maxBudget: data.maxBudget,
+        travelIncluded: travelIncludedVal,
         createdAt: now,
         updatedAt: now,
       })
@@ -31,6 +33,7 @@ export const budgetRepository = {
         target: [budgets.groupId, budgets.userId],
         set: {
           maxBudget: data.maxBudget,
+          travelIncluded: travelIncludedVal,
           updatedAt: now,
         },
       })

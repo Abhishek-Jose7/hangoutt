@@ -14,6 +14,7 @@ import { eq, sql } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
 import { ItineraryPromptContext } from '../types/planner.types';
 import { validateStatusTransition } from './group.service';
+import { getVenueImageUrl } from '../maps/places';
 
 export const plannerService = {
   async generatePlan(userId: string, groupId: string): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
@@ -235,7 +236,7 @@ export const plannerService = {
           generatedAt: new Date().toISOString(),
         });
 
-        itinerary.slots.forEach(slot => {
+        const slotsPromises = itinerary.slots.map(async (slot) => {
           let travelToNextCost = null;
           if (slot.travelToNextMinutes) {
             const distEst = slot.travelToNextMinutes / 3.0;
@@ -245,18 +246,7 @@ export const plannerService = {
 
           let img = slot.imageUrl;
           if (!img) {
-            switch (slot.category) {
-              case 'CAFE': img = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; break;
-              case 'RESTAURANT': img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
-              case 'DESSERT': img = 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80'; break;
-              case 'PARK': img = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; break;
-              case 'ARCADE': img = 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80'; break;
-              case 'BOWLING': img = 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80'; break;
-              case 'ESCAPE_ROOM': img = 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80'; break;
-              case 'POTTERY': img = 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80'; break;
-              case 'LIVE_MUSIC': img = 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80'; break;
-              default: img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
-            }
+            img = await getVenueImageUrl(slot.name, city, slot.category);
           }
 
           let linkUrl = slot.link;
@@ -264,7 +254,7 @@ export const plannerService = {
             linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.name)}`;
           }
 
-          dbSlots.push({
+          return {
             id: randomUUID(),
             planId,
             slotOrder: slot.order,
@@ -281,8 +271,11 @@ export const plannerService = {
             travelToNextCost,
             imageUrl: img,
             link: linkUrl,
-          });
+          };
         });
+
+        const resolvedSlots = await Promise.all(slotsPromises);
+        dbSlots.push(...resolvedSlots);
       }
 
       // Save to worker D1 database
@@ -571,7 +564,7 @@ export const plannerService = {
           generatedAt: new Date().toISOString(),
         });
 
-        itinerary.slots.forEach(slot => {
+        const slotsPromises = itinerary.slots.map(async (slot) => {
           let travelToNextCost = null;
           if (slot.travelToNextMinutes) {
             const distEst = slot.travelToNextMinutes / 3.0;
@@ -581,18 +574,7 @@ export const plannerService = {
 
           let img = slot.imageUrl;
           if (!img) {
-            switch (slot.category) {
-              case 'CAFE': img = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; break;
-              case 'RESTAURANT': img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
-              case 'DESSERT': img = 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80'; break;
-              case 'PARK': img = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; break;
-              case 'ARCADE': img = 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80'; break;
-              case 'BOWLING': img = 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80'; break;
-              case 'ESCAPE_ROOM': img = 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80'; break;
-              case 'POTTERY': img = 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80'; break;
-              case 'LIVE_MUSIC': img = 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80'; break;
-              default: img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
-            }
+            img = await getVenueImageUrl(slot.name, city, slot.category);
           }
 
           let linkUrl = slot.link;
@@ -600,7 +582,7 @@ export const plannerService = {
             linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.name)}`;
           }
 
-          dbSlots.push({
+          return {
             id: randomUUID(),
             planId,
             slotOrder: slot.order,
@@ -617,8 +599,11 @@ export const plannerService = {
             travelToNextCost,
             imageUrl: img,
             link: linkUrl,
-          });
+          };
         });
+
+        const resolvedSlots = await Promise.all(slotsPromises);
+        dbSlots.push(...resolvedSlots);
       }
 
       // 12. Transactional Release: delete old plans, write new ones, set status to VOTING
@@ -650,6 +635,7 @@ export const plannerService = {
           .set({
             status: 'VOTING',
             votingStatus: 'OPEN',
+            timerExpiresAt: null,
             updatedAt: new Date().toISOString(),
           })
           .where(eq(groups.id, groupId));

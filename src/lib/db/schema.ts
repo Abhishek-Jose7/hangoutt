@@ -30,6 +30,10 @@ export const groups = sqliteTable('groups', {
   votingStatus: text('voting_status').default('CLOSED').notNull(), // Enum: OPEN | CLOSED
   maxMembers: integer('max_members').default(20).notNull(),
   winningPlanId: text('winning_plan_id'),
+  outingDate: text('outing_date'), // e.g. "2026-06-15"
+  outingTime: text('outing_time'), // e.g. "18:00"
+  isFastTrack: integer('is_fast_track').default(0).notNull(), // 0 = normal, 1 = 30s timers
+  timerExpiresAt: text('timer_expires_at'), // ISO timestamp when current phase timer expires
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -72,6 +76,7 @@ export const budgets = sqliteTable('budgets', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   maxBudget: integer('max_budget').notNull(),
+  travelIncluded: integer('travel_included').default(1).notNull(), // 0 = No, 1 = Yes
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({

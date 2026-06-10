@@ -13,6 +13,15 @@ export const createGroupSchema = z.object({
     .optional()
     .nullable()
     .transform(val => val ? val.trim() : null),
+  outingDate: z.string()
+    .optional()
+    .nullable(),
+  outingTime: z.string()
+    .optional()
+    .nullable(),
+  isFastTrack: z.boolean()
+    .optional()
+    .default(false),
 });
 
 export const updateGroupSchema = createGroupSchema.partial().extend({

@@ -17,7 +17,15 @@ import {
 export const groupService = {
   async createGroup(
     userId: string,
-    input: { name: string; groupType: 'FRIENDS' | 'DATE' | 'FAMILY' | 'WORK' | 'CUSTOM'; description?: string | null; vibes?: string[] }
+    input: {
+      name: string;
+      groupType: 'FRIENDS' | 'DATE' | 'FAMILY' | 'WORK' | 'CUSTOM';
+      description?: string | null;
+      vibes?: string[];
+      outingDate?: string | null;
+      outingTime?: string | null;
+      isFastTrack?: boolean;
+    }
   ) {
     // 1. Validate inputs via Zod
     const parsed = createGroupSchema.safeParse(input);
@@ -45,6 +53,9 @@ export const groupService = {
     const inviteCode = generateInviteCode();
     const groupId = uuid();
 
+    const isFastTrackVal = 0;
+    const timerExpiresAt = null;
+
     // 3. Create Group and set Creator as ADMIN in Group Members
     const groupData = {
       id: groupId,
@@ -57,6 +68,10 @@ export const groupService = {
       status: 'COLLECTING_MEMBERS' as const, // Starts in collecting members
       votingStatus: 'CLOSED' as const,
       maxMembers: 20,
+      outingDate: parsed.data.outingDate || null,
+      outingTime: parsed.data.outingTime || null,
+      isFastTrack: isFastTrackVal,
+      timerExpiresAt,
     };
 
     const group = await groupRepository.create(groupData);
@@ -268,9 +283,11 @@ export const groupService = {
     }
     validateStatusTransition(group.status, 'COLLECTING_DETAILS');
 
-    return groupRepository.update(groupId, {
-      status: 'COLLECTING_DETAILS'
-    });
+    const updateData: any = {
+      status: 'COLLECTING_DETAILS',
+    };
+
+    return groupRepository.update(groupId, updateData);
   },
 
   async getGroupDetails(userId: string, groupId: string) {

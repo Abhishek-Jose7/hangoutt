@@ -14,7 +14,7 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
       throw new ValidationError('Validation failed', parsed.error.flatten());
     }
 
-    const { groupId, maxBudget } = parsed.data;
+    const { groupId, maxBudget, travelIncluded } = parsed.data;
 
     if (isHangoutApiConfigured()) {
       const user = await getCurrentApiUser();
@@ -23,6 +23,7 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
         body: {
           clerkId: user.clerkId,
           maxBudget,
+          travelIncluded,
         },
       });
 
@@ -33,7 +34,7 @@ export async function submitBudget(rawInput: unknown): ActionResponse<any> {
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const user = await getCurrentUser();
     const { budgetService } = await import('@/lib/services/budget.service');
-    const budget = await budgetService.submitBudget(user.id, groupId, maxBudget);
+    const budget = await budgetService.submitBudget(user.id, groupId, maxBudget, travelIncluded);
 
     revalidatePath(`/groups/${groupId}`);
     return apiResponse.success(budget);

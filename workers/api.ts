@@ -143,7 +143,15 @@ function normalizeInviteCode(code: string) {
 async function createGroup(request: Request, env: Env) {
   const body = await readJson<{
     user: ApiUser;
-    group: { name: string; groupType: string; description?: string | null; vibes?: string[] };
+    group: {
+      name: string;
+      groupType: string;
+      description?: string | null;
+      vibes?: string[];
+      outingDate?: string | null;
+      outingTime?: string | null;
+      isFastTrack?: boolean;
+    };
   }>(request);
   const user = await upsertUser(env.DB, body.user);
   const groupId = uuid();
@@ -153,16 +161,23 @@ async function createGroup(request: Request, env: Env) {
   const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
   const description = body.group.description || null;
   const vibes = body.group.vibes ? JSON.stringify(body.group.vibes) : null;
+  const outingDate = body.group.outingDate || null;
+  const outingTime = body.group.outingTime || null;
+  const isFastTrack = body.group.isFastTrack ? 1 : 0;
   const now = new Date().toISOString();
+  let timerExpiresAt: string | null = null;
+  if (isFastTrack === 1) {
+    timerExpiresAt = new Date(Date.now() + 30 * 1000).toISOString();
+  }
 
   await env.DB.batch([
     env.DB
       .prepare(
         `INSERT INTO groups
-         (id, name, description, group_type, vibes, creator_id, invite_code, status, voting_status, max_members)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'COLLECTING_MEMBERS', 'CLOSED', 20)`
+         (id, name, description, group_type, vibes, creator_id, invite_code, status, voting_status, max_members, outing_date, outing_time, is_fast_track, timer_expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'COLLECTING_MEMBERS', 'CLOSED', 20, ?, ?, ?, ?)`
       )
-      .bind(groupId, body.group.name, description, body.group.groupType, vibes, user.id, code),
+      .bind(groupId, body.group.name, description, body.group.groupType, vibes, user.id, code, outingDate, outingTime, isFastTrack, timerExpiresAt),
     env.DB
       .prepare(
         `INSERT INTO group_members (id, group_id, user_id, role)
@@ -189,6 +204,10 @@ async function createGroup(request: Request, env: Env) {
     votingStatus: 'CLOSED',
     maxMembers: 20,
     winningPlanId: null,
+    outingDate,
+    outingTime,
+    isFastTrack,
+    timerExpiresAt,
     createdAt: now,
     updatedAt: now,
     memberCount: 1,
@@ -221,6 +240,10 @@ async function listGroups(request: Request, env: Env) {
         g.voting_status AS votingStatus,
         g.max_members AS maxMembers,
         g.winning_plan_id AS winningPlanId,
+        g.outing_date AS outingDate,
+        g.outing_time AS outingTime,
+        g.is_fast_track AS isFastTrack,
+        g.timer_expires_at AS timerExpiresAt,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
         COUNT(gm_count.user_id) AS memberCount
@@ -253,6 +276,10 @@ async function getGroupById(db: D1Database, groupId: string) {
         g.voting_status AS votingStatus,
         g.max_members AS maxMembers,
         g.winning_plan_id AS winningPlanId,
+        g.outing_date AS outingDate,
+        g.outing_time AS outingTime,
+        g.is_fast_track AS isFastTrack,
+        g.timer_expires_at AS timerExpiresAt,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
         COUNT(gm.user_id) AS memberCount
@@ -339,7 +366,7 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
   ]);
 
   const members = (membersRes.results || []) as Array<{ userId: string; name: string; role: string }>;
-  const budgets = (budgetsRes.results || []) as Array<{ user_id: string; max_budget: number }>;
+  const budgets = (budgetsRes.results || []) as Array<{ user_id: string; max_budget: number; travel_included: number | null }>;
   const locations = (locationsRes.results || []) as Array<{
     id: string;
     user_id: string;
@@ -359,7 +386,9 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
     };
   });
   const currentUserLocation = locations.find((location) => location.user_id === user.id);
-  const currentUserBudget = budgets.find((budget) => budget.user_id === user.id)?.max_budget || null;
+  const currentUserBudgetRecord = budgets.find((budget) => budget.user_id === user.id);
+  const currentUserBudget = currentUserBudgetRecord?.max_budget || null;
+  const currentUserTravelIncluded = currentUserBudgetRecord ? currentUserBudgetRecord.travel_included === 1 : true;
 
   const summary = summaryRes || {};
   const budgetSummary = {
@@ -393,6 +422,7 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
           id: user.id,
           role: caller.role,
           budget: currentUserBudget,
+          travelIncluded: currentUserTravelIncluded,
           location: currentUserLocation
             ? {
                 id: currentUserLocation.id,
@@ -482,7 +512,7 @@ async function joinGroup(request: Request, env: Env) {
 }
 
 async function submitBudget(request: Request, env: Env, groupId: string) {
-  const body = await readJson<{ clerkId: string; maxBudget: number }>(request);
+  const body = await readJson<{ clerkId: string; maxBudget: number; travelIncluded?: boolean }>(request);
   const user = await findUserByClerkId(env.DB, body.clerkId);
   if (!user) {
     return json(
@@ -492,20 +522,21 @@ async function submitBudget(request: Request, env: Env, groupId: string) {
   }
 
   const id = uuid();
+  const travelIncludedVal = body.travelIncluded === false ? 0 : 1;
   await env.DB
     .prepare(
-      `INSERT INTO budgets (id, group_id, user_id, max_budget)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO budgets (id, group_id, user_id, max_budget, travel_included)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(group_id, user_id)
-       DO UPDATE SET max_budget = excluded.max_budget, updated_at = CURRENT_TIMESTAMP`
+       DO UPDATE SET max_budget = excluded.max_budget, travel_included = excluded.travel_included, updated_at = CURRENT_TIMESTAMP`
     )
-    .bind(id, groupId, user.id, body.maxBudget)
+    .bind(id, groupId, user.id, body.maxBudget, travelIncludedVal)
     .run();
 
   await updateReadiness(env.DB, groupId);
   const budget = await env.DB
     .prepare(
-      `SELECT id, group_id AS groupId, user_id AS userId, max_budget AS maxBudget, created_at AS createdAt, updated_at AS updatedAt
+      `SELECT id, group_id AS groupId, user_id AS userId, max_budget AS maxBudget, travel_included AS travelIncluded, created_at AS createdAt, updated_at AS updatedAt
        FROM budgets
        WHERE group_id = ? AND user_id = ?`
     )
@@ -598,9 +629,16 @@ async function startDetailsCollection(request: Request, env: Env, groupId: strin
     );
   }
 
-  await env.DB
-    .prepare(`UPDATE groups SET status = 'COLLECTING_DETAILS', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+  const groupData = await env.DB
+    .prepare(`SELECT is_fast_track AS isFastTrack FROM groups WHERE id = ?`)
     .bind(groupId)
+    .first<{ isFastTrack: number }>();
+
+  const timerExpiresAt = groupData?.isFastTrack === 1 ? new Date(Date.now() + 30 * 1000).toISOString() : null;
+
+  await env.DB
+    .prepare(`UPDATE groups SET status = 'COLLECTING_DETAILS', timer_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(timerExpiresAt, groupId)
     .run();
 
   const group = await getGroupById(env.DB, groupId);
@@ -765,9 +803,11 @@ async function savePlans(request: Request, env: Env, groupId: string) {
   }
 
   // Update group status to VOTING and open votingStatus
+  const isFastTrackVal = (group as any)?.isFastTrack === 1 ? 1 : 0;
+  const timerExpiresAt = isFastTrackVal === 1 ? new Date(Date.now() + 30 * 1000).toISOString() : null;
   statements.push(env.DB.prepare(
-    `UPDATE groups SET status = 'VOTING', voting_status = 'OPEN', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).bind(groupId));
+    `UPDATE groups SET status = 'VOTING', voting_status = 'OPEN', timer_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(timerExpiresAt, groupId));
 
   await env.DB.batch(statements);
 

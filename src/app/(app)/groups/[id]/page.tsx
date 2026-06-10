@@ -33,6 +33,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   
   // Form states
   const [budgetVal, setBudgetVal] = useState('');
+  const [travelIncluded, setTravelIncluded] = useState(true);
   const [latVal, setLatVal] = useState('12.9348'); // default Koramangala lat
   const [lngVal, setLngVal] = useState('77.6189'); // default Koramangala lng
   const [addressVal, setAddressVal] = useState('');
@@ -52,6 +53,8 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [isCasting, setIsCasting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+
+
 
   const carouselRef = React.useRef<HTMLDivElement>(null);
 
@@ -73,6 +76,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
         setData(res.data);
         if (res.data.currentUser.budget) {
           setBudgetVal(res.data.currentUser.budget.toString());
+        }
+        if (res.data.currentUser.travelIncluded !== undefined) {
+          setTravelIncluded(res.data.currentUser.travelIncluded);
         }
         if (res.data.currentUser.location) {
           setLatVal(res.data.currentUser.location.lat.toString());
@@ -198,6 +204,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
       const res = await submitBudget({
         groupId: groupId,
         maxBudget: amount,
+        travelIncluded,
       });
 
       if (!res.success) {
@@ -330,6 +337,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
       const budgetRes = await submitBudget({
         groupId: groupId,
         maxBudget: budgetAmount,
+        travelIncluded,
       });
 
       const lat = parseFloat(latVal) || undefined;
@@ -482,6 +490,8 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
             </div>
           )}
         </div>
+
+
 
         {/* Status Notification Banner (Cooking status) */}
         {isGeneratingState && (
@@ -1150,12 +1160,26 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                         value={budgetVal}
                         onChange={(e) => setBudgetVal(e.target.value)}
                         className="w-full bg-black/60 border border-[#353534] py-5 pl-7 pr-4 text-xs font-mono focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] text-white rounded-[4px]" 
-                        placeholder="Enter your budget(doesnt include travel)" 
+                        placeholder="Enter your maximum budget" 
                         type="number"
-                        min="0"
+                        min="50"
+                        max="100000"
                         required
                         disabled={isSubmittingDetails}
                       />
+                    </div>
+                    <div className="flex items-center space-x-2 pt-2">
+                      <input
+                        id="travelIncluded"
+                        type="checkbox"
+                        checked={travelIncluded}
+                        onChange={(e) => setTravelIncluded(e.target.checked)}
+                        disabled={isSubmittingDetails}
+                        className="h-3.5 w-3.5 rounded border-[#353534] bg-black text-[#DC143C] focus:ring-0 accent-[#DC143C] cursor-pointer"
+                      />
+                      <Label htmlFor="travelIncluded" className="text-[9.5px] font-mono font-bold uppercase tracking-wider text-neutral-400 cursor-pointer">
+                        Travel cost included? (Yes / No)
+                      </Label>
                     </div>
                   </div>
                 </section>

@@ -6,6 +6,9 @@ export const submitBudgetSchema = z.object({
     .int('Budget must be a whole number')
     .min(50, 'Minimum budget is ₹50')
     .max(100000, 'Maximum budget is ₹100,000'),
+  travelIncluded: z.boolean()
+    .optional()
+    .default(true),
 });
 
 export type SubmitBudgetInput = z.infer<typeof submitBudgetSchema>;
