@@ -25,7 +25,7 @@ export default function PageContainer({
             )}
             {subtitle && (
               <p className="mt-2 text-[10px] font-mono tracking-widest text-neutral-400 uppercase">
-                // {subtitle}
+                {"// "}{subtitle}
               </p>
             )}
           </div>

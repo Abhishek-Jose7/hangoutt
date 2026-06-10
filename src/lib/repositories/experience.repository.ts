@@ -89,7 +89,7 @@ export const experienceRepository = {
     maxRadiusKm: number,
     startAfter?: string
   ): Promise<(Experience & { distanceKm: number })[]> {
-    let query = db.select().from(experiences).where(eq(experiences.city, city));
+    const query = db.select().from(experiences).where(eq(experiences.city, city));
     
     // SQLite doesn't natively support dynamic trig functions like COS/SIN in standard D1 without custom functions.
     // So we load city candidates and filter in memory, which is fast and robust on serverless edge for typical candidate sets.

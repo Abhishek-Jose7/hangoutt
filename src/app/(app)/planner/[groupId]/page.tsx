@@ -324,40 +324,80 @@ export default function PlannerPage({ params }: { params: Promise<{ groupId: str
               </div>
 
               {/* Timeline slots */}
-              <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6">
+              <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
                 {selectedPlan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
                   return (
                     <div key={index} className="relative">
                       {/* Timeline point */}
-                      <span className="absolute -left-[35px] top-1 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
+                      <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
                         {slot.slotOrder}
                       </span>
                       
-                      <div className="bg-stone-950/80 border border-stone-900 rounded-[8px] p-4 shadow-md space-y-2 text-xs font-mono">
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">{slot.name.toUpperCase()}</h4>
-                            <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
-                              {slot.category}
+                      <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200">
+                        {/* Slot Image */}
+                        {slot.imageUrl && (
+                          <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
+                            <img
+                              src={slot.imageUrl}
+                              alt={slot.name}
+                              className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
+                            />
+                          </div>
+                        )}
+                        <div className="p-4 flex-grow space-y-2">
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                  {slot.name.toUpperCase()}
+                                </h4>
+                                {slot.link && (
+                                  <a
+                                    href={slot.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
+                                    title="View location or book"
+                                  >
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                      <polyline points="15 3 21 3 21 9" />
+                                      <line x1="10" y1="14" x2="21" y2="3" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
+                              <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
+                                {slot.category}
+                              </span>
+                            </div>
+                            <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
+                              {slot.arrivalTime} ({slot.durationMinutes}M)
                             </span>
                           </div>
-                          <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono">
-                            {slot.arrivalTime} ({slot.durationMinutes}M)
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
-                          {slot.note}
-                        </p>
-                        <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
-                          <span className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-[#DC143C]" />
-                            ESTIMATED: ₹{slot.estimatedCostPerHead}
-                          </span>
-                          {slot.travelToNextMinutes !== null && (
-                            <span className="text-[#DC143C] font-bold flex items-center gap-1 uppercase text-[9px]">
-                              TRANSIT: {slot.travelToNextMinutes} MINS
+                          <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
+                            {slot.note}
+                          </p>
+                          <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="h-3 w-3 text-[#DC143C]" />
+                              ESTIMATED: ₹{slot.estimatedCostPerHead}
                             </span>
-                          )}
+                            {slot.travelToNextMinutes !== null && (
+                              <span className="text-[#DC143C] font-bold flex items-center gap-1.5 uppercase text-[9px]">
+                                <span className="flex items-center gap-0.5">
+                                  <svg className="h-3 w-3 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 1.1.9 2 2 2h2" />
+                                    <circle cx="7" cy="17" r="2" />
+                                    <circle cx="17" cy="17" r="2" />
+                                  </svg>
+                                  AUTO: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}
+                                </span>
+                                <span className="text-neutral-600">//</span>
+                                <span>TRANSIT: {slot.travelToNextMinutes} MINS</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -1,4 +1,4 @@
-import { db } from '../db/client';
+import { db, safeTransaction } from '../db/client';
 import { plans, planSlots, memberTravelMetrics } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
@@ -16,7 +16,7 @@ export interface PlanWithSlots extends Plan {
 export const planRepository = {
   // Saves generated plans, slots, and travel metrics atomically in a transaction
   async savePlans(groupPlans: NewPlan[], slots: NewPlanSlot[]): Promise<void> {
-    await db.transaction(async (tx: any) => {
+    await safeTransaction(async (tx: any) => {
       // 1. Insert plans
       if (groupPlans.length > 0) {
         await tx.insert(plans).values(groupPlans);

@@ -21,6 +21,9 @@ export const slotSchema = z.object({
   travelToNextMinutes: z.number().int().min(0).max(120).nullable(),
   estimatedCostPerHead: z.number().int().min(0),
   note: z.string().min(10),
+  travelToNextCost: z.number().int().min(0).nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  link: z.string().url().nullable().optional(),
 }).refine(data => !!data.venueId || !!data.experienceId, {
   message: "Either venueId or experienceId must be provided.",
   path: ["venueId", "experienceId"]

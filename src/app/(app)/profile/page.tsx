@@ -1,30 +1,69 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageContainer from '@/components/shared/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { User, DollarSign, Heart } from 'lucide-react';
+import { User, DollarSign, Heart, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useUser } from '@clerk/nextjs';
+import { getUserPreferencesAction, updateUserProfile } from '@/actions/users';
 
 export default function ProfilePage() {
-  const [name, setName] = useState('Abhishek Jose');
-  const [minBudget, setMinBudget] = useState('100');
-  const [maxBudget, setMaxBudget] = useState('1500');
-  const [travelRadius, setTravelRadius] = useState('8');
-  
-  const [favoriteActivities, setFavoriteActivities] = useState<string[]>([
-    'CAFE',
-    'RESTAURANT',
-    'BOWLING',
-    'ESCAPE_ROOM',
-  ]);
+  const { user, isLoaded: isClerkLoaded } = useUser();
+  const [name, setName] = useState('');
+  const [minBudget, setMinBudget] = useState('0');
+  const [maxBudget, setMaxBudget] = useState('10000');
+  const [travelRadius, setTravelRadius] = useState('15');
+  const [favoriteActivities, setFavoriteActivities] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [dbLoading, setDbLoading] = useState(true);
 
   const allCategories = [
     'CAFE', 'RESTAURANT', 'PARK', 'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MOVIE', 'MALL', 'DESSERT', 'SPORTS', 'MUSEUM'
   ];
+
+  useEffect(() => {
+    if (user) {
+      setName(user.fullName || '');
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const fetchPrefs = async () => {
+      try {
+        const res = await getUserPreferencesAction();
+        if (res.success && res.data) {
+          const dbUser = res.data;
+          if (dbUser.name) setName(dbUser.name);
+          if (dbUser.preferredBudgetMin !== null && dbUser.preferredBudgetMin !== undefined) {
+            setMinBudget(dbUser.preferredBudgetMin.toString());
+          }
+          if (dbUser.preferredBudgetMax !== null && dbUser.preferredBudgetMax !== undefined) {
+            setMaxBudget(dbUser.preferredBudgetMax.toString());
+          }
+          if (dbUser.favoriteActivities) {
+            try {
+              const acts = JSON.parse(dbUser.favoriteActivities);
+              if (Array.isArray(acts)) {
+                setFavoriteActivities(acts);
+              }
+            } catch (_e) {
+              const acts = dbUser.favoriteActivities.split(',').map((s: string) => s.trim());
+              setFavoriteActivities(acts);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user preferences:', err);
+      } finally {
+        setDbLoading(false);
+      }
+    };
+    fetchPrefs();
+  }, []);
 
   const handleToggleActivity = (cat: string) => {
     setFavoriteActivities((prev) =>
@@ -32,10 +71,49 @@ export default function ProfilePage() {
     );
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('Profile preferences updated successfully!');
+    if (!user) return;
+    setIsSaving(true);
+
+    try {
+      // 1. Update Clerk name
+      const parts = name.trim().split(/\s+/);
+      const firstName = parts[0] || '';
+      const lastName = parts.slice(1).join(' ') || '';
+      await user.update({
+        firstName,
+        lastName,
+      });
+
+      // 2. Update DB profile preferences
+      const minB = parseInt(minBudget) || 0;
+      const maxB = parseInt(maxBudget) || 10000;
+      const res = await updateUserProfile(name, minB, maxB, favoriteActivities);
+
+      if (!res.success) {
+        toast.error(res.error.message || 'Failed to save profile preferences in database.');
+      } else {
+        toast.success('Profile and preferences updated successfully!');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('An error occurred while updating profile.');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  const userEmail = user?.primaryEmailAddress?.emailAddress || 'no-email@clerk.com';
+
+  if (!isClerkLoaded || dbLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
+        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
+        <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing Profile...</p>
+      </div>
+    );
+  }
 
   return (
     <PageContainer
@@ -50,21 +128,14 @@ export default function ProfilePage() {
             <Card className="text-center border border-stone-900/60 rounded-[12px] bg-stone-950/45 shadow-lg backdrop-blur-md">
               <CardContent className="pt-6 flex flex-col items-center">
                 <div className="h-20 w-20 rounded-full bg-[#DC143C]/10 border border-[#DC143C]/30 text-[#DC143C] flex items-center justify-center text-2xl font-campus font-bold overflow-hidden">
-                  AJ
+                  {user?.imageUrl ? (
+                    <img src={user.imageUrl} alt={name} className="w-full h-full object-cover" />
+                  ) : (
+                    name.split(' ').map((p) => p.charAt(0)).join('').toUpperCase() || 'U'
+                  )}
                 </div>
-                <h3 className="mt-4 text-base font-bold text-white font-campus tracking-widest uppercase">{name}</h3>
-                <p className="text-[10px] font-mono text-neutral-500 uppercase mt-0.5">abhishek@example.com</p>
-                
-                <div className="mt-6 flex gap-2 w-full pt-4 border-t border-stone-900/40 justify-around text-center text-xs font-mono">
-                  <div>
-                    <p className="font-bold text-white text-sm">4</p>
-                    <p className="text-neutral-500 text-[8px] uppercase tracking-wider">Outings</p>
-                  </div>
-                  <div>
-                    <p className="font-bold text-[#DC143C] text-sm">3</p>
-                    <p className="text-neutral-500 text-[8px] uppercase tracking-wider">Groups</p>
-                  </div>
-                </div>
+                <h3 className="mt-4 text-base font-bold text-white font-campus tracking-widest uppercase">{name || 'User'}</h3>
+                <p className="text-[10px] font-mono text-neutral-500 uppercase mt-0.5">{userEmail}</p>
               </CardContent>
             </Card>
           </div>
@@ -89,6 +160,7 @@ export default function ProfilePage() {
                     onChange={(e) => setName(e.target.value)}
                     className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
                     required
+                    disabled={isSaving}
                   />
                 </div>
               </CardContent>
@@ -114,6 +186,7 @@ export default function ProfilePage() {
                     value={minBudget}
                     onChange={(e) => setMinBudget(e.target.value)}
                     className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
+                    disabled={isSaving}
                   />
                 </div>
                 <div className="space-y-2">
@@ -124,6 +197,7 @@ export default function ProfilePage() {
                     value={maxBudget}
                     onChange={(e) => setMaxBudget(e.target.value)}
                     className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
+                    disabled={isSaving}
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -134,6 +208,7 @@ export default function ProfilePage() {
                     value={travelRadius}
                     onChange={(e) => setTravelRadius(e.target.value)}
                     className="bg-stone-950/80 border border-stone-850 text-white rounded-[8px] text-xs font-mono uppercase tracking-wider focus-visible:ring-1 focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C] h-9"
+                    disabled={isSaving}
                   />
                 </div>
               </CardContent>
@@ -159,6 +234,7 @@ export default function ProfilePage() {
                         key={cat}
                         type="button"
                         onClick={() => handleToggleActivity(cat)}
+                        disabled={isSaving}
                         className={`px-3.5 py-1.5 rounded-full text-[10px] font-mono uppercase tracking-wider border transition cursor-pointer ${
                           isSelected
                             ? 'bg-[#DC143C] text-white border-transparent shadow-md'
@@ -174,9 +250,17 @@ export default function ProfilePage() {
               <CardFooter className="flex justify-end pt-4 border-t border-stone-900/40 pb-4">
                 <Button 
                   type="submit" 
-                  className="bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-6 py-2.5 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  disabled={isSaving}
+                  className="bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-6 py-2.5 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  Save Preferences
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Preferences'
+                  )}
                 </Button>
               </CardFooter>
             </Card>

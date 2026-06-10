@@ -27,7 +27,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
   
   const planConfigs = [
     {
-      name: 'Bandra Creative Hub',
+      name: 'Bandra West',
       tagline: 'Explore pottery, escape rooms, and coffee roasters in Bandra West.',
       slots: [
         { name: 'Clay Studio Pottery Workshop, Bandra West', category: 'POTTERY', price: 250, duration: 90, note: 'A hands-on clay pottery session to get your creative juices flowing together.' },
@@ -36,7 +36,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       ]
     },
     {
-      name: 'Thane Lakes & Ulhasnagar Food Tour',
+      name: 'Thane West',
       tagline: 'Take a scenic walk in Thane followed by a premium dining experience.',
       slots: [
         { name: 'Upvan Lake Nature Walk, Thane', category: 'FREE_EXPERIENCE', price: 0, duration: 120, note: 'A quiet morning stroll discovering scenic lake views and fresh air.' },
@@ -45,7 +45,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       ]
     },
     {
-      name: 'Vashi Gaming & Panvel Garden',
+      name: 'Vashi',
       tagline: 'Dive into board games and arcade tournament with friends in Vashi.',
       slots: [
         { name: 'Vashi Comic Con & Board Game Center', category: 'BOARD_GAME_EVENT', price: 200, duration: 120, note: 'An engaging, competitive board games tournament with your group.' },
@@ -54,7 +54,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       ]
     },
     {
-      name: 'South Mumbai Heritage & Jazz',
+      name: 'Colaba',
       tagline: 'Savor artisan desserts after a concert and sunset walk at Marine Drive.',
       slots: [
         { name: 'Sunset Jazz Concert at antiSOCIAL, CST', category: 'LIVE_MUSIC', price: 600, duration: 150, note: 'Experience incredible acoustics and local bands at an intimate venue near CST.' },
@@ -63,6 +63,21 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       ]
     }
   ];
+
+  const getCategoryImage = (cat: string) => {
+    switch (cat) {
+      case 'CAFE': return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80';
+      case 'RESTAURANT': return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80';
+      case 'DESSERT': return 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80';
+      case 'PARK': return 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80';
+      case 'ARCADE': return 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80';
+      case 'BOWLING': return 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80';
+      case 'ESCAPE_ROOM': return 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80';
+      case 'POTTERY': return 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80';
+      case 'LIVE_MUSIC': return 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80';
+      default: return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80';
+    }
+  };
 
   for (let i = 0; i < 4; i++) {
     const config = planConfigs[i];
@@ -74,6 +89,8 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
       let venueId: string | null = null;
       let displayName = s.name;
       let cost = s.price;
+      let img = getCategoryImage(s.category);
+      let linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(displayName)}`;
 
       if (s.category === 'POTTERY' || s.category === 'LIVE_MUSIC' || s.category === 'BOARD_GAME_EVENT' || s.category === 'FREE_EXPERIENCE') {
         const matchedExp = context.experiences.find(e => e.category === s.category);
@@ -81,6 +98,8 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
           experienceId = matchedExp.id;
           displayName = matchedExp.title;
           cost = matchedExp.ticketPrice;
+          if (matchedExp.imageUrl) img = matchedExp.imageUrl;
+          if (matchedExp.sourceUrl) linkUrl = matchedExp.sourceUrl;
         }
       } else {
         const matchedVenue = context.venues.find(v => v.category === s.category);
@@ -88,6 +107,7 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
           venueId = matchedVenue.id;
           displayName = matchedVenue.name;
           cost = matchedVenue.estimatedCostPerHead;
+          linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(matchedVenue.name + ' ' + matchedVenue.address)}`;
         }
       }
 
@@ -99,9 +119,11 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
         category: s.category as any,
         arrivalTime: idx === 0 ? '11:00 AM' : idx === 1 ? '01:30 PM' : '03:30 PM',
         durationMinutes: s.duration,
-        travelToNextMinutes: idx === 2 ? null : 15,
+        travelToNextMinutes: idx === config.slots.length - 1 ? null : 15,
         estimatedCostPerHead: cost,
-        note: s.note
+        note: s.note,
+        imageUrl: img,
+        link: linkUrl
       };
     });
 
@@ -160,7 +182,8 @@ export async function generateItineraries(
 
       const validated = itineraryResponseSchema.safeParse(parsed);
       if (!validated.success) {
-        console.error('Groq JSON validation failure:', validated.error.format());
+        console.error('Groq JSON validation failure:', JSON.stringify(validated.error.issues, null, 2));
+        console.error('Raw Groq content:', raw);
         throw new GroqInvalidSchemaError('Generated output failed layout validation.');
       }
 

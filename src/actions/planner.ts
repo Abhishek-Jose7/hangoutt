@@ -3,15 +3,11 @@
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ForbiddenError, ValidationError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
-import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
+import { isHangoutApiConfigured, hangoutApi } from '@/lib/cloudflare/hangoutApi';
 import { ActionResponse } from '@/lib/types/api.types';
 
 export async function generatePlan(groupId: string): ActionResponse<any> {
   try {
-    if (isHangoutApiConfigured()) {
-      throw new ValidationError('Plan generation is not available through the D1 Worker API yet.');
-    }
-
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const { memberRepository } = await import('@/lib/repositories/member.repository');
     const { plannerService } = await import('@/lib/services/planner.service');
@@ -19,7 +15,7 @@ export async function generatePlan(groupId: string): ActionResponse<any> {
 
     // Verify caller is a member of the group
     const member = await memberRepository.getMember(groupId, user.id);
-    if (!member) {
+    if (!member && !isHangoutApiConfigured()) {
       throw new ForbiddenError('You must be a member of this group to generate plans.');
     }
 
@@ -28,7 +24,7 @@ export async function generatePlan(groupId: string): ActionResponse<any> {
 
     revalidatePath(`/groups/${groupId}`);
     revalidatePath(`/planner/${groupId}`);
-    return apiResponse.success(result.plans);
+    return apiResponse.success((result as any).plans);
   } catch (err) {
     return apiResponse.error(err);
   }
@@ -37,7 +33,11 @@ export async function generatePlan(groupId: string): ActionResponse<any> {
 export async function getPlansForGroupAction(groupId: string): ActionResponse<any[]> {
   try {
     if (isHangoutApiConfigured()) {
-      return apiResponse.success([]);
+      const response = await hangoutApi<any>(`/groups/${groupId}/plans`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to fetch plans from D1');
+      }
+      return apiResponse.success(response.data);
     }
 
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');

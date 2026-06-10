@@ -14,7 +14,7 @@ import { saveLocation, reverseGeocodeAction } from '@/actions/locations';
 import { submitMemberVibes } from '@/actions/members';
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
-import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check } from 'lucide-react';
+import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -49,6 +49,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const [activePlanIdx, setActivePlanIdx] = useState<number>(0);
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [userVotedPlanId, setUserVotedPlanId] = useState<string | null>(null);
+  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [isCasting, setIsCasting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -539,7 +540,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                                   </p>
                                   {slot.note && (
                                     <p className="text-[11px] text-neutral-400 font-sans leading-relaxed italic mt-1.5">
-                                      "{slot.note}"
+                                      &ldquo;{slot.note}&rdquo;
                                     </p>
                                   )}
                                 </div>
@@ -585,30 +586,24 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
               /* Case B: Voting Phase */
               <div className="space-y-6">
                 {/* 1. Mobile Carousel View (block md:hidden) */}
-                <Card className="block md:hidden border border-[#353534] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-4 space-y-4 rounded-[8px]">
-                  <div className="flex justify-between items-center pb-2 border-b border-[#353534]">
-                    <div className="space-y-0.5">
-                      <CardTitle className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Outing Options
-                      </CardTitle>
-                      <p className="text-[9px] text-neutral-400 font-sans tracking-wide leading-relaxed">
-                        Swipe through plans and lock your vote on your preferred routing.
-                      </p>
-                    </div>
-                    <Badge variant="outline" className={`rounded-[4px] py-0.5 px-2.5 text-[9px] font-mono font-bold uppercase tracking-widest shrink-0 ${
+                <div className="block md:hidden space-y-4">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      ITINERARY OPTIONS
+                    </span>
+                    <Badge variant="outline" className={`rounded-[4px] py-0.5 px-2.5 text-[9px] font-mono font-bold uppercase tracking-widest ${
                       group.votingStatus === 'OPEN' 
                         ? 'bg-[#DC143C]/10 text-[#DC143C] border-[#DC143C]/20 animate-pulse' 
                         : 'bg-stone-900/40 text-neutral-400 border-stone-850'
                     }`}>
-                      Voting: {group.votingStatus.toLowerCase()}
+                      VOTING: {group.votingStatus.replace('_', ' ')}
                     </Badge>
                   </div>
 
-                  {/* Scroll Carousel */}
                   <div 
                     ref={carouselRef}
-                    className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none px-0.5"
+                    className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none pb-4"
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                     onScroll={(e) => {
                       const container = e.currentTarget;
@@ -620,111 +615,170 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       }
                     }}
                   >
-                    {plans.map((plan, idx) => {
+                    {plans.map((plan) => {
                       const voteCount = votes[plan.id] || 0;
+                      const isExpanded = expandedPlanId === plan.id;
+                      const placesText = plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => s.name).join(' → ') || 'No places specified';
 
                       return (
-                        <div 
-                          key={plan.id}
-                          className="w-full shrink-0 snap-center snap-always space-y-4"
-                        >
-                          <Card className="bg-[#1c1b1b] border border-[#353534] rounded-[8px] p-5 shadow-inner">
-                            <div className="flex justify-between items-start gap-2">
-                              <div>
-                                <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1 font-mono">
-                                  📍 Zone: {plan.meetupZone.toUpperCase()}
-                                </span>
-                                <h3 className="text-sm font-bold text-white mt-1.5 uppercase tracking-wider font-mono">{plan.name}</h3>
-                                <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-1">{plan.tagline}</p>
+                        <div key={plan.id} className="w-full shrink-0 snap-center snap-always px-1">
+                          <Card 
+                            className="bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 cursor-pointer hover:border-[#DC143C]/40 transition-all select-none"
+                            onClick={() => setExpandedPlanId(isExpanded ? null : plan.id)}
+                          >
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-2.5">
+                                <div>
+                                  <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono">
+                                    📍 Location
+                                  </span>
+                                  <h3 className="text-base font-bold text-white mt-0.5 uppercase tracking-wide font-mono">
+                                    {plan.meetupZone}
+                                  </h3>
+                                  <p className="text-[10.5px] text-[#DC143C] font-mono font-semibold uppercase tracking-wider mt-1">
+                                    {plan.name}
+                                  </p>
+                                </div>
+                                <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
+                                  <Vote className="h-3 w-3" />
+                                  {voteCount} VOTES
+                                </Badge>
                               </div>
-                              <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 hover:bg-[#DC143C]/10 hover:text-[#DC143C] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2.5 uppercase tracking-widest shrink-0">
-                                <Vote className="h-3 w-3" />
-                                {voteCount} VOTES
-                              </Badge>
-                            </div>
 
-                            {/* Compact Itinerary Flow using Actual places */}
-                            <div className="flex flex-col items-center justify-center py-4 my-3 bg-[#0e0e0e]/90 rounded-[4px] border border-[#353534] space-y-2 text-center">
-                              {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
-                                <React.Fragment key={sIdx}>
-                                  <div className="px-3">
-                                    <p className="text-[11px] font-bold text-white tracking-wider leading-snug font-mono">{slot.name.toUpperCase()}</p>
-                                    <p className="text-[9px] text-neutral-400 uppercase font-mono tracking-widest mt-0.5">
-                                      {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}M)
-                                    </p>
+                              <div className="space-y-1">
+                                <span className="text-[9px] uppercase font-mono text-neutral-500 tracking-wider font-bold">TAGLINE</span>
+                                <p className="text-xs text-neutral-300 font-sans tracking-wide leading-relaxed">{plan.tagline}</p>
+                              </div>
+
+                              <div className="space-y-1">
+                                <span className="text-[9px] uppercase font-mono text-neutral-500 tracking-wider font-bold">PLACES</span>
+                                <p className="text-xs text-white font-mono tracking-wider font-bold line-clamp-2 leading-snug">{placesText}</p>
+                              </div>
+
+                              {/* Travel and cost indicators */}
+                              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#353534]/40 text-[10px] font-mono text-neutral-400">
+                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
+                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">ESTIMATED OUTING COST</span>
+                                  <span className="text-white font-bold">₹{plan.totalEstimatedCostPerHead} / Head</span>
+                                </div>
+                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
+                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">AVERAGE TRAVEL TIME</span>
+                                  <span className="text-white font-bold">~{plan.avgCabTime} Mins (Cab)</span>
+                                </div>
+                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
+                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">CAB JOURNEY COST</span>
+                                  <span className="text-white font-bold">₹{plan.avgCabCost} avg</span>
+                                </div>
+                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
+                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">TRAIN TIME & COST</span>
+                                  <span className="text-white font-bold">~{plan.avgTrainTime}m / ₹{plan.avgTrainCost}</span>
+                                </div>
+                              </div>
+
+                              {/* Expand Prompt indicator */}
+                              <div className="flex items-center justify-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-neutral-500 pt-1">
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="h-3.5 w-3.5 text-neutral-500" />
+                                    TAP TO COLLAPSE DETAILS
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-3.5 w-3.5 text-[#DC143C]" />
+                                    TAP TO EXPAND DETAILS
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Expanded content */}
+                              {isExpanded && (
+                                <div className="pt-3.5 border-t border-[#353534] space-y-4 animate-in fade-in slide-in-from-top-2 duration-250 text-left">
+                                  <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono block">
+                                    Itinerary Timeline
+                                  </span>
+                                  <div className="space-y-2.5">
+                                    {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                                      <div key={sIdx} className="flex gap-3 items-start bg-black/40 p-3 rounded-[6px] border border-[#353534]">
+                                        <span className="w-5 h-5 flex items-center justify-center bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[10px] font-mono rounded-[4px] shrink-0 mt-0.5">
+                                          {slot.slotOrder}
+                                        </span>
+                                        <div className="space-y-0.5">
+                                          <p className="text-xs font-mono font-bold text-white uppercase">{slot.name}</p>
+                                          <p className="text-[9px] font-mono text-neutral-400">
+                                            {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}m) • ₹{slot.estimatedCostPerHead}/head
+                                          </p>
+                                          {slot.note && <p className="text-[10px] text-neutral-500 font-sans italic mt-1.5">&ldquo;{slot.note}&rdquo;</p>}
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  {sIdx < (plan.slots.length - 1) && (
-                                    <span className="text-[#DC143C]/70 font-black text-xs">↓</span>
-                                  )}
-                                </React.Fragment>
-                              ))}
-                            </div>
 
-                            {/* Travel and cost footer statistics */}
-                            <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-[#353534] text-center text-[10px] font-bold text-neutral-400 uppercase font-mono">
-                              <div className="space-y-0.5">
-                                <p className="text-[9px] text-neutral-500 tracking-wider">Per Head</p>
-                                <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
-                              </div>
-                              <div className="space-y-0.5">
-                                <p className="text-[9px] text-neutral-500 tracking-wider">Avg Travel</p>
-                                <p className="text-xs font-bold text-white">{plan.avgCabTime} M</p>
-                              </div>
-                              <div className="space-y-0.5">
-                                <p className="text-[9px] text-neutral-500 tracking-wider">Score</p>
-                                <p className="text-xs font-bold text-[#DC143C]">{(plan.score * 10).toFixed(1)}/10</p>
-                              </div>
-                            </div>
-                          </Card>
-
-                          {/* Voting Action */}
-                          {group.votingStatus === 'OPEN' && (
-                            <Button
-                              size="sm"
-                              disabled={isCasting || userVotedPlanId === plan.id}
-                              onClick={() => handleVoteCast(plan.id)}
-                              className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[10px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
-                                userVotedPlanId === plan.id
-                                  ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                  : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
-                              }`}
-                            >
-                              {userVotedPlanId === plan.id ? (
-                                <>
-                                  <Check className="mr-2 h-4 w-4 text-[#00E1AB]" /> VOTE REGISTERED
-                                </>
-                              ) : (
-                                <>
-                                  <Vote className="mr-2 h-4 w-4" /> SUBMIT VOTE FOR PLAN {plan.planIndex}
-                                </>
+                                  <div className="bg-black/25 p-3 rounded-[6px] border border-[#353534]/50 space-y-2">
+                                    <span className="text-[9px] uppercase font-bold text-[#00E1AB] tracking-widest font-mono block">
+                                      Itinerary Score Details
+                                    </span>
+                                    <div className="grid grid-cols-2 gap-2 text-[9.5px] font-mono text-neutral-400">
+                                      <div>Experience: <span className="text-white">{(plan.experienceScore * 10).toFixed(1)}/10</span></div>
+                                      <div>Travel Time: <span className="text-white">{(plan.travelScore * 10).toFixed(1)}/10</span></div>
+                                      <div>Budget fit: <span className="text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span></div>
+                                      <div>Fairness index: <span className="text-white">{(plan.fairnessScore * 10).toFixed(1)}/10</span></div>
+                                    </div>
+                                  </div>
+                                </div>
                               )}
-                            </Button>
-                          )}
+                            </div>
+
+                            {/* Vote Action */}
+                            {group.votingStatus === 'OPEN' && (
+                              <Button
+                                size="sm"
+                                disabled={isCasting || userVotedPlanId === plan.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleVoteCast(plan.id);
+                                }}
+                                className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10.5px] py-4.5 shadow-md transition-all duration-200 cursor-pointer ${
+                                  userVotedPlanId === plan.id
+                                    ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
+                                    : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
+                                }`}
+                              >
+                                {userVotedPlanId === plan.id ? (
+                                  <>
+                                    <Check className="mr-2 h-4 w-4 text-[#00E1AB]" /> VOTE REGISTERED
+                                  </>
+                                ) : (
+                                  <>
+                                    <Vote className="mr-2 h-4 w-4" /> VOTE FOR THIS
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </Card>
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Carousel Navigation Controls */}
-                  <div className="flex justify-between items-center mt-3 px-1">
+                  {/* Carousel Indicators */}
+                  <div className="flex justify-between items-center px-1.5">
                     <Button 
                       variant="outline" 
                       size="xs" 
                       disabled={activePlanIdx === 0} 
                       onClick={() => scrollToPlan(activePlanIdx - 1)}
-                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer"
+                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer animate-none"
                     >
                       Prev
                     </Button>
                     
-                    {/* Dots indicator */}
                     <div className="flex gap-2">
                       {plans.map((_, idx) => (
                         <span 
                           key={idx} 
                           onClick={() => scrollToPlan(idx)}
                           className={`h-2 w-2 rounded-full cursor-pointer transition-all duration-300 ${
-                            idx === activePlanIdx ? 'bg-[#DC143C] scale-125' : 'bg-stone-900 hover:bg-stone-800'
+                            idx === activePlanIdx ? 'bg-[#DC143C] scale-125' : 'bg-stone-900 hover:bg-stone-850'
                           }`}
                         />
                       ))}
@@ -735,67 +789,125 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       size="xs" 
                       disabled={activePlanIdx === plans.length - 1} 
                       onClick={() => scrollToPlan(activePlanIdx + 1)}
-                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer"
+                      className="border-[#353534] bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] h-7 px-3.5 cursor-pointer animate-none"
                     >
                       Next
                     </Button>
                   </div>
-                </Card>
+                </div>
 
-                {/* 2. Desktop Grid View (hidden md:grid) */}
-                <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {plans.map((plan) => {
+                {/* 2. Desktop Bento View (hidden md:grid) */}
+                <div className="hidden md:grid grid-cols-6 gap-6 items-start">
+                  {plans.map((plan, idx) => {
                     const voteCount = votes[plan.id] || 0;
+                    const isFeatured = idx === 0;
+                    const isExpanded = expandedPlanId === plan.id || isFeatured; // featured is expanded by default
+                    const colSpan = isFeatured ? 'col-span-6 lg:col-span-4' : 'col-span-3 lg:col-span-2';
+                    const placesText = plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => s.name).join(' → ') || 'No places specified';
 
                     return (
-                      <Card key={plan.id} className="border border-[#353534] bg-[#0e0e0e]/80 p-5 shadow-lg backdrop-blur-md flex flex-col justify-between space-y-4 rounded-[8px]">
+                      <Card 
+                        key={plan.id} 
+                        className={`border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg backdrop-blur-md flex flex-col justify-between gap-5 rounded-[12px] hover:border-[#DC143C]/40 transition-all cursor-pointer ${colSpan}`}
+                        onClick={() => {
+                          if (!isFeatured) {
+                            setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id);
+                          }
+                        }}
+                      >
                         <div className="space-y-4">
-                          <div className="flex justify-between items-start gap-2 border-b border-[#353534] pb-3">
+                          <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-3.5">
                             <div>
-                              <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1 font-mono">
-                                📍 Zone: {plan.meetupZone.toUpperCase()}
-                              </span>
-                              <h3 className="text-xs font-bold text-white mt-1.5 uppercase tracking-widest font-mono line-clamp-1">{plan.name}</h3>
-                              <p className="text-[10px] text-neutral-400 mt-0.5 font-sans tracking-wide leading-relaxed line-clamp-2 min-h-[2.5rem]">{plan.tagline}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono">
+                                  📍 Zone: {plan.meetupZone}
+                                </span>
+                                {isFeatured && (
+                                  <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 text-[7.5px] font-mono font-bold py-0 px-1.5 uppercase tracking-widest rounded-[3px]">
+                                    TOP RECOMMENDATION
+                                  </Badge>
+                                )}
+                              </div>
+                              <h3 className="text-base font-bold text-white mt-1 uppercase tracking-wide font-mono truncate">{plan.name}</h3>
+                              <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed mt-0.5 line-clamp-1">{plan.tagline}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
-                              <Vote className="h-3 w-3" />
-                              {voteCount}
+                            <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest shrink-0">
+                              <Vote className="h-3.5 w-3.5" />
+                              {voteCount} VOTES
                             </Badge>
                           </div>
 
-                          {/* Timeline Listing */}
-                          <div className="flex flex-col items-center justify-center py-3 bg-[#131313]/95 rounded-[4px] border border-[#353534] space-y-1.5 text-center min-h-[14rem]">
-                            {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
-                              <React.Fragment key={sIdx}>
-                                <div className="px-2">
-                                  <p className="text-[11px] font-bold text-white tracking-wider leading-snug font-mono line-clamp-2">{slot.name.toUpperCase()}</p>
-                                  <p className="text-[9px] text-neutral-400 uppercase font-mono tracking-widest mt-0.5">
-                                    {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}M)
-                                  </p>
-                                </div>
-                                {sIdx < (plan.slots.length - 1) && (
-                                  <span className="text-[#DC143C]/70 font-black text-[10px]">↓</span>
-                                )}
-                              </React.Fragment>
-                            ))}
+                          <div className="space-y-1">
+                            <span className="text-[9.5px] uppercase font-mono text-neutral-500 tracking-wider font-bold">PLACES</span>
+                            <p className="text-xs font-mono font-bold text-white tracking-wide leading-snug truncate">{placesText}</p>
                           </div>
 
-                          {/* Stats Grid */}
-                          <div className="grid grid-cols-3 gap-1 py-3 border-t border-b border-[#353534] text-center text-[9px] font-bold text-neutral-400 uppercase font-mono">
-                            <div className="space-y-0.5">
-                              <p className="text-[8px] text-neutral-500 tracking-wider">Per Head</p>
-                              <p className="text-xs font-bold text-white">₹{plan.totalEstimatedCostPerHead}</p>
+                          {/* Stats Row */}
+                          <div className="grid grid-cols-3 gap-3 bg-[#131313]/95 border border-[#353534]/40 rounded-[6px] p-3 text-center text-[10px] font-mono text-neutral-400">
+                            <div>
+                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">COST / HEAD</span>
+                              <span className="text-white font-bold text-xs">₹{plan.totalEstimatedCostPerHead}</span>
                             </div>
-                            <div className="space-y-0.5">
-                              <p className="text-[8px] text-neutral-500 tracking-wider">Avg Travel</p>
-                              <p className="text-xs font-bold text-white">{plan.avgCabTime} M</p>
+                            <div>
+                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">AVG CAB TIME</span>
+                              <span className="text-white font-bold text-xs">{plan.avgCabTime} Mins</span>
                             </div>
-                            <div className="space-y-0.5">
-                              <p className="text-[8px] text-neutral-500 tracking-wider">Score</p>
-                              <p className="text-xs font-bold text-[#DC143C]">{(plan.score * 10).toFixed(1)}</p>
+                            <div>
+                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">PLAN SCORE</span>
+                              <span className="text-[#DC143C] font-bold text-xs">{(plan.score * 10).toFixed(1)}/10</span>
                             </div>
                           </div>
+
+                          {!isFeatured && (
+                            <div className="flex items-center justify-center gap-1 text-[9px] font-mono uppercase tracking-widest text-neutral-500">
+                              {isExpanded ? (
+                                <>
+                                  <ChevronUp className="h-3 w-3" /> CLICK TO COLLAPSE
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-3 w-3" /> CLICK FOR DETAILS
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Collapsible details for non-featured OR default for featured */}
+                          {isExpanded && (
+                            <div className="pt-4 border-t border-[#353534] space-y-4 animate-in fade-in slide-in-from-top-2 duration-250 text-left">
+                              <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C]">ITINERARY TIMELINE</h4>
+                              
+                              <div className="grid grid-cols-1 gap-2.5">
+                                {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
+                                  <div key={sIdx} className="flex gap-3 items-start bg-black/45 p-3.5 border border-[#353534] rounded-[6px]">
+                                    <span className="w-5 h-5 flex items-center justify-center bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[10px] font-mono rounded-[4px] shrink-0 mt-0.5">
+                                      {slot.slotOrder}
+                                    </span>
+                                    <div className="space-y-0.5 flex-1 min-w-0">
+                                      <p className="text-xs font-mono font-bold text-white uppercase truncate">{slot.name}</p>
+                                      <p className="text-[9px] font-mono text-neutral-400">
+                                        {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}m) • ₹{slot.estimatedCostPerHead}/head
+                                      </p>
+                                      {slot.note && <p className="text-[10.5px] text-neutral-500 font-sans italic mt-1">&ldquo;{slot.note}&rdquo;</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Travel breakdown stats */}
+                              <div className="bg-black/20 p-3 rounded-[6px] border border-[#353534]/50 space-y-2 text-[10px] font-mono text-neutral-400">
+                                <h5 className="text-[9px] font-mono font-bold text-[#00E1AB] uppercase tracking-wider">Detailed Commute & Score Metrics</h5>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                  <div>Cab Cost: <span className="text-white font-bold">~₹{plan.avgCabCost} avg</span></div>
+                                  <div>Train Cost: <span className="text-white font-bold">~₹{plan.avgTrainCost} avg</span></div>
+                                  <div>Avg Train time: <span className="text-white font-bold">~{plan.avgTrainTime} mins</span></div>
+                                  <div>Fairness Index: <span className="text-white font-bold">{(plan.travelFairnessScore * 10).toFixed(1)}/10</span></div>
+                                  <div>Experience: <span className="text-white">{(plan.experienceScore * 10).toFixed(1)}/10</span></div>
+                                  <div>Budget Match: <span className="text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Voting Action */}
@@ -803,20 +915,23 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           <Button
                             size="sm"
                             disabled={isCasting || userVotedPlanId === plan.id}
-                            onClick={() => handleVoteCast(plan.id)}
-                            className={`w-full font-mono font-bold rounded-[4px] uppercase tracking-widest text-[9px] py-3 shadow-md transition-all duration-200 cursor-pointer ${
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVoteCast(plan.id);
+                            }}
+                            className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[9.5px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
                                 ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black'
+                                : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
                             }`}
                           >
                             {userVotedPlanId === plan.id ? (
                               <>
-                                <Check className="mr-1.5 h-3.5 w-3.5 text-[#00E1AB]" /> VOTED
+                                <Check className="mr-2 h-4 w-4 text-[#00E1AB]" /> VOTE REGISTERED
                               </>
                             ) : (
                               <>
-                                <Vote className="mr-1.5 h-3.5 w-3.5" /> VOTE PLAN {plan.planIndex}
+                                <Vote className="mr-2 h-4 w-4" /> VOTE FOR THIS
                               </>
                             )}
                           </Button>
@@ -824,6 +939,45 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                       </Card>
                     );
                   })}
+
+                  {/* 3. Live Vote Distribution Bento Block */}
+                  <Card className="col-span-3 lg:col-span-2 border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg rounded-[12px] flex flex-col justify-between gap-5 min-h-[300px]">
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1.5 font-mono">
+                        <Vote className="h-3.5 w-3.5" /> Live Consensus
+                      </span>
+                      <h3 className="text-base font-bold text-white uppercase tracking-wider font-mono">Vote Distribution</h3>
+                      <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed">
+                        Visualizing alignments across proposed routes.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3.5 flex-1 py-1">
+                      {plans.map((p) => {
+                        const pVotes = votes[p.id] || 0;
+                        const totalVotes = Object.values(votes).reduce((sum, v) => sum + v, 0);
+                        const pct = totalVotes > 0 ? (pVotes / totalVotes) * 100 : 0;
+                        return (
+                          <div key={p.id} className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono">
+                              <span className="text-white font-semibold uppercase truncate max-w-[130px]">{p.name}</span>
+                              <span className="text-neutral-400 font-bold">{pVotes} ({pct.toFixed(0)}%)</span>
+                            </div>
+                            <div className="h-2 bg-black border border-stone-850 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-[#DC143C] to-[#B80F2E] transition-all duration-500 rounded-full" 
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="pt-3.5 border-t border-[#353534]/50 text-center font-mono text-[9px] text-neutral-500 uppercase tracking-widest">
+                      TOTAL VOTES REGISTERED: {Object.values(votes).reduce((sum, v) => sum + v, 0)}
+                    </div>
+                  </Card>
                 </div>
               </div>
             )}
@@ -885,8 +1039,9 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           <p className="font-mono font-bold text-[11px] text-white uppercase truncate">{member.name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
-                            <span className={`text-[8.5px] font-mono font-bold uppercase ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
-                              {isSynced ? 'Synced' : 'Pending'}
+                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
+                              {isSynced ? 'ACCEPTED' : 'Pending'}
+                              {isSynced && <Check className="h-3 w-3 text-[#00E1AB]" />}
                             </span>
                           </div>
                         </div>
@@ -932,6 +1087,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                   <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                     <span className="text-[#DC143C]"></span>Enter Location
+                    {currentUser.location !== null && (
+                      <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-[4px] uppercase tracking-wider">
+                        ACCEPTED
+                      </Badge>
+                    )}
                   </h2>
                   <MapPin className="text-[#DC143C] h-4 w-4" />
                 </div>
@@ -974,6 +1134,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                       <span className="text-[#DC143C]"></span> Budget
+                      {currentUser.budget !== null && (
+                        <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-[4px] uppercase tracking-wider">
+                          ACCEPTED
+                        </Badge>
+                      )}
                     </h2>
                     <DollarSign className="text-[#DC143C] h-4 w-4" />
                   </div>
@@ -1000,6 +1165,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[#353534] bg-[#1c1b1b]">
                     <h2 className="font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                       <span className="text-[#DC143C]"></span>Vibe
+                      {hasVibes && (
+                        <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-[4px] uppercase tracking-wider">
+                          ACCEPTED
+                        </Badge>
+                      )}
                     </h2>
                     <Heart className="text-[#DC143C] h-4 w-4" />
                   </div>
@@ -1037,12 +1207,21 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <Button 
                   type="submit" 
                   disabled={isSubmittingDetails || isSubmittingBudget || isSubmittingLocation || isSubmittingVibes}
-                  className="w-full md:w-auto px-10 py-5 bg-[#DC143C] hover:bg-[#B80F2E] text-black font-mono font-bold text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(220,20,60,0.3)] hover:shadow-[0_0_20px_rgba(220,20,60,0.55)] rounded-[4px] flex items-center justify-center gap-3 cursor-pointer"
+                  className={`w-full md:w-auto px-10 py-5 font-mono font-bold text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all rounded-[4px] flex items-center justify-center gap-3 cursor-pointer ${
+                    hasSubmittedSelf 
+                      ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/30 text-[#00E1AB] hover:bg-[#00E1AB]/20 shadow-[0_0_15px_rgba(0,225,171,0.15)]'
+                      : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black shadow-[0_0_15px_rgba(220,20,60,0.3)] hover:shadow-[0_0_20px_rgba(220,20,60,0.55)]'
+                  }`}
                 >
                   {isSubmittingDetails ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin text-black" />
                       SYNCING DETAILS...
+                    </>
+                  ) : hasSubmittedSelf ? (
+                    <>
+                      <Check className="h-4 w-4 text-[#00E1AB]" />
+                      DETAILS SYNCED & ACCEPTED
                     </>
                   ) : (
                     <>

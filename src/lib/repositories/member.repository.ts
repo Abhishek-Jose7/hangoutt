@@ -1,4 +1,4 @@
-import { db } from '../db/client';
+import { db, safeTransaction } from '../db/client';
 import { groupMembers, users } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
@@ -85,7 +85,7 @@ export const memberRepository = {
 
   async transferOwnership(groupId: string, currentOwnerId: string, newOwnerId: string): Promise<void> {
     // Atomically swap roles inside a transaction
-    await db.transaction(async (tx: any) => {
+    await safeTransaction(async (tx: any) => {
       await tx
         .update(groupMembers)
         .set({ role: 'MEMBER' })

@@ -4,7 +4,7 @@ import { groupRepository } from '../repositories/group.repository';
 import { planRepository } from '../repositories/plan.repository';
 import { createVoteSchema } from '../validators/vote.schema';
 import { ForbiddenError, ValidationError, NotFoundError, VoteClosedError } from '../errors';
-import { db } from '../db/client';
+import { db, safeTransaction } from '../db/client';
 import { groups, history } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { validateStatusTransition } from './group.service';
@@ -108,7 +108,7 @@ export const votingService = {
     validateStatusTransition(group.status, 'COMPLETED');
 
     // 3. Save winning plan details and transition group state to COMPLETED inside a transaction
-    await db.transaction(async (tx: any) => {
+    await safeTransaction(async (tx: any) => {
       // Update group status to COMPLETED, voting status to CLOSED, and record winningPlanId
       await tx
         .update(groups)

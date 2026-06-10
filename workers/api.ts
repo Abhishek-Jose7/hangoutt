@@ -371,11 +371,20 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
     totalMembers: members.length,
   };
 
+  const isReady = isGroupReady((group as { status: string }).status, members, budgets, locations);
+  if (isReady && (group as { status: string }).status === 'COLLECTING_DETAILS') {
+    await env.DB
+      .prepare(`UPDATE groups SET status = 'READY_TO_GENERATE', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .bind(groupId)
+      .run();
+    (group as any).status = 'READY_TO_GENERATE';
+  }
+
   return json(
     {
       success: true,
       data: {
-        group: { ...group, isReady: isGroupReady((group as { status: string }).status, members, budgets, locations) },
+        group: { ...group, isReady },
         members,
         budgetSummary,
         submittedBudgetUserIds: budgets.map((budget) => budget.user_id),
@@ -451,13 +460,10 @@ async function joinGroup(request: Request, env: Env) {
   const existing = await env.DB
     .prepare(`SELECT id, group_id AS groupId, user_id AS userId, role FROM group_members WHERE group_id = ? AND user_id = ?`)
     .bind(invite.groupId, user.id)
-    .first();
+    .first<{ id: string; groupId: string; userId: string; role: string }>();
 
   if (existing) {
-    return json(
-      { success: false, error: { code: 'DUPLICATE', message: 'You are already a member of this group.' } },
-      { status: 409, headers: corsHeaders(env) }
-    );
+    return json({ success: true, data: existing }, { headers: corsHeaders(env) });
   }
 
   const member = {
@@ -628,6 +634,336 @@ async function updateReadiness(db: D1Database, groupId: string) {
   }
 }
 
+async function getUser(request: Request, env: Env) {
+  const url = new URL(request.url);
+  const clerkId = url.searchParams.get('clerkId');
+  if (!clerkId) {
+    return json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Missing clerkId.' } }, { status: 422, headers: corsHeaders(env) });
+  }
+  const user = await env.DB.prepare(
+    `SELECT id, clerk_id AS clerkId, email, name, image_url AS imageUrl,
+            preferred_budget_min AS preferredBudgetMin, preferred_budget_max AS preferredBudgetMax,
+            favorite_activities AS favoriteActivities
+     FROM users WHERE clerk_id = ?`
+  ).bind(clerkId).first();
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+  return json({ success: true, data: user }, { headers: corsHeaders(env) });
+}
+
+async function updateUserProfile(request: Request, env: Env) {
+  const body = await readJson<{
+    clerkId: string;
+    name: string;
+    preferredBudgetMin?: number;
+    preferredBudgetMax?: number;
+    favoriteActivities?: string[];
+  }>(request);
+  
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const minB = body.preferredBudgetMin !== undefined ? body.preferredBudgetMin : null;
+  const maxB = body.preferredBudgetMax !== undefined ? body.preferredBudgetMax : null;
+  const favAct = body.favoriteActivities ? JSON.stringify(body.favoriteActivities) : null;
+
+  await env.DB.prepare(
+    `UPDATE users
+     SET name = ?, preferred_budget_min = ?, preferred_budget_max = ?, favorite_activities = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).bind(body.name, minB, maxB, favAct, user.id).run();
+
+  const updated = {
+    id: user.id,
+    clerkId: body.clerkId,
+    email: user.email,
+    name: body.name,
+    imageUrl: user.imageUrl,
+    preferredBudgetMin: minB,
+    preferredBudgetMax: maxB,
+    favoriteActivities: body.favoriteActivities || []
+  };
+
+  return json({ success: true, data: updated }, { headers: corsHeaders(env) });
+}
+
+async function savePlans(request: Request, env: Env, groupId: string) {
+  const body = await readJson<{
+    plans: any[];
+    slots: any[];
+    memberTravels: any[];
+  }>(request);
+
+  const group = await getGroupById(env.DB, groupId);
+  if (!group) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'Group not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  // Determine old plan IDs to delete associated slot/metrics/votes safely
+  const oldPlans = await env.DB.prepare(`SELECT id FROM plans WHERE group_id = ?`).bind(groupId).all<{ id: string }>();
+  const oldPlanIds = (oldPlans.results || []).map(p => p.id);
+
+  const statements = [];
+
+  if (oldPlanIds.length > 0) {
+    for (const planId of oldPlanIds) {
+      statements.push(env.DB.prepare(`DELETE FROM member_travel_metrics WHERE plan_id = ?`).bind(planId));
+      statements.push(env.DB.prepare(`DELETE FROM plan_slots WHERE plan_id = ?`).bind(planId));
+      statements.push(env.DB.prepare(`DELETE FROM votes WHERE plan_id = ?`).bind(planId));
+    }
+  }
+  statements.push(env.DB.prepare(`DELETE FROM plans WHERE group_id = ?`).bind(groupId));
+
+  // Insert new plans
+  for (const plan of body.plans) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO plans (
+        id, group_id, plan_index, name, tagline, meetup_zone, budget_tier, 
+        total_estimated_cost_per_head, total_duration_minutes, score,
+        experience_score, travel_score, budget_score, fairness_score, popularity_score,
+        group_type_match_score, vibe_match_score, composite_score,
+        avg_train_time, avg_cab_time, avg_train_cost, avg_cab_cost,
+        longest_travel_time, shortest_travel_time, travel_fairness_score, generated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      plan.id, plan.groupId, plan.planIndex, plan.name, plan.tagline, plan.meetupZone, plan.budgetTier || 'BALANCED',
+      plan.totalEstimatedCostPerHead, plan.totalDurationMinutes, plan.score,
+      plan.experienceScore, plan.travelScore, plan.budgetScore, plan.fairnessScore, plan.popularityScore,
+      plan.groupTypeMatchScore, plan.vibeMatchScore, plan.compositeScore,
+      plan.avgTrainTime, plan.avgCabTime, plan.avgTrainCost, plan.avgCabCost,
+      plan.longestTravelTime, plan.shortestTravelTime, plan.travelFairnessScore, plan.generatedAt || new Date().toISOString()
+    ));
+  }
+
+  // Insert new slots
+  for (const slot of body.slots) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO plan_slots (
+        id, plan_id, slot_order, venue_id, experience_id, venue_name, name, category, 
+        arrival_time, duration_minutes, travel_to_next_minutes, estimated_cost_per_head, note,
+        travel_to_next_cost, image_url, link
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      slot.id, slot.planId, slot.slotOrder, slot.venueId || null, slot.experienceId || null, slot.venueName || null, slot.name, slot.category,
+      slot.arrivalTime, slot.durationMinutes, slot.travelToNextMinutes || null, slot.estimatedCostPerHead, slot.note,
+      slot.travelToNextCost || null, slot.imageUrl || null, slot.link || null
+    ));
+  }
+
+  // Insert new travel metrics
+  for (const t of body.memberTravels) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO member_travel_metrics (
+        id, plan_id, user_id, train_time, train_cost, cab_time, cab_cost, walk_time
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      t.id, t.planId, t.userId, t.trainTime, t.trainCost, t.cabTime, t.cabCost, t.walkTime
+    ));
+  }
+
+  // Update group status to VOTING and open votingStatus
+  statements.push(env.DB.prepare(
+    `UPDATE groups SET status = 'VOTING', voting_status = 'OPEN', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(groupId));
+
+  await env.DB.batch(statements);
+
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function getPlans(request: Request, env: Env, groupId: string) {
+  // Query plans
+  const plansRes = await env.DB.prepare(
+    `SELECT 
+      id, group_id AS groupId, plan_index AS planIndex, name, tagline, meetup_zone AS meetupZone,
+      budget_tier AS budgetTier, total_estimated_cost_per_head AS totalEstimatedCostPerHead,
+      total_duration_minutes AS totalDurationMinutes, score,
+      experience_score AS experienceScore, travel_score AS travelScore, budget_score AS budgetScore,
+      fairness_score AS fairnessScore, popularity_score AS popularityScore,
+      group_type_match_score AS groupTypeMatchScore, vibe_match_score AS vibeMatchScore,
+      composite_score AS compositeScore, avg_train_time AS avgTrainTime, avg_cab_time AS avgCabTime,
+      avg_train_cost AS avgTrainCost, avg_cab_cost AS avgCabCost, longest_travel_time AS longestTravelTime,
+      shortest_travel_time AS shortestTravelTime, travel_fairness_score AS travelFairnessScore,
+      generated_at AS generatedAt
+     FROM plans
+     WHERE group_id = ?
+     ORDER BY plan_index`
+  ).bind(groupId).all<any>();
+
+  const groupPlans = plansRes.results || [];
+  if (groupPlans.length === 0) {
+    return json({ success: true, data: [] }, { headers: corsHeaders(env) });
+  }
+
+  const planIds = groupPlans.map(p => p.id);
+  
+  // Fetch slots
+  const slotsRes = await env.DB.prepare(
+    `SELECT 
+      id, plan_id AS planId, slot_order AS slotOrder, venue_id AS venueId,
+      experience_id AS experienceId, venue_name AS venueName, name, category,
+      arrival_time AS arrivalTime, duration_minutes AS durationMinutes,
+      travel_to_next_minutes AS travelToNextMinutes, estimated_cost_per_head AS estimatedCostPerHead, note,
+      travel_to_next_cost AS travelToNextCost, image_url AS imageUrl, link
+     FROM plan_slots
+     WHERE plan_id IN (${planIds.map(() => '?').join(', ')})
+     ORDER BY slot_order`
+  ).bind(...planIds).all<any>();
+
+  const slots = slotsRes.results || [];
+  const slotsMap = slots.reduce((acc, slot) => {
+    if (!acc[slot.planId]) acc[slot.planId] = [];
+    acc[slot.planId].push(slot);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Fetch travel metrics
+  const travelsRes = await env.DB.prepare(
+    `SELECT 
+      id, plan_id AS planId, user_id AS userId, train_time AS trainTime,
+      train_cost AS trainCost, cab_time AS cabTime, cab_cost AS cabCost, walk_time AS walkTime,
+      created_at AS createdAt
+     FROM member_travel_metrics
+     WHERE plan_id IN (${planIds.map(() => '?').join(', ')})`
+  ).bind(...planIds).all<any>();
+
+  const travels = travelsRes.results || [];
+  const travelsMap = travels.reduce((acc, t) => {
+    if (!acc[t.planId]) acc[t.planId] = [];
+    acc[t.planId].push(t);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  const data = groupPlans.map(p => ({
+    ...p,
+    slots: slotsMap[p.id] || [],
+    memberTravelMetrics: travelsMap[p.id] || [],
+  }));
+
+  return json({ success: true, data }, { headers: corsHeaders(env) });
+}
+
+async function castVote(request: Request, env: Env, groupId: string) {
+  const body = await readJson<{
+    clerkId: string;
+    planId: string;
+  }>(request);
+
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const member = await env.DB.prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`).bind(groupId, user.id).first();
+  if (!member) {
+    return json({ success: false, error: { code: 'FORBIDDEN', message: 'Not group member.' } }, { status: 403, headers: corsHeaders(env) });
+  }
+
+  const group = await getGroupById(env.DB, groupId);
+  if (!group || (group as any).status !== 'VOTING' || (group as any).votingStatus !== 'OPEN') {
+    return json({ success: false, error: { code: 'VOTE_CLOSED', message: 'Voting is closed.' } }, { status: 400, headers: corsHeaders(env) });
+  }
+
+  const voteId = uuid();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO votes (id, group_id, user_id, plan_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(group_id, user_id)
+     DO UPDATE SET plan_id = excluded.plan_id, updated_at = excluded.updated_at`
+  ).bind(voteId, groupId, user.id, body.planId, now, now).run();
+
+  const vote = {
+    id: voteId,
+    groupId,
+    userId: user.id,
+    planId: body.planId,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  return json({ success: true, data: vote }, { headers: corsHeaders(env) });
+}
+
+async function tallyVotes(request: Request, env: Env, groupId: string) {
+  const tallies = await env.DB.prepare(
+    `SELECT plan_id AS planId, COUNT(id) AS count
+     FROM votes
+     WHERE group_id = ?
+     GROUP BY plan_id`
+  ).bind(groupId).all<{ planId: string; count: number }>();
+
+  return json({ success: true, data: tallies.results || [] }, { headers: corsHeaders(env) });
+}
+
+async function getUserVote(request: Request, env: Env, groupId: string) {
+  const url = new URL(request.url);
+  const clerkId = url.searchParams.get('clerkId');
+  if (!clerkId) {
+    return json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Missing clerkId.' } }, { status: 422, headers: corsHeaders(env) });
+  }
+
+  const user = await findUserByClerkId(env.DB, clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const vote = await env.DB.prepare(
+    `SELECT plan_id AS planId FROM votes WHERE group_id = ? AND user_id = ?`
+  ).bind(groupId, user.id).first<{ planId: string }>();
+
+  return json({ success: true, data: vote ? vote.planId : null }, { headers: corsHeaders(env) });
+}
+
+async function closeVoting(request: Request, env: Env, groupId: string) {
+  const body = await readJson<{
+    clerkId: string;
+    winnerPlanId: string;
+    outingDate: string;
+    groupName: string;
+    planName: string;
+    planTagline: string;
+    venuesJson: string;
+    participantsJson: string;
+    totalCostPerHead: number;
+  }>(request);
+
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const member = await env.DB.prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`).bind(groupId, user.id).first<{ role: string }>();
+  if (!member || member.role !== 'ADMIN') {
+    return json({ success: false, error: { code: 'FORBIDDEN', message: 'Only admin can close voting.' } }, { status: 403, headers: corsHeaders(env) });
+  }
+
+  const historyId = uuid();
+  const now = new Date().toISOString();
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE groups 
+       SET status = 'COMPLETED', voting_status = 'CLOSED', winning_plan_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).bind(body.winnerPlanId, groupId),
+    env.DB.prepare(
+      `INSERT INTO history (
+        id, group_id, plan_id, outing_date, group_name, plan_name, plan_tagline, 
+        venues_json, participants_json, total_cost_per_head, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      historyId, groupId, body.winnerPlanId, body.outingDate, body.groupName, body.planName, body.planTagline,
+      body.venuesJson, body.participantsJson, body.totalCostPerHead, now
+    )
+  ]);
+
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
 async function health(env: Env) {
   await env.DB.prepare(`SELECT id FROM users LIMIT 1`).first();
   return json({ ok: true, database: { reachable: true, driver: 'd1-binding' } }, { headers: corsHeaders(env) });
@@ -652,6 +988,8 @@ export default {
       if (url.pathname === '/groups' && request.method === 'POST') return createGroup(request, env);
       if (url.pathname === '/groups' && request.method === 'GET') return listGroups(request, env);
       if (url.pathname === '/groups/join' && request.method === 'POST') return joinGroup(request, env);
+      if (url.pathname === '/users' && request.method === 'GET') return getUser(request, env);
+      if (url.pathname === '/users/profile' && request.method === 'PATCH') return updateUserProfile(request, env);
 
       const groupMatch = url.pathname.match(/^\/groups\/([^/]+)(?:\/([^/]+))?$/);
       if (groupMatch) {
@@ -663,6 +1001,12 @@ export default {
         if (action === 'budget' && request.method === 'POST') return submitBudget(request, env, groupId);
         if (action === 'location' && request.method === 'POST') return submitLocation(request, env, groupId);
         if (action === 'vibes' && request.method === 'POST') return submitVibes(request, env, groupId);
+        if (action === 'plans' && request.method === 'POST') return savePlans(request, env, groupId);
+        if (action === 'plans' && request.method === 'GET') return getPlans(request, env, groupId);
+        if (action === 'vote' && request.method === 'POST') return castVote(request, env, groupId);
+        if (action === 'votes' && request.method === 'GET') return tallyVotes(request, env, groupId);
+        if (action === 'votes-user' && request.method === 'GET') return getUserVote(request, env, groupId);
+        if (action === 'close-voting' && request.method === 'PATCH') return closeVoting(request, env, groupId);
       }
 
       return json(

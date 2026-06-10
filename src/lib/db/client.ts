@@ -32,4 +32,14 @@ export function getDb(): DbClient {
 }
 
 export const db: any = getDb();
+
+export async function safeTransaction<T>(callback: (tx: any) => Promise<T> | T): Promise<T> {
+  const d1Binding = (process.env as any).DB;
+  if (d1Binding && typeof d1Binding.prepare === 'function') {
+    return await db.transaction(callback);
+  }
+  // Fallback for better-sqlite3: execute the callback directly with db (synchronously/sequentially)
+  return await callback(db);
+}
+
 export * as schema from './schema';

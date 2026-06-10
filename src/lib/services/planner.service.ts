@@ -8,7 +8,7 @@ import { historyRepository } from '../repositories/history.repository';
 import { recommendationService } from './recommendation.service';
 import { generateItineraries } from '../groq/itineraryService';
 import { selectCandidateZones, getHaversineDistance } from '../algorithms/zoneSelection';
-import { db } from '../db/client';
+import { db, safeTransaction } from '../db/client';
 import { users, groups, plans, planSlots, memberTravelMetrics } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
@@ -17,6 +17,296 @@ import { validateStatusTransition } from './group.service';
 
 export const plannerService = {
   async generatePlan(userId: string, groupId: string): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
+    const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
+    if (isHangoutApiConfigured()) {
+      const { getGroupDetailsAction } = await import('../../actions/groups');
+      const detailsRes = await getGroupDetailsAction(groupId);
+      if (!detailsRes.success) {
+        throw new Error(detailsRes.error?.message || 'Failed to fetch group details');
+      }
+
+      const { group: groupData, members, budgetSummary, locations, currentUser } = detailsRes.data;
+      if (currentUser.role !== 'ADMIN') {
+        throw new ForbiddenError('Only the group admin can generate itineraries.');
+      }
+
+      if (groupData.status !== 'READY_TO_GENERATE' && !groupData.isReady) {
+        throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${groupData.status}).`);
+      }
+
+      // Calculate candidate zones based on member coordinates
+      const memberCoords = locations.map((loc: any) => ({ lat: loc.lat, lng: loc.lng }));
+      const candidateZones = selectCandidateZones(memberCoords);
+
+      // Aggregate vibes
+      const aggregatedVibes = new Set<string>();
+      for (const m of members) {
+        if (m.vibes) {
+          try {
+            const memberVibes = JSON.parse(m.vibes);
+            if (Array.isArray(memberVibes)) {
+              memberVibes.forEach(v => aggregatedVibes.add(v));
+            }
+          } catch (_e) {}
+        }
+      }
+      const vibes = Array.from(aggregatedVibes);
+      if (vibes.length === 0 && groupData.vibes) {
+        try {
+          const groupVibes = JSON.parse(groupData.vibes);
+          if (Array.isArray(groupVibes)) {
+            groupVibes.forEach(v => vibes.push(v));
+          }
+        } catch (_e) {}
+      }
+
+      // Fetch preferred activities from users
+      const favoriteCategories: string[] = [];
+      for (const m of members) {
+        try {
+          const userRes = await hangoutApi<any>(`/users?clerkId=${m.clerkId}`);
+          if (userRes.success && userRes.data?.favoriteActivities) {
+            const acts = JSON.parse(userRes.data.favoriteActivities);
+            if (Array.isArray(acts)) {
+              favoriteCategories.push(...acts);
+            }
+          }
+        } catch (_err) {
+          console.error('Error fetching user activities:', _err);
+        }
+      }
+      const uniquePreferredCategories = Array.from(new Set(favoriteCategories));
+      const city = locations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
+
+      const dbPlans: any[] = [];
+      const dbSlots: any[] = [];
+      const dbMemberTravels: any[] = [];
+
+      const randomUUID = () => {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+          return crypto.randomUUID();
+        }
+        return require('crypto').randomUUID();
+      };
+
+      // Generate one itinerary per candidate zone
+      for (let i = 0; i < candidateZones.length; i++) {
+        const zone = candidateZones[i];
+        
+        // Fetch venues and experiences near this zone
+        const venues = await recommendationService.getRecommendedVenues(
+          zone.lat,
+          zone.lng,
+          budgetSummary.min,
+          budgetSummary.avg,
+          uniquePreferredCategories as any[]
+        );
+
+        const experiences = await recommendationService.getRecommendedExperiences(
+          city,
+          zone.lat,
+          zone.lng,
+          groupData.groupType as any,
+          vibes,
+          budgetSummary.max,
+          uniquePreferredCategories,
+          [] // empty history for worker API
+        );
+
+        // Build generator context
+        const context: ItineraryPromptContext = {
+          groupName: groupData.name,
+          groupType: groupData.groupType as any,
+          vibes,
+          memberCount: members.length,
+          groupMinBudget: budgetSummary.min,
+          groupAvgBudget: budgetSummary.avg,
+          groupMaxBudget: budgetSummary.max,
+          preferredCategories: uniquePreferredCategories,
+          midpointAddress: zone.name,
+          venues,
+          experiences,
+        };
+
+        const groqResult = await generateItineraries(context);
+        
+        // Extract 1 itinerary for this candidate zone
+        const itinerary = groqResult.itineraries[i % groqResult.itineraries.length];
+        const planId = randomUUID();
+
+        // Travel Analysis for every member to this zone
+        const memberTravelsForPlan: any[] = [];
+        const trainTimes: number[] = [];
+        const cabTimes: number[] = [];
+        const trainCosts: number[] = [];
+        const cabCosts: number[] = [];
+
+        for (const loc of locations) {
+          const dist = getHaversineDistance({ lat: loc.lat, lng: loc.lng }, { lat: zone.lat, lng: zone.lng });
+          
+          const trainTime = Math.round(dist * 2.5) + 10;
+          const trainCost = dist < 5 ? 10 : dist < 15 ? 15 : dist < 30 ? 20 : 30;
+          const cabTime = Math.round(dist * 3.0) + 5;
+          const cabCost = Math.round(150 + dist * 15);
+          const walkTime = Math.round(dist * 12.0);
+
+          trainTimes.push(trainTime);
+          cabTimes.push(cabTime);
+          trainCosts.push(trainCost);
+          cabCosts.push(cabCost);
+
+          memberTravelsForPlan.push({
+            id: randomUUID(),
+            planId,
+            userId: loc.userId,
+            trainTime,
+            trainCost,
+            cabTime,
+            cabCost,
+            walkTime,
+          });
+        }
+
+        dbMemberTravels.push(...memberTravelsForPlan);
+
+        // Calculate aggregates
+        const avgTrainTime = Math.round(trainTimes.reduce((sum, t) => sum + t, 0) / trainTimes.length);
+        const avgCabTime = Math.round(cabTimes.reduce((sum, t) => sum + t, 0) / cabTimes.length);
+        const avgTrainCost = Math.round(trainCosts.reduce((sum, c) => sum + c, 0) / trainCosts.length);
+        const avgCabCost = Math.round(cabCosts.reduce((sum, c) => sum + c, 0) / cabCosts.length);
+        const longestTravelTime = Math.max(...cabTimes);
+        const shortestTravelTime = Math.min(...cabTimes);
+
+        // Calculate Travel Fairness Score
+        const variance = cabTimes.reduce((sum, t) => sum + Math.pow(t - avgCabTime, 2), 0) / cabTimes.length;
+        const stdDev = Math.sqrt(variance);
+
+        let travelFairnessScore = stdDev <= 10 ? 1.0 : Math.max(0.0, 1.0 - (stdDev - 10) / 30);
+        if (longestTravelTime > 90 && avgCabTime < 30) {
+          travelFairnessScore = Math.max(0.0, travelFairnessScore - 0.40);
+        }
+
+        // Scoring
+        const experienceScore = 0.85;
+        const travelScore = Math.max(0.0, 1.0 - (avgCabTime / 90));
+        const budgetScore = 1.0 - (itinerary.totalEstimatedCostPerHead / budgetSummary.max);
+        const popularityScore = 0.90;
+        const groupTypeMatchScore = 1.0;
+        const vibeMatchScore = 1.0;
+        
+        const compositeScore = Number(
+          (
+            experienceScore * 0.20 +
+            travelScore * 0.20 +
+            budgetScore * 0.20 +
+            travelFairnessScore * 0.20 +
+            vibeMatchScore * 0.20
+          ).toFixed(2)
+        );
+
+        dbPlans.push({
+          id: planId,
+          groupId,
+          planIndex: i + 1,
+          name: itinerary.name,
+          tagline: itinerary.tagline,
+          meetupZone: zone.name,
+          budgetTier: itinerary.budgetTier,
+          totalEstimatedCostPerHead: itinerary.totalEstimatedCostPerHead,
+          totalDurationMinutes: itinerary.totalDurationMinutes,
+          score: compositeScore,
+          
+          experienceScore,
+          travelScore,
+          budgetScore,
+          fairnessScore: travelFairnessScore,
+          popularityScore,
+          groupTypeMatchScore,
+          vibeMatchScore,
+          compositeScore,
+
+          avgTrainTime,
+          avgCabTime,
+          avgTrainCost,
+          avgCabCost,
+          longestTravelTime,
+          shortestTravelTime,
+          travelFairnessScore,
+          generatedAt: new Date().toISOString(),
+        });
+
+        itinerary.slots.forEach(slot => {
+          let travelToNextCost = null;
+          if (slot.travelToNextMinutes) {
+            const distEst = slot.travelToNextMinutes / 3.0;
+            const totalAutoCost = Math.round(30 + Math.max(0, distEst - 1.5) * 15);
+            travelToNextCost = Math.ceil(totalAutoCost / Math.min(3, members.length));
+          }
+
+          let img = slot.imageUrl;
+          if (!img) {
+            switch (slot.category) {
+              case 'CAFE': img = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; break;
+              case 'RESTAURANT': img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
+              case 'DESSERT': img = 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80'; break;
+              case 'PARK': img = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; break;
+              case 'ARCADE': img = 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80'; break;
+              case 'BOWLING': img = 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80'; break;
+              case 'ESCAPE_ROOM': img = 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80'; break;
+              case 'POTTERY': img = 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80'; break;
+              case 'LIVE_MUSIC': img = 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80'; break;
+              default: img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
+            }
+          }
+
+          let linkUrl = slot.link;
+          if (!linkUrl) {
+            linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.name)}`;
+          }
+
+          dbSlots.push({
+            id: randomUUID(),
+            planId,
+            slotOrder: slot.order,
+            venueId: slot.venueId || null,
+            experienceId: slot.experienceId || null,
+            venueName: slot.name,
+            name: slot.name,
+            category: slot.category,
+            arrivalTime: slot.arrivalTime,
+            durationMinutes: slot.durationMinutes,
+            travelToNextMinutes: slot.travelToNextMinutes || null,
+            estimatedCostPerHead: slot.estimatedCostPerHead,
+            note: slot.note,
+            travelToNextCost,
+            imageUrl: img,
+            link: linkUrl,
+          });
+        });
+      }
+
+      // Save to worker D1 database
+      const saveRes = await hangoutApi<any>(`/groups/${groupId}/plans`, {
+        method: 'POST',
+        body: {
+          plans: dbPlans,
+          slots: dbSlots,
+          memberTravels: dbMemberTravels,
+        },
+      });
+
+      if (!saveRes.success) {
+        throw new Error(saveRes.error?.message || 'Failed to save generated plans to D1');
+      }
+
+      // Re-fetch saved plans to return
+      const savedPlans = await hangoutApi<any>(`/groups/${groupId}/plans`);
+      return {
+        success: true,
+        plans: savedPlans.data,
+      };
+    }
+
     // 1. Verify group exists
     const group = await groupRepository.findById(groupId);
     if (!group || group.status === 'DELETED') {
@@ -31,7 +321,11 @@ export const plannerService = {
 
     // 3. Verify group status is READY_TO_GENERATE
     if (group.status !== 'READY_TO_GENERATE') {
-      throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${group.status}).`);
+      const { groupService } = await import('./group.service');
+      const isReady = await groupService.checkGroupReadiness(groupId);
+      if (!isReady) {
+        throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${group.status}).`);
+      }
     }
 
     // 4. Fetch members
@@ -278,6 +572,34 @@ export const plannerService = {
         });
 
         itinerary.slots.forEach(slot => {
+          let travelToNextCost = null;
+          if (slot.travelToNextMinutes) {
+            const distEst = slot.travelToNextMinutes / 3.0;
+            const totalAutoCost = Math.round(30 + Math.max(0, distEst - 1.5) * 15);
+            travelToNextCost = Math.ceil(totalAutoCost / Math.min(3, members.length));
+          }
+
+          let img = slot.imageUrl;
+          if (!img) {
+            switch (slot.category) {
+              case 'CAFE': img = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80'; break;
+              case 'RESTAURANT': img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
+              case 'DESSERT': img = 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80'; break;
+              case 'PARK': img = 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80'; break;
+              case 'ARCADE': img = 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80'; break;
+              case 'BOWLING': img = 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80'; break;
+              case 'ESCAPE_ROOM': img = 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80'; break;
+              case 'POTTERY': img = 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80'; break;
+              case 'LIVE_MUSIC': img = 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80'; break;
+              default: img = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80'; break;
+            }
+          }
+
+          let linkUrl = slot.link;
+          if (!linkUrl) {
+            linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(slot.name)}`;
+          }
+
           dbSlots.push({
             id: randomUUID(),
             planId,
@@ -292,6 +614,9 @@ export const plannerService = {
             travelToNextMinutes: slot.travelToNextMinutes || null,
             estimatedCostPerHead: slot.estimatedCostPerHead,
             note: slot.note,
+            travelToNextCost,
+            imageUrl: img,
+            link: linkUrl,
           });
         });
       }
@@ -299,7 +624,7 @@ export const plannerService = {
       // 12. Transactional Release: delete old plans, write new ones, set status to VOTING
       validateStatusTransition('GENERATING', 'VOTING');
       
-      await db.transaction(async (tx: any) => {
+      await safeTransaction(async (tx: any) => {
         // Delete old member travel metrics first
         const persistedPlans = await tx.select().from(plans).where(eq(plans.groupId, groupId));
         if (persistedPlans.length > 0) {

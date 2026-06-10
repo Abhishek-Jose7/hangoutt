@@ -208,6 +208,9 @@ export const planSlots = sqliteTable('plan_slots', {
   travelToNextMinutes: integer('travel_to_next_minutes'), // null for last slot
   estimatedCostPerHead: integer('estimated_cost_per_head').notNull(),
   note: text('note').notNull(),
+  travelToNextCost: integer('travel_to_next_cost'),
+  imageUrl: text('image_url'),
+  link: text('link'),
 }, (table) => ({
   uniquePlanSlotOrder: uniqueIndex('plan_slots_plan_slot_idx').on(table.planId, table.slotOrder),
 }));

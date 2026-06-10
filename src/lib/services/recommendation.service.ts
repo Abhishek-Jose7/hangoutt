@@ -4,7 +4,7 @@ import { experienceRepository, type Experience } from '../repositories/experienc
 import { rankVenues, rankExperiences } from '../algorithms/scoring';
 import { MOCK_VENUES } from '../utils/mockData';
 import { db } from '../db/client';
-import { venuesCache } from '../db/schema';
+import { venuesCache, experienceCategories, experienceSources } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
 // Helper to round coordinate to 2 decimal places (approx 1.1km grid spacing)
@@ -26,7 +26,7 @@ export const recommendationService = {
       'ESCAPE_ROOM', 'MOVIE', 'MALL', 'DESSERT', 'SPORTS', 'MUSEUM'
     ];
 
-    let allCandidates: Venue[] = [];
+    const allCandidates: Venue[] = [];
 
     for (const category of categories) {
       const cacheKey = getCacheKey(category, lat, lng);
@@ -203,6 +203,28 @@ export const recommendationService = {
         }
         return require('crypto').randomUUID();
       };
+
+      // Ensure mock categories exist to satisfy foreign key constraints
+      const uniqueCats = Array.from(new Set(mockEvents.map(e => e.category)));
+      for (const cat of uniqueCats) {
+        try {
+          await db
+            .insert(experienceCategories)
+            .values({ id: cat, name: cat.replace('_', ' ') })
+            .onConflictDoNothing();
+        } catch (e) {}
+      }
+
+      // Ensure mock sources exist to satisfy foreign key constraints
+      const uniqueSources = Array.from(new Set(mockEvents.map(e => e.source)));
+      for (const src of uniqueSources) {
+        try {
+          await db
+            .insert(experienceSources)
+            .values({ id: src, name: src })
+            .onConflictDoNothing();
+        } catch (e) {}
+      }
 
       // Ingest these catalog experiences first
       for (const event of mockEvents) {
