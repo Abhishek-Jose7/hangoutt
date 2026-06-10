@@ -371,9 +371,11 @@ export default function GroupDetailsPage() {
   };
 
   const handlePlanGeneration = async () => {
+    console.log('handlePlanGeneration triggered for groupId:', groupId);
     setIsGenerating(true);
     try {
       const res = await generatePlan(groupId);
+      console.log('generatePlan response:', res);
       
       if (!res.success) {
         toast.error(res.error.message || 'Failed to generate itineraries');
@@ -383,7 +385,8 @@ export default function GroupDetailsPage() {
 
       toast.success('Itineraries generated successfully! Opening Planner.');
       router.push(`/planner/${groupId}`);
-    } catch (_err) {
+    } catch (err) {
+      console.error('handlePlanGeneration error:', err);
       toast.error('An error occurred generating plans.');
       setIsGenerating(false);
     }
@@ -1097,6 +1100,7 @@ export default function GroupDetailsPage() {
                 {isAdmin && (
                   <div className="pt-6 border-t border-[#353534]/50 mt-6">
                     <Button
+                      type="button"
                       onClick={handlePlanGeneration}
                       disabled={isGenerating || members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).filter((m: any) => {
                         const hasBudget = submittedBudgetUserIds.includes(m.userId);
