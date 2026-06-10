@@ -317,12 +317,13 @@ export const groupService = {
     }
 
     const members = await memberRepository.getMembersWithUserDetails(groupId);
-    if (members.length === 0) return false;
+    const activeMembers = members.filter(member => member.isPresent === 1);
+    if (activeMembers.length === 0) return false;
 
     const budgetsList = await budgetRepository.getGroupBudgets(groupId);
     const locationsList = await locationRepository.getGroupLocations(groupId);
 
-    const isReady = members.every(member => {
+    const isReady = activeMembers.every(member => {
       const hasBudget = budgetsList.some(b => b.userId === member.userId);
       const hasLocation = locationsList.some(l => l.userId === member.userId);
       return hasBudget && hasLocation;

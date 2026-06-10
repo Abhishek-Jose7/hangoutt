@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageContainer from '@/components/shared/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -11,22 +11,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getGroupDetailsAction, startDetailsCollectionAction } from '@/actions/groups';
 import { submitBudget } from '@/actions/budgets';
 import { saveLocation, reverseGeocodeAction } from '@/actions/locations';
-import { submitMemberVibes } from '@/actions/members';
+import { submitMemberVibes, updateMemberPresenceAction } from '@/actions/members';
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
 import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 
 const AVAILABLE_VIBES = [
   'CHILL', 'CREATIVE', 'FOODIE', 'CULTURAL', 'COMPETITIVE', 'ROMANTIC', 'LUXURY', 'BUDGET', 'ADVENTUROUS'
 ];
 
-export default function GroupDetailsPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
+export default function GroupDetailsPage() {
+  const params = useParams();
   const router = useRouter();
-  const groupId = resolvedParams.id;
+  const groupId = params.id as string;
   
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +44,7 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
   const [isSubmittingVibes, setIsSubmittingVibes] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmittingCollection, setIsSubmittingCollection] = useState(false);
+  const [isUpdatingPresence, setIsUpdatingPresence] = useState<string | null>(null);
 
   // Planner and voting states
   const [plans, setPlans] = useState<any[]>([]);
@@ -1022,8 +1023,8 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                 <h3 className="font-mono text-xs font-bold text-[#DC143C] uppercase mb-6 flex justify-between items-center tracking-wider">
                   Member Sync
                   <span className="text-neutral-400 text-[9px] font-bold">
-                    {members.length > 0 
-                      ? Math.round((members.filter((m: any) => submittedBudgetUserIds.includes(m.userId) && locations.some((l: any) => l.userId === m.userId)).length / members.length) * 100)
+                    {members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length > 0 
+                      ? Math.round((members.filter((m: any) => (m.isPresent === 1 || m.isPresent === true) && submittedBudgetUserIds.includes(m.userId) && locations.some((l: any) => l.userId === m.userId)).length / members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length) * 100)
                       : 0}% ACTIVE
                   </span>
                 </h3>
@@ -1033,10 +1034,38 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                     const hasBudget = submittedBudgetUserIds.includes(member.userId);
                     const hasLocation = locations.some((l: any) => l.userId === member.userId);
                     const isSynced = hasBudget && hasLocation;
+                    const isPresent = member.isPresent === 1 || member.isPresent === true;
 
                     return (
-                      <li key={member.userId} className={`flex items-center gap-3 transition-all ${isSynced ? '' : 'opacity-70 grayscale hover:grayscale-0 hover:opacity-100'}`}>
-                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
+                      <li key={member.userId} className={`flex items-center gap-3 transition-all ${isPresent ? '' : 'opacity-40 grayscale'} ${isSynced && isPresent ? '' : 'opacity-75'}`}>
+                        {isAdmin && (
+                          <input
+                            type="checkbox"
+                            checked={isPresent}
+                            disabled={isUpdatingPresence === member.userId || isGenerating}
+                            onChange={async (e) => {
+                              setIsUpdatingPresence(member.userId);
+                              try {
+                                const res = await updateMemberPresenceAction(groupId, {
+                                  [member.userId]: e.target.checked
+                                });
+                                if (res.success) {
+                                  toast.success(`${member.name}'s presence status updated.`);
+                                  await loadData();
+                                } else {
+                                  toast.error(res.error.message || 'Failed to update presence.');
+                                }
+                              } catch (err) {
+                                toast.error('Error updating presence.');
+                              } finally {
+                                setIsUpdatingPresence(null);
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded border-[#353534] bg-black text-[#DC143C] focus:ring-0 accent-[#DC143C] cursor-pointer"
+                            title="Confirm presence for this outing"
+                          />
+                        )}
+                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced && isPresent ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
                           {member.imageUrl ? (
                             <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover rounded-[2px]" />
                           ) : (
@@ -1046,12 +1075,17 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-mono font-bold text-[11px] text-white uppercase truncate">{member.name}</p>
+                          <p className="font-mono font-bold text-[11px] text-white uppercase truncate flex items-center gap-1.5">
+                            {member.name}
+                            {!isPresent && (
+                              <span className="text-[7.5px] bg-red-950/45 text-red-500 border border-red-900/50 px-1 py-0.5 rounded-[3px] font-mono font-bold uppercase tracking-wider scale-90">ABSENT</span>
+                            )}
+                          </p>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
-                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
-                              {isSynced ? 'ACCEPTED' : 'Pending'}
-                              {isSynced && <Check className="h-3 w-3 text-[#00E1AB]" />}
+                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced && isPresent ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
+                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced && isPresent ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
+                              {!isPresent ? 'Excluded' : isSynced ? 'ACCEPTED' : 'Pending'}
+                              {isSynced && isPresent && <Check className="h-3 w-3 text-[#00E1AB]" />}
                             </span>
                           </div>
                         </div>
@@ -1064,11 +1098,11 @@ export default function GroupDetailsPage({ params }: { params: Promise<{ id: str
                   <div className="pt-6 border-t border-[#353534]/50 mt-6">
                     <Button
                       onClick={handlePlanGeneration}
-                      disabled={isGenerating || members.filter((m: any) => {
+                      disabled={isGenerating || members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).filter((m: any) => {
                         const hasBudget = submittedBudgetUserIds.includes(m.userId);
                         const hasLocation = locations.some((l: any) => l.userId === m.userId);
                         return hasBudget && hasLocation;
-                      }).length !== members.length}
+                      }).length !== members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length}
                       className="w-full bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isGenerating ? (

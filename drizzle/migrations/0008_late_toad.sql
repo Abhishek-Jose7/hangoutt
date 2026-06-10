@@ -1,0 +1,1 @@
+ALTER TABLE `group_members` ADD `is_present` integer DEFAULT 1 NOT NULL;

@@ -158,18 +158,32 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
 
     const group = await groupService.getGroupDetails(user.id, groupId);
     const members = await memberRepository.getMembersWithUserDetails(groupId);
-    const budgetSummary = await budgetRepository.getGroupBudgetSummary(groupId);
+    const presentMembers = members.filter(m => m.isPresent === 1);
+    const presentUserIds = presentMembers.map(m => m.userId);
+
     const budgets = await budgetRepository.getGroupBudgets(groupId);
+    const presentBudgetsList = budgets.filter(b => presentUserIds.includes(b.userId));
+    const presentBudgets = presentBudgetsList.map(b => b.maxBudget);
+    const budgetSummary = {
+      min: presentBudgets.length > 0 ? Math.min(...presentBudgets) : 0,
+      avg: presentBudgets.length > 0 ? Math.round(presentBudgets.reduce((sum, b) => sum + b, 0) / presentBudgets.length) : 0,
+      max: presentBudgets.length > 0 ? Math.max(...presentBudgets) : 0,
+      total: presentBudgets.length > 0 ? presentBudgets.reduce((sum, b) => sum + b, 0) : 0,
+      submittedCount: presentBudgetsList.length,
+      totalMembers: presentMembers.length,
+    };
+
     const userBudgetRecord = budgets.find((b) => b.userId === user.id);
     const currentUserBudget = userBudgetRecord?.maxBudget || null;
     const currentUserTravelIncluded = userBudgetRecord ? userBudgetRecord.travelIncluded === 1 : true;
     const locations = await locationRepository.getGroupLocations(groupId);
+    const presentLocations = locations.filter(l => presentUserIds.includes(l.userId));
     const currentUserLocation = locations.find((l) => l.userId === user.id) || null;
     const callerMember = members.find((m) => m.userId === user.id);
     const callerRole = callerMember ? callerMember.role : 'MEMBER';
     const isReady = await groupService.checkGroupReadiness(groupId);
     const isAdmin = callerRole === 'ADMIN';
-    const cleanLocations = locations.map((l) => {
+    const cleanLocations = presentLocations.map((l) => {
       const member = members.find((m) => m.userId === l.userId);
       return {
         name: member ? member.name : 'Participant',
@@ -187,7 +201,7 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
       },
       members,
       budgetSummary,
-      submittedBudgetUserIds: budgets.map((b) => b.userId),
+      submittedBudgetUserIds: presentBudgetsList.map((b) => b.userId),
       locations: cleanLocations,
       currentUser: {
         id: user.id,

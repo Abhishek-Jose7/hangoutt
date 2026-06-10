@@ -35,13 +35,22 @@ export const plannerService = {
         throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${groupData.status}).`);
       }
 
-      // Calculate candidate zones based on member coordinates
-      const memberCoords = locations.map((loc: any) => ({ lat: loc.lat, lng: loc.lng }));
+      // Filter present members and locations
+      const presentMembers = members.filter((m: any) => m.isPresent === 1 || m.isPresent === true);
+      const presentUserIds = presentMembers.map((m: any) => m.userId);
+      const presentLocations = locations.filter((loc: any) => presentUserIds.includes(loc.userId));
+
+      if (presentLocations.length < 2) {
+        throw new InsufficientLocationsError(`Fewer than 2 locations submitted by present members.`);
+      }
+
+      // Calculate candidate zones based on present member coordinates
+      const memberCoords = presentLocations.map((loc: any) => ({ lat: loc.lat, lng: loc.lng }));
       const candidateZones = selectCandidateZones(memberCoords);
 
       // Aggregate vibes
       const aggregatedVibes = new Set<string>();
-      for (const m of members) {
+      for (const m of presentMembers) {
         if (m.vibes) {
           try {
             const memberVibes = JSON.parse(m.vibes);
@@ -63,7 +72,7 @@ export const plannerService = {
 
       // Fetch preferred activities from users
       const favoriteCategories: string[] = [];
-      for (const m of members) {
+      for (const m of presentMembers) {
         try {
           const userRes = await hangoutApi<any>(`/users?clerkId=${m.clerkId}`);
           if (userRes.success && userRes.data?.favoriteActivities) {
@@ -77,7 +86,7 @@ export const plannerService = {
         }
       }
       const uniquePreferredCategories = Array.from(new Set(favoriteCategories));
-      const city = locations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
+      const city = presentLocations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -119,7 +128,7 @@ export const plannerService = {
           groupName: groupData.name,
           groupType: groupData.groupType as any,
           vibes,
-          memberCount: members.length,
+          memberCount: presentMembers.length,
           groupMinBudget: budgetSummary.min,
           groupAvgBudget: budgetSummary.avg,
           groupMaxBudget: budgetSummary.max,
@@ -142,7 +151,7 @@ export const plannerService = {
         const trainCosts: number[] = [];
         const cabCosts: number[] = [];
 
-        for (const loc of locations) {
+        for (const loc of presentLocations) {
           const dist = getHaversineDistance({ lat: loc.lat, lng: loc.lng }, { lat: zone.lat, lng: zone.lng });
           
           const trainTime = Math.round(dist * 2.5) + 10;
@@ -327,27 +336,44 @@ export const plannerService = {
       throw new NotFoundError('No members found in this group.');
     }
 
+    const presentMembers = members.filter(m => m.isPresent === 1);
+    const presentUserIds = presentMembers.map(m => m.userId);
+    if (presentMembers.length === 0) {
+      throw new ValidationError('No present members confirmed for this outing.');
+    }
+
     // 5. Check submitted locations (minimum 2 locations required)
     const locations = await locationRepository.getGroupLocations(groupId);
-    if (locations.length < 2) {
-      throw new InsufficientLocationsError(`Fewer than 2 locations submitted. Currently submitted: ${locations.length}.`);
+    const presentLocations = locations.filter(l => presentUserIds.includes(l.userId));
+    if (presentLocations.length < 2) {
+      throw new InsufficientLocationsError(`Fewer than 2 locations submitted by present members. Currently submitted: ${presentLocations.length}.`);
     }
 
     // 6. Fetch budgets list and check if everyone has submitted
     const budgetsList = await budgetRepository.getGroupBudgets(groupId);
-    const budgetSummary = await budgetRepository.getGroupBudgetSummary(groupId);
-    if (budgetSummary.submittedCount === 0) {
+    const presentBudgetsList = budgetsList.filter(b => presentUserIds.includes(b.userId));
+    const presentBudgets = presentBudgetsList.map(b => b.maxBudget);
+    
+    if (presentBudgets.length === 0) {
       throw new ValidationError('No member budgets have been submitted yet.');
     }
 
-    const allSubmitted = members.every(member => {
-      const hasBudget = budgetsList.some(b => b.userId === member.userId);
-      const hasLocation = locations.some(l => l.userId === member.userId);
+    const presentBudgetSummary = {
+      min: Math.min(...presentBudgets),
+      avg: Math.round(presentBudgets.reduce((sum, b) => sum + b, 0) / presentBudgets.length),
+      max: Math.max(...presentBudgets),
+      submittedCount: presentBudgets.length,
+      totalMembers: presentMembers.length,
+    };
+
+    const allSubmitted = presentMembers.every(member => {
+      const hasBudget = presentBudgetsList.some(b => b.userId === member.userId);
+      const hasLocation = presentLocations.some(l => l.userId === member.userId);
       return hasBudget && hasLocation;
     });
 
     if (!allSubmitted) {
-      throw new ValidationError('Not all group members have submitted their budget and location details.');
+      throw new ValidationError('Not all present group members have submitted their budget and location details.');
     }
 
     // Set group status to GENERATING
@@ -358,12 +384,12 @@ export const plannerService = {
 
     try {
       // 7. Calculate 3-4 candidate meetup zones based on member coordinates
-      const memberCoords = locations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
+      const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
       const candidateZones = selectCandidateZones(memberCoords);
 
       // 8. Gather preferences and vibes
       const favoriteCategories: string[] = [];
-      for (const m of members) {
+      for (const m of presentMembers) {
         const user = await dbSelectUserActivities(m.userId);
         if (user && user.favoriteActivities) {
           try {
@@ -381,7 +407,7 @@ export const plannerService = {
 
       // Collect vibes
       const aggregatedVibes = new Set<string>();
-      for (const m of members) {
+      for (const m of presentMembers) {
         if (m.vibes) {
           try {
             const memberVibes = JSON.parse(m.vibes);
@@ -401,9 +427,9 @@ export const plannerService = {
         } catch (_e) {}
       }
 
-      const firstMemberId = members[0].userId;
+      const firstMemberId = presentMembers[0].userId;
       const historyEntries = await historyRepository.getHistoryForUser(firstMemberId);
-      const city = locations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
+      const city = presentLocations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -424,8 +450,8 @@ export const plannerService = {
         const venues = await recommendationService.getRecommendedVenues(
           zone.lat,
           zone.lng,
-          budgetSummary.min,
-          budgetSummary.avg,
+          presentBudgetSummary.min,
+          presentBudgetSummary.avg,
           uniquePreferredCategories as any[]
         );
 
@@ -435,7 +461,7 @@ export const plannerService = {
           zone.lng,
           group.groupType as any,
           vibes,
-          budgetSummary.max,
+          presentBudgetSummary.max,
           uniquePreferredCategories,
           historyEntries
         );
@@ -445,10 +471,10 @@ export const plannerService = {
           groupName: group.name,
           groupType: group.groupType as any,
           vibes,
-          memberCount: members.length,
-          groupMinBudget: budgetSummary.min,
-          groupAvgBudget: budgetSummary.avg,
-          groupMaxBudget: budgetSummary.max,
+          memberCount: presentMembers.length,
+          groupMinBudget: presentBudgetSummary.min,
+          groupAvgBudget: presentBudgetSummary.avg,
+          groupMaxBudget: presentBudgetSummary.max,
           preferredCategories: uniquePreferredCategories,
           midpointAddress: zone.name,
           venues,
@@ -468,7 +494,7 @@ export const plannerService = {
         const trainCosts: number[] = [];
         const cabCosts: number[] = [];
 
-        for (const loc of locations) {
+        for (const loc of presentLocations) {
           const dist = getHaversineDistance({ lat: loc.lat, lng: loc.lng }, { lat: zone.lat, lng: zone.lng });
           
           const trainTime = Math.round(dist * 2.5) + 10;
@@ -518,7 +544,7 @@ export const plannerService = {
         // 11. Multi-factor Plan Scoring
         const experienceScore = 0.85; // proxy rating
         const travelScore = Math.max(0.0, 1.0 - (avgCabTime / 90));
-        const budgetScore = 1.0 - (itinerary.totalEstimatedCostPerHead / budgetSummary.max);
+        const budgetScore = 1.0 - (itinerary.totalEstimatedCostPerHead / presentBudgetSummary.max);
         const popularityScore = 0.90;
         const groupTypeMatchScore = 1.0;
         const vibeMatchScore = 1.0;

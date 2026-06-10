@@ -137,3 +137,44 @@ export async function submitMemberVibes(groupId: string, vibes: string[]): Actio
     return apiResponse.error(err);
   }
 }
+
+export async function updateMemberPresenceAction(groupId: string, presenceMap: Record<string, boolean>): ActionResponse<any> {
+  try {
+    const parsedGroupId = z.string().uuid().parse(groupId);
+
+    if (isHangoutApiConfigured()) {
+      const user = await getCurrentApiUser();
+      const response = await hangoutApi<any>(`/groups/${parsedGroupId}/presence`, {
+        method: 'PATCH',
+        body: {
+          clerkId: user.clerkId,
+          presenceMap,
+        },
+      });
+
+      revalidatePath(`/groups/${parsedGroupId}`);
+      return response;
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const user = await getCurrentUser();
+    const { memberRepository } = await import('@/lib/repositories/member.repository');
+    const { groupService } = await import('@/lib/services/group.service');
+    const callerMember = await memberRepository.getMember(parsedGroupId, user.id);
+    if (!callerMember || callerMember.role !== 'ADMIN') {
+      throw new ValidationError('Only the group admin can update member presence.');
+    }
+
+    for (const [userId, isPresent] of Object.entries(presenceMap)) {
+      await memberRepository.updateMemberPresence(parsedGroupId, userId, isPresent);
+    }
+
+    // Trigger group readiness recalculation
+    await groupService.checkGroupReadiness(parsedGroupId);
+
+    revalidatePath(`/groups/${parsedGroupId}`);
+    return apiResponse.success({ success: true });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}

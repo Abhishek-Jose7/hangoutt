@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageContainer from '@/components/shared/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -10,11 +10,12 @@ import { getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
 import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award } from 'lucide-react';
 import { toast } from 'sonner';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function PlannerPage({ params }: { params: Promise<{ groupId: string }> }) {
-  const resolvedParams = use(params);
-  const groupId = resolvedParams.groupId;
+export default function PlannerPage() {
+  const params = useParams();
+  const groupId = params.groupId as string;
 
   const [group, setGroup] = useState<any>(null);
   const [plans, setPlans] = useState<any[]>([]);

@@ -13,6 +13,7 @@ export interface MemberDetail {
   imageUrl: string | null;
   role: string;
   vibes: string | null;
+  isPresent: number;
   joinedAt: string;
 }
 
@@ -50,6 +51,7 @@ export const memberRepository = {
         imageUrl: users.imageUrl,
         role: groupMembers.role,
         vibes: groupMembers.vibes,
+        isPresent: groupMembers.isPresent,
         joinedAt: groupMembers.createdAt,
       })
       .from(groupMembers)
@@ -57,6 +59,18 @@ export const memberRepository = {
       .where(eq(groupMembers.groupId, groupId));
 
     return result as MemberDetail[];
+  },
+
+  async updateMemberPresence(groupId: string, userId: string, isPresent: boolean): Promise<GroupMember> {
+    const result = await db
+      .update(groupMembers)
+      .set({ isPresent: isPresent ? 1 : 0 })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+      .returning();
+    if (!result[0]) {
+      throw new Error('Failed to update member presence');
+    }
+    return result[0];
   },
 
   async updateVibes(groupId: string, userId: string, vibes: string[]): Promise<GroupMember> {

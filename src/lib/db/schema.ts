@@ -49,6 +49,7 @@ export const groupMembers = sqliteTable('group_members', {
     .references(() => users.id, { onDelete: 'cascade' }),
   role: text('role').default('MEMBER').notNull(), // Enum: ADMIN | MEMBER
   vibes: text('vibes'), // JSON array of user-specific outing vibes (e.g. ["CHILL", "CREATIVE"])
+  isPresent: integer('is_present').default(1).notNull(), // 0 = false, 1 = true
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
   uniqueGroupUser: uniqueIndex('group_members_group_user_idx').on(table.groupId, table.userId),

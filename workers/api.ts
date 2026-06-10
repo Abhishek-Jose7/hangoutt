@@ -341,6 +341,7 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
           u.image_url AS imageUrl,
           gm.role,
           gm.vibes,
+          gm.is_present AS isPresent,
           gm.created_at AS joinedAt
          FROM group_members gm
          INNER JOIN users u ON u.id = gm.user_id
@@ -350,30 +351,23 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
       .all(),
     env.DB.prepare(`SELECT * FROM budgets WHERE group_id = ?`).bind(groupId).all(),
     env.DB.prepare(`SELECT * FROM locations WHERE group_id = ?`).bind(groupId).all(),
-    env.DB
-      .prepare(
-        `SELECT
-          MIN(max_budget) AS min,
-          AVG(max_budget) AS avg,
-          MAX(max_budget) AS max,
-          SUM(max_budget) AS total,
-          COUNT(user_id) AS submittedCount
-         FROM budgets
-         WHERE group_id = ?`
-      )
-      .bind(groupId)
-      .first(),
+    env.DB.prepare(`SELECT 1`).bind().all() // placeholder since we calculate summary in JS now
   ]);
 
-  const members = (membersRes.results || []) as Array<{ userId: string; name: string; role: string }>;
-  const budgets = (budgetsRes.results || []) as Array<{ user_id: string; max_budget: number; travel_included: number | null }>;
-  const locations = (locationsRes.results || []) as Array<{
+  const members = (membersRes.results || []) as Array<{ userId: string; name: string; role: string; isPresent: number }>;
+  const presentMembers = members.filter(m => m.isPresent === 1);
+  const presentUserIds = presentMembers.map(m => m.userId);
+
+  const budgets = ((budgetsRes.results || []) as Array<{ user_id: string; max_budget: number; travel_included: number | null }>)
+    .filter(b => presentUserIds.includes(b.user_id));
+  const locations = ((locationsRes.results || []) as Array<{
     id: string;
     user_id: string;
     lat: number;
     lng: number;
     location_name: string | null;
-  }>;
+  }>).filter(l => presentUserIds.includes(l.user_id));
+
   const isAdmin = caller.role === 'ADMIN';
   const cleanLocations = locations.map((location) => {
     const member = members.find((item) => item.userId === location.user_id);
@@ -390,14 +384,14 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
   const currentUserBudget = currentUserBudgetRecord?.max_budget || null;
   const currentUserTravelIncluded = currentUserBudgetRecord ? currentUserBudgetRecord.travel_included === 1 : true;
 
-  const summary = summaryRes || {};
+  const presentBudgets = budgets.map((b) => b.max_budget);
   const budgetSummary = {
-    min: Math.round(Number((summary as { min?: number }).min || 0)),
-    avg: Math.round(Number((summary as { avg?: number }).avg || 0)),
-    max: Math.round(Number((summary as { max?: number }).max || 0)),
-    total: Math.round(Number((summary as { total?: number }).total || 0)),
-    submittedCount: Number((summary as { submittedCount?: number }).submittedCount || 0),
-    totalMembers: members.length,
+    min: presentBudgets.length > 0 ? Math.min(...presentBudgets) : 0,
+    avg: presentBudgets.length > 0 ? Math.round(presentBudgets.reduce((sum, b) => sum + b, 0) / presentBudgets.length) : 0,
+    max: presentBudgets.length > 0 ? Math.max(...presentBudgets) : 0,
+    total: presentBudgets.length > 0 ? presentBudgets.reduce((sum, b) => sum + b, 0) : 0,
+    submittedCount: budgets.length,
+    totalMembers: presentMembers.length,
   };
 
   const isReady = isGroupReady((group as { status: string }).status, members, budgets, locations);
@@ -442,7 +436,7 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
 
 function isGroupReady(
   status: string,
-  members: Array<{ userId: string }>,
+  members: Array<{ userId: string; isPresent?: number }>,
   budgets: Array<{ user_id: string }>,
   locations: Array<{ user_id: string }>
 ) {
@@ -450,8 +444,9 @@ function isGroupReady(
     return ['READY_TO_GENERATE', 'GENERATING', 'VOTING', 'COMPLETED', 'ARCHIVED'].includes(status);
   }
 
-  if (members.length === 0) return false;
-  return members.every((member) => {
+  const presentMembers = members.filter(m => m.isPresent !== 0);
+  if (presentMembers.length === 0) return false;
+  return presentMembers.every((member) => {
     return (
       budgets.some((budget) => budget.user_id === member.userId) &&
       locations.some((location) => location.user_id === member.userId)
@@ -650,15 +645,16 @@ async function updateReadiness(db: D1Database, groupId: string) {
   if (!group || group.status !== 'COLLECTING_DETAILS') return;
 
   const [membersRes, budgetsRes, locationsRes] = await Promise.all([
-    db.prepare(`SELECT user_id AS userId FROM group_members WHERE group_id = ?`).bind(groupId).all<{ userId: string }>(),
+    db.prepare(`SELECT user_id AS userId, is_present AS isPresent FROM group_members WHERE group_id = ?`).bind(groupId).all<{ userId: string; isPresent: number }>(),
     db.prepare(`SELECT user_id AS userId FROM budgets WHERE group_id = ?`).bind(groupId).all<{ userId: string }>(),
     db.prepare(`SELECT user_id AS userId FROM locations WHERE group_id = ?`).bind(groupId).all<{ userId: string }>(),
   ]);
 
   const members = membersRes.results || [];
+  const presentMembers = members.filter(m => m.isPresent === 1);
   if (
-    members.length > 0 &&
-    members.every((member) => {
+    presentMembers.length > 0 &&
+    presentMembers.every((member) => {
       return (
         (budgetsRes.results || []).some((budget) => budget.userId === member.userId) &&
         (locationsRes.results || []).some((location) => location.userId === member.userId)
@@ -670,6 +666,42 @@ async function updateReadiness(db: D1Database, groupId: string) {
       .bind(groupId)
       .run();
   }
+}
+
+async function updateMemberPresence(request: Request, env: Env, groupId: string) {
+  const body = await readJson<{ clerkId: string; presenceMap: Record<string, boolean> }>(request);
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json(
+      { success: false, error: { code: 'NOT_FOUND', message: 'User has not been synced to D1 yet.' } },
+      { status: 404, headers: corsHeaders(env) }
+    );
+  }
+
+  const caller = await env.DB
+    .prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`)
+    .bind(groupId, user.id)
+    .first<{ role: string }>();
+
+  if (!caller || caller.role !== 'ADMIN') {
+    return json(
+      { success: false, error: { code: 'FORBIDDEN', message: 'Only the group admin can update member presence.' } },
+      { status: 403, headers: corsHeaders(env) }
+    );
+  }
+
+  const statements = [];
+  for (const [userId, isPresent] of Object.entries(body.presenceMap)) {
+    statements.push(
+      env.DB.prepare(`UPDATE group_members SET is_present = ? WHERE group_id = ? AND user_id = ?`)
+        .bind(isPresent ? 1 : 0, groupId, userId)
+    );
+  }
+  await env.DB.batch(statements);
+
+  await updateReadiness(env.DB, groupId);
+
+  return json({ success: true }, { headers: corsHeaders(env) });
 }
 
 async function getUser(request: Request, env: Env) {
@@ -1037,6 +1069,7 @@ export default {
         const action = groupMatch[2];
 
         if (!action && request.method === 'GET') return getGroupDetails(request, env, groupId);
+        if (action === 'presence' && request.method === 'PATCH') return updateMemberPresence(request, env, groupId);
         if (action === 'start-details' && request.method === 'PATCH') return startDetailsCollection(request, env, groupId);
         if (action === 'budget' && request.method === 'POST') return submitBudget(request, env, groupId);
         if (action === 'location' && request.method === 'POST') return submitLocation(request, env, groupId);
