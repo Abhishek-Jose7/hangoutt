@@ -34,6 +34,7 @@ export const groups = sqliteTable('groups', {
   outingTime: text('outing_time'), // e.g. "18:00"
   isFastTrack: integer('is_fast_track').default(0).notNull(), // 0 = normal, 1 = 30s timers
   timerExpiresAt: text('timer_expires_at'), // ISO timestamp when current phase timer expires
+  generationOptions: text('generation_options'), // JSON string list of selected options for Generate Again
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -264,6 +265,9 @@ export const history = sqliteTable('history', {
   venuesJson: text('venues_json').notNull(), // JSON list of venues
   participantsJson: text('participants_json').notNull(), // JSON list of user details
   totalCostPerHead: integer('total_cost_per_head').notNull(),
+  winningCategories: text('winning_categories'), // JSON array of category strings for analytics
+  winningBudgetTier: text('winning_budget_tier'), // BUDGET_FRIENDLY | BALANCED | PREMIUM
+  winningActivities: text('winning_activities'), // JSON array of activity name strings for analytics
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

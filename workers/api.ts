@@ -244,6 +244,7 @@ async function listGroups(request: Request, env: Env) {
         g.outing_time AS outingTime,
         g.is_fast_track AS isFastTrack,
         g.timer_expires_at AS timerExpiresAt,
+        g.generation_options AS generationOptions,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
         COUNT(gm_count.user_id) AS memberCount
@@ -280,6 +281,7 @@ async function getGroupById(db: D1Database, groupId: string) {
         g.outing_time AS outingTime,
         g.is_fast_track AS isFastTrack,
         g.timer_expires_at AS timerExpiresAt,
+        g.generation_options AS generationOptions,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
         COUNT(gm.user_id) AS memberCount
@@ -752,6 +754,7 @@ async function savePlans(request: Request, env: Env, groupId: string) {
     plans: any[];
     slots: any[];
     memberTravels: any[];
+    generationOptions?: string[];
   }>(request);
 
   const group = await getGroupById(env.DB, groupId);
@@ -783,15 +786,21 @@ async function savePlans(request: Request, env: Env, groupId: string) {
         experience_score, travel_score, budget_score, fairness_score, popularity_score,
         group_type_match_score, vibe_match_score, composite_score,
         avg_train_time, avg_cab_time, avg_train_cost, avg_cab_cost,
-        longest_travel_time, shortest_travel_time, travel_fairness_score, generated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        longest_travel_time, shortest_travel_time, travel_fairness_score,
+        mandatory_cost, optional_cost_min, optional_cost_max, why_recommended,
+        avg_auto_time, avg_auto_cost, avg_total_time, avg_total_cost, avg_walk_time,
+        generated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       plan.id, plan.groupId, plan.planIndex, plan.name, plan.tagline, plan.meetupZone, plan.budgetTier || 'BALANCED',
       plan.totalEstimatedCostPerHead, plan.totalDurationMinutes, plan.score,
       plan.experienceScore, plan.travelScore, plan.budgetScore, plan.fairnessScore, plan.popularityScore,
       plan.groupTypeMatchScore, plan.vibeMatchScore, plan.compositeScore,
       plan.avgTrainTime, plan.avgCabTime, plan.avgTrainCost, plan.avgCabCost,
-      plan.longestTravelTime, plan.shortestTravelTime, plan.travelFairnessScore, plan.generatedAt || new Date().toISOString()
+      plan.longestTravelTime, plan.shortestTravelTime, plan.travelFairnessScore,
+      plan.mandatoryCost || 0, plan.optionalCostMin || 0, plan.optionalCostMax || 0, plan.whyRecommended || null,
+      plan.avgAutoTime || 0, plan.avgAutoCost || 0, plan.avgTotalTime || 0, plan.avgTotalCost || 0, plan.avgWalkTime || 0,
+      plan.generatedAt || new Date().toISOString()
     ));
   }
 
@@ -814,19 +823,22 @@ async function savePlans(request: Request, env: Env, groupId: string) {
   for (const t of body.memberTravels) {
     statements.push(env.DB.prepare(
       `INSERT INTO member_travel_metrics (
-        id, plan_id, user_id, train_time, train_cost, cab_time, cab_cost, walk_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        id, plan_id, user_id, train_time, train_cost, cab_time, cab_cost, walk_time,
+        auto_time, auto_cost, total_time, total_cost
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      t.id, t.planId, t.userId, t.trainTime, t.trainCost, t.cabTime, t.cabCost, t.walkTime
+      t.id, t.planId, t.userId, t.trainTime, t.trainCost, t.cabTime, t.cabCost, t.walkTime,
+      t.autoTime || 0, t.autoCost || 0, t.totalTime || 0, t.totalCost || 0
     ));
   }
 
   // Update group status to VOTING and open votingStatus
   const isFastTrackVal = (group as any)?.isFastTrack === 1 ? 1 : 0;
   const timerExpiresAt = isFastTrackVal === 1 ? new Date(Date.now() + 30 * 1000).toISOString() : null;
+  const genOptionsStr = body.generationOptions ? JSON.stringify(body.generationOptions) : null;
   statements.push(env.DB.prepare(
-    `UPDATE groups SET status = 'VOTING', voting_status = 'OPEN', timer_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).bind(timerExpiresAt, groupId));
+    `UPDATE groups SET status = 'VOTING', voting_status = 'OPEN', timer_expires_at = ?, generation_options = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(timerExpiresAt, genOptionsStr, groupId));
 
   await env.DB.batch(statements);
 
@@ -846,6 +858,9 @@ async function getPlans(request: Request, env: Env, groupId: string) {
       composite_score AS compositeScore, avg_train_time AS avgTrainTime, avg_cab_time AS avgCabTime,
       avg_train_cost AS avgTrainCost, avg_cab_cost AS avgCabCost, longest_travel_time AS longestTravelTime,
       shortest_travel_time AS shortestTravelTime, travel_fairness_score AS travelFairnessScore,
+      mandatory_cost AS mandatoryCost, optional_cost_min AS optionalCostMin, optional_cost_max AS optionalCostMax,
+      why_recommended AS whyRecommended, avg_auto_time AS avgAutoTime, avg_auto_cost AS avgAutoCost,
+      avg_total_time AS avgTotalTime, avg_total_cost AS avgTotalCost, avg_walk_time AS avgWalkTime,
       generated_at AS generatedAt
      FROM plans
      WHERE group_id = ?
@@ -884,6 +899,7 @@ async function getPlans(request: Request, env: Env, groupId: string) {
     `SELECT 
       id, plan_id AS planId, user_id AS userId, train_time AS trainTime,
       train_cost AS trainCost, cab_time AS cabTime, cab_cost AS cabCost, walk_time AS walkTime,
+      auto_time AS autoTime, auto_cost AS autoCost, total_time AS totalTime, total_cost AS totalCost,
       created_at AS createdAt
      FROM member_travel_metrics
      WHERE plan_id IN (${planIds.map(() => '?').join(', ')})`
@@ -896,11 +912,24 @@ async function getPlans(request: Request, env: Env, groupId: string) {
     return acc;
   }, {} as Record<string, any[]>);
 
-  const data = groupPlans.map(p => ({
-    ...p,
-    slots: slotsMap[p.id] || [],
-    memberTravelMetrics: travelsMap[p.id] || [],
-  }));
+  const data = groupPlans.map(p => {
+    let parsedWhyRecommended: string[] = [];
+    if (p.whyRecommended) {
+      try {
+        parsedWhyRecommended = typeof p.whyRecommended === 'string'
+          ? JSON.parse(p.whyRecommended)
+          : p.whyRecommended;
+      } catch (e) {
+        parsedWhyRecommended = [];
+      }
+    }
+    return {
+      ...p,
+      whyRecommended: parsedWhyRecommended,
+      slots: slotsMap[p.id] || [],
+      memberTravelMetrics: travelsMap[p.id] || [],
+    };
+  });
 
   return json({ success: true, data }, { headers: corsHeaders(env) });
 }
@@ -988,6 +1017,9 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
     venuesJson: string;
     participantsJson: string;
     totalCostPerHead: number;
+    winningCategories?: string;
+    winningBudgetTier?: string;
+    winningActivities?: string;
   }>(request);
 
   const user = await findUserByClerkId(env.DB, body.clerkId);
@@ -1012,11 +1044,11 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
     env.DB.prepare(
       `INSERT INTO history (
         id, group_id, plan_id, outing_date, group_name, plan_name, plan_tagline, 
-        venues_json, participants_json, total_cost_per_head, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        venues_json, participants_json, total_cost_per_head, winning_categories, winning_budget_tier, winning_activities, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       historyId, groupId, body.winnerPlanId, body.outingDate, body.groupName, body.planName, body.planTagline,
-      body.venuesJson, body.participantsJson, body.totalCostPerHead, now
+      body.venuesJson, body.participantsJson, body.totalCostPerHead, body.winningCategories || null, body.winningBudgetTier || null, body.winningActivities || null, now
     )
   ]);
 

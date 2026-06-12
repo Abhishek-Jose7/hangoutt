@@ -38,6 +38,7 @@ export default function GroupDetailsPage() {
   const [lngVal, setLngVal] = useState('77.6189'); // default Koramangala lng
   const [addressVal, setAddressVal] = useState('');
   const [selectedVibes, setSelectedVibes] = useState<string[]>([]);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   
   const [isSubmittingBudget, setIsSubmittingBudget] = useState(false);
   const [isSubmittingLocation, setIsSubmittingLocation] = useState(false);
@@ -370,11 +371,11 @@ export default function GroupDetailsPage() {
     }
   };
 
-  const handlePlanGeneration = async () => {
-    console.log('handlePlanGeneration triggered for groupId:', groupId);
+  const handlePlanGeneration = async (options: string[] = []) => {
+    console.log('handlePlanGeneration triggered for groupId:', groupId, 'options:', options);
     setIsGenerating(true);
     try {
-      const res = await generatePlan(groupId);
+      const res = await generatePlan(groupId, options);
       console.log('generatePlan response:', res);
       
       if (!res.success) {
@@ -516,7 +517,7 @@ export default function GroupDetailsPage() {
             <p className="text-[10px] text-neutral-500 font-mono">If this takes too long or they failed to generate, please regenerate.</p>
             {isAdmin && (
               <Button
-                onClick={handlePlanGeneration}
+                onClick={() => handlePlanGeneration()}
                 disabled={isGenerating}
                 className="mt-4 bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] px-4 py-2 flex items-center justify-center mx-auto"
               >
@@ -1014,6 +1015,67 @@ export default function GroupDetailsPage() {
               </div>
             )}
 
+            {/* Generate Again options for Admin */}
+            {isAdmin && group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
+              <Card className="border border-stone-900 bg-[#0e0e0e]/80 backdrop-blur-md p-6 rounded-[8px] space-y-4">
+                <div className="flex items-center gap-2 border-b border-[#353534] pb-3">
+                  <RefreshCw className="h-4.5 w-4.5 text-[#DC143C]" />
+                  <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-white">
+                    Generate Again (Admin Panel)
+                  </h3>
+                </div>
+                <p className="text-[10.5px] text-neutral-400 font-sans leading-relaxed">
+                  Unhappy with the current options? Regenerate with specific planning constraints.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                  {[
+                    { id: 'Cheaper', label: 'Cheaper outing' },
+                    { id: 'More Activities', label: 'More activities' },
+                    { id: 'More Food', label: 'More cafes/food' },
+                    { id: 'More Romantic', label: 'More romantic' },
+                    { id: 'More Indoor', label: 'More indoor places' },
+                    { id: 'Less Travel', label: 'Minimize travel' },
+                  ].map((opt) => {
+                    const isSelected = selectedOptions.includes(opt.id);
+                    return (
+                      <label key={opt.id} className="cursor-pointer flex items-center gap-2 text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-400 select-none">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedOptions(prev =>
+                              prev.includes(opt.id) ? prev.filter(x => x !== opt.id) : [...prev, opt.id]
+                            );
+                          }}
+                          className="h-3.5 w-3.5 rounded border-[#353534] bg-black text-[#DC143C] focus:ring-0 accent-[#DC143C] cursor-pointer"
+                        />
+                        <span className={isSelected ? 'text-[#DC143C]' : 'text-neutral-400'}>
+                          {opt.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <Button
+                  onClick={() => handlePlanGeneration(selectedOptions)}
+                  disabled={isGenerating}
+                  className="w-full mt-3 bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3 transition-all cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.2)] flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-black" />
+                      COOKING NEW PLANS...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 text-black" />
+                      REGENERATE ITINERARIES
+                    </>
+                  )}
+                </Button>
+              </Card>
+            )}
+
             {/* Admin Close Button (rendered at bottom during open voting phase) */}
             {isAdmin && group.votingStatus === 'OPEN' && (
               <div className="pt-2">
@@ -1088,7 +1150,7 @@ export default function GroupDetailsPage() {
                   <div className="pt-6 border-t border-[#353534]/50 mt-6">
                     <Button
                       type="button"
-                      onClick={handlePlanGeneration}
+                      onClick={() => handlePlanGeneration()}
                       disabled={isGenerating || members.length === 0}
                       className="w-full bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                     >

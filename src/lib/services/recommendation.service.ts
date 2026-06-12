@@ -94,24 +94,7 @@ export const recommendationService = {
           console.error(`Ola Nearby search failed for ${category}:`, err);
         }
 
-        // Fallback to MOCK_VENUES if Ola search returned no results
-        if (categoryVenues.length === 0) {
-          const matchedMocks = MOCK_VENUES.filter(v => v.category === category);
-          categoryVenues = matchedMocks.map((mock, index) => {
-            const angle = (index * 2 * Math.PI) / matchedMocks.length;
-            const randomDist = 0.2 + Math.random() * 2.0; // km
-            return {
-              id: `${mock.id}_nearby_${index}`,
-              name: `${mock.name} (${index + 1})`,
-              category: mock.category,
-              rating: Number((4.0 + Math.random() * 0.9).toFixed(1)),
-              distanceKm: Number(randomDist.toFixed(2)),
-              estimatedCostPerHead: mock.estimatedCostPerHead,
-              openNow: true,
-              address: `${mock.address} (Locality ${index + 1})`,
-            };
-          });
-        }
+        // No mock fallback allowed to ensure we never invent businesses.
 
         // Write to DB cache (1-hour TTL)
         try {
@@ -173,7 +156,8 @@ export const recommendationService = {
     vibes: string[],
     maxBudget: number,
     preferredCategories: string[],
-    history: any[] = []
+    history: any[] = [],
+    outingDate?: string | null
   ): Promise<(Experience & { distanceKm: number; score: number })[]> {
     // Fetch experiences near midpoint from the catalog
     let catalogExperiences = await experienceRepository.findExperiencesNearMidpoint(
@@ -291,7 +275,22 @@ export const recommendationService = {
     }
 
     // Filters out experiences exceeding the group's maxBudget cap
-    const budgetFiltered = catalogExperiences.filter(e => e.ticketPrice <= maxBudget);
+    let budgetFiltered = catalogExperiences.filter(e => e.ticketPrice <= maxBudget);
+
+    // Enforce date schedule checks for non-recurring experiences
+    if (outingDate) {
+      const outingDateStr = outingDate.split('T')[0];
+      budgetFiltered = budgetFiltered.filter(e => {
+        if (e.isRecurring === 1) return true;
+        const startStr = e.startDate.split('T')[0];
+        const endStr = e.endDate.split('T')[0];
+        const isAvailable = outingDateStr >= startStr && outingDateStr <= endStr;
+        if (!isAvailable) {
+          console.log(`[VENUE REJECTED] "${e.title}" | Reason: Closed (outing date ${outingDateStr} is outside event range ${startStr} to ${endStr})`);
+        }
+        return isAvailable;
+      });
+    }
 
     // Rank candidate experiences using the 8-factor formula
     const ranked = rankExperiences(
@@ -301,7 +300,7 @@ export const recommendationService = {
       maxBudget,
       preferredCategories,
       history,
-      new Date().toISOString(),
+      outingDate || new Date().toISOString(),
       false // default to clear weather (can inject real weather later)
     );
 

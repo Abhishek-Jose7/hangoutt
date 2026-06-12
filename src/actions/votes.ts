@@ -136,6 +136,9 @@ export async function closeVoting(groupId: string): ActionResponse<{ success: bo
           }))),
           participantsJson: JSON.stringify(participants),
           totalCostPerHead: winnerPlan.totalEstimatedCostPerHead,
+          winningCategories: JSON.stringify(winnerPlan.slots.map((s: any) => s.category)),
+          winningBudgetTier: winnerPlan.budgetTier,
+          winningActivities: JSON.stringify(winnerPlan.slots.map((s: any) => s.name)),
         },
       });
 

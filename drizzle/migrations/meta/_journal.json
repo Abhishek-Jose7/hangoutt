@@ -71,6 +71,13 @@
       "when": 1781252930011,
       "tag": "0009_cute_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1781270899782,
+      "tag": "0010_adorable_iceman",
+      "breakpoints": true
     }
   ]
 }

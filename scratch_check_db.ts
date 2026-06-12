@@ -1,26 +1,14 @@
 import { db } from './src/lib/db/client';
-import { groups, groupMembers, locations, budgets } from './src/lib/db/schema';
+import { venuesCache } from './src/lib/db/schema';
 
-async function checkDb() {
+async function clearCache() {
   try {
-    console.log('=== Groups ===');
-    const allGroups = await db.select().from(groups);
-    console.log(allGroups);
-
-    console.log('=== Group Members ===');
-    const allMembers = await db.select().from(groupMembers);
-    console.log(allMembers);
-
-    console.log('=== Budgets ===');
-    const allBudgets = await db.select().from(budgets);
-    console.log(allBudgets);
-
-    console.log('=== Locations ===');
-    const allLocations = await db.select().from(locations);
-    console.log(allLocations);
+    console.log('Clearing venues cache...');
+    const result = await db.delete(venuesCache);
+    console.log('Cache cleared successfully.', result);
   } catch (err) {
-    console.error('Error querying DB:', err);
+    console.error('Error clearing cache:', err);
   }
 }
 
-checkDb();
+clearCache();

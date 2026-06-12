@@ -72,11 +72,24 @@ export const planRepository = {
       return acc;
     }, {} as Record<string, MemberTravelMetric[]>);
 
-    return groupPlans.map((p: any) => ({
-      ...p,
-      slots: slotsMap[p.id] || [],
-      memberTravelMetrics: travelMetricsMap[p.id] || [],
-    }));
+    return groupPlans.map((p: any) => {
+      let parsedWhyRecommended: string[] = [];
+      if (p.whyRecommended) {
+        try {
+          parsedWhyRecommended = typeof p.whyRecommended === 'string'
+            ? JSON.parse(p.whyRecommended)
+            : p.whyRecommended;
+        } catch (e) {
+          parsedWhyRecommended = [];
+        }
+      }
+      return {
+        ...p,
+        whyRecommended: parsedWhyRecommended,
+        slots: slotsMap[p.id] || [],
+        memberTravelMetrics: travelMetricsMap[p.id] || [],
+      };
+    });
   },
 
   async getPlanWithSlots(planId: string): Promise<PlanWithSlots | undefined> {
@@ -99,8 +112,20 @@ export const planRepository = {
       .from(memberTravelMetrics)
       .where(eq(memberTravelMetrics.planId, planId));
 
+    let parsedWhyRecommended: string[] = [];
+    if (planResult[0].whyRecommended) {
+      try {
+        parsedWhyRecommended = typeof planResult[0].whyRecommended === 'string'
+          ? JSON.parse(planResult[0].whyRecommended)
+          : planResult[0].whyRecommended;
+      } catch (e) {
+        parsedWhyRecommended = [];
+      }
+    }
+
     return {
       ...planResult[0],
+      whyRecommended: parsedWhyRecommended,
       slots,
       memberTravelMetrics,
     };

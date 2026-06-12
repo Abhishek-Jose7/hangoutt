@@ -48,7 +48,7 @@ export async function getVenueImageUrl(
     const searchUrl = `${OLA_BASE_URL}/places/v1/textsearch?input=${encodeURIComponent(searchQuery)}&api_key=${apiKey}`;
 
     const searchController = new AbortController();
-    const searchTimeout = setTimeout(() => searchController.abort(), 3500);
+    const searchTimeout = setTimeout(() => searchController.abort(), 8000);
 
     let searchRes: Response;
     try {
@@ -66,10 +66,6 @@ export async function getVenueImageUrl(
 
     if (!searchRes.ok) {
       console.warn(`Ola textsearch returned ${searchRes.status} for "${searchQuery}"`);
-      if (searchRes.status === 403 || searchRes.status === 401) {
-        console.warn("Places API returned auth error (403/401). Activating circuit breaker to disable future calls.");
-        isOlaPlacesDisabled = true;
-      }
       return getCategoryFallback(category);
     }
 
@@ -90,7 +86,7 @@ export async function getVenueImageUrl(
     const detailsUrl = `${OLA_BASE_URL}/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
 
     const detailsController = new AbortController();
-    const detailsTimeout = setTimeout(() => detailsController.abort(), 3500);
+    const detailsTimeout = setTimeout(() => detailsController.abort(), 8000);
 
     let detailsRes: Response;
     try {
@@ -108,9 +104,6 @@ export async function getVenueImageUrl(
 
     if (!detailsRes.ok) {
       console.warn(`Ola place details returned ${detailsRes.status} for place_id="${placeId}"`);
-      if (detailsRes.status === 403 || detailsRes.status === 401) {
-        isOlaPlacesDisabled = true;
-      }
       return getCategoryFallback(category);
     }
 
@@ -131,8 +124,7 @@ export async function getVenueImageUrl(
     return photoUrl;
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      console.warn(`Ola Places API request aborted (timeout) for "${searchQuery}". Disabling future calls.`);
-      isOlaPlacesDisabled = true;
+      console.warn(`Ola Places API request aborted (timeout) for "${searchQuery}".`);
     } else {
       console.error(`Ola Places photo resolution failed for "${venueName}":`, err);
     }
@@ -182,7 +174,7 @@ export async function searchNearbyVenues(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     let res: Response;
     try {
@@ -200,10 +192,6 @@ export async function searchNearbyVenues(
 
     if (!res.ok) {
       console.warn(`Ola nearbysearch returned ${res.status} for category ${category}`);
-      if (res.status === 403 || res.status === 401) {
-        console.warn("Nearby Search API returned auth error. Disabling future Ola Places calls.");
-        isOlaPlacesDisabled = true;
-      }
       return [];
     }
 
@@ -211,8 +199,7 @@ export async function searchNearbyVenues(
     return data?.predictions || data?.results || [];
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      console.warn(`Ola Nearby Search request aborted (timeout) for category ${category}. Disabling future calls.`);
-      isOlaPlacesDisabled = true;
+      console.warn(`Ola Nearby Search request aborted (timeout) for category ${category}.`);
     } else {
       console.error(`Ola Nearby Search failed for category ${category}:`, err);
     }
@@ -232,7 +219,7 @@ export async function getVenueDetails(placeId: string): Promise<any> {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(url, {
       headers: {
@@ -269,7 +256,7 @@ export async function searchTextVenues(query: string): Promise<any[]> {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(url, {
       headers: {

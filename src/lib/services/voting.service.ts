@@ -150,6 +150,9 @@ export const votingService = {
           }))),
           participantsJson: JSON.stringify(participants),
           totalCostPerHead: plan.totalEstimatedCostPerHead,
+          winningCategories: JSON.stringify(slots.map(s => s.category)),
+          winningBudgetTier: plan.budgetTier,
+          winningActivities: JSON.stringify(slots.map(s => s.name)),
         });
       }
     });

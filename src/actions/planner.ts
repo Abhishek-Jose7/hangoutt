@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { isHangoutApiConfigured, hangoutApi } from '@/lib/cloudflare/hangoutApi';
 import { ActionResponse } from '@/lib/types/api.types';
 
-export async function generatePlan(groupId: string): ActionResponse<any> {
+export async function generatePlan(groupId: string, options: string[] = []): ActionResponse<any> {
   try {
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const { memberRepository } = await import('@/lib/repositories/member.repository');
@@ -20,7 +20,7 @@ export async function generatePlan(groupId: string): ActionResponse<any> {
     }
 
     // Call service to run calculation and persist plans
-    const result = await plannerService.generatePlan(user.id, groupId);
+    const result = await plannerService.generatePlan(user.id, groupId, options);
 
     revalidatePath(`/groups/${groupId}`);
     revalidatePath(`/planner/${groupId}`);
