@@ -6,6 +6,8 @@ import { MOCK_VENUES } from '../utils/mockData';
 import { db } from '../db/client';
 import { venuesCache, experienceCategories, experienceSources } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { searchNearbyVenues } from '../maps/places';
+import { getHaversineDistance } from '../algorithms/zoneSelection';
 
 // Helper to round coordinate to 2 decimal places (approx 1.1km grid spacing)
 function getCacheKey(category: string, lat: number, lng: number): string {
@@ -28,7 +30,7 @@ export const recommendationService = {
 
     const allCandidates: Venue[] = [];
 
-    for (const category of categories) {
+    const categoryPromises = categories.map(async (category) => {
       const cacheKey = getCacheKey(category, lat, lng);
       
       // Try DB cache first
@@ -59,28 +61,57 @@ export const recommendationService = {
           console.error('Error parsing cached venues:', err);
         }
       } else {
-        // Cache miss -> (In real production: call Ola Maps Nearby Search)
-        // Since maps nearbysearch returns stub [] for Phase 1, we generate representative local venues from MOCK_VENUES
-        const matchedMocks = MOCK_VENUES.filter(v => v.category === category);
-        
-        categoryVenues = matchedMocks.map((mock, index) => {
-          // Perturb coordinates slightly relative to the midpoint to make distance unique
-          const angle = (index * 2 * Math.PI) / matchedMocks.length;
-          const randomDist = 0.2 + Math.random() * 2.0; // km
-          const latDiff = (randomDist * Math.cos(angle)) / 111.32;
-          const lngDiff = (randomDist * Math.sin(angle)) / (111.32 * Math.cos(lat * Math.PI / 180));
+        // Cache miss -> call Ola Maps Nearby Search
+        try {
+          const olaResults = await searchNearbyVenues(lat, lng, category);
+          if (olaResults && olaResults.length > 0) {
+            categoryVenues = olaResults.map((item: any, index: number) => {
+              const venueLat = item.geometry?.location?.lat || lat;
+              const venueLng = item.geometry?.location?.lng || lng;
+              const dist = getHaversineDistance({ lat, lng }, { lat: venueLat, lng: venueLng });
+              
+              let cost = 300;
+              if (category === 'RESTAURANT') cost = 600;
+              else if (category === 'CAFE') cost = 250;
+              else if (category === 'DESSERT') cost = 150;
+              else if (category === 'PARK') cost = 0;
+              else if (category === 'ARCADE' || category === 'BOWLING') cost = 400;
+              else if (category === 'ESCAPE_ROOM') cost = 700;
 
-          return {
-            id: `${mock.id}_nearby_${index}`,
-            name: `${mock.name} (${index + 1})`,
-            category: mock.category,
-            rating: Number((4.0 + Math.random() * 0.9).toFixed(1)),
-            distanceKm: Number(randomDist.toFixed(2)),
-            estimatedCostPerHead: mock.estimatedCostPerHead,
-            openNow: true,
-            address: `${mock.address} (Locality ${index + 1})`,
-          };
-        });
+              return {
+                id: item.place_id || `ola_${category}_${index}`,
+                name: item.name || item.structured_formatting?.main_text || 'Local Venue',
+                category: category,
+                rating: item.rating || Number((4.0 + Math.random() * 0.9).toFixed(1)),
+                distanceKm: Number(dist.toFixed(2)),
+                estimatedCostPerHead: cost,
+                openNow: item.opening_hours?.open_now ?? true,
+                address: item.vicinity || item.formatted_address || item.description || item.structured_formatting?.secondary_text || '',
+              };
+            });
+          }
+        } catch (err) {
+          console.error(`Ola Nearby search failed for ${category}:`, err);
+        }
+
+        // Fallback to MOCK_VENUES if Ola search returned no results
+        if (categoryVenues.length === 0) {
+          const matchedMocks = MOCK_VENUES.filter(v => v.category === category);
+          categoryVenues = matchedMocks.map((mock, index) => {
+            const angle = (index * 2 * Math.PI) / matchedMocks.length;
+            const randomDist = 0.2 + Math.random() * 2.0; // km
+            return {
+              id: `${mock.id}_nearby_${index}`,
+              name: `${mock.name} (${index + 1})`,
+              category: mock.category,
+              rating: Number((4.0 + Math.random() * 0.9).toFixed(1)),
+              distanceKm: Number(randomDist.toFixed(2)),
+              estimatedCostPerHead: mock.estimatedCostPerHead,
+              openNow: true,
+              address: `${mock.address} (Locality ${index + 1})`,
+            };
+          });
+        }
 
         // Write to DB cache (1-hour TTL)
         try {
@@ -113,6 +144,11 @@ export const recommendationService = {
         }
       }
 
+      return categoryVenues;
+    });
+
+    const results = await Promise.all(categoryPromises);
+    for (const categoryVenues of results) {
       allCandidates.push(...categoryVenues);
     }
 

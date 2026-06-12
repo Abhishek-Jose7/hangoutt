@@ -1,22 +1,22 @@
 import 'server-only';
 import { VenueCategory } from '../types/planner.types';
 
-const OLA_MAPS_API_KEY = process.env.OLA_MAPS_API_KEY;
+const getOlaApiKey = () => process.env.OLA_MAPS_API_KEY;
 const OLA_BASE_URL = 'https://api.olamaps.io';
 
-// Category-based Unsplash fallback images (used when Ola Places has no photo)
+// Category-based fallback images (used when Ola Places has no photo)
 const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
-  'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
-  'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80',
-  'DESSERT': 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80',
-  'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80',
-  'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80',
-  'BOWLING': 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80',
-  'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80',
-  'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80',
-  'LIVE_MUSIC': 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80',
+  'CAFE': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=CAFE',
+  'RESTAURANT': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=RESTAURANT',
+  'DESSERT': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=DESSERT',
+  'PARK': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=PARK',
+  'ARCADE': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=ARCADE',
+  'BOWLING': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=BOWLING',
+  'ESCAPE_ROOM': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=ESCAPE_ROOM',
+  'POTTERY': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=POTTERY',
+  'LIVE_MUSIC': 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=LIVE_MUSIC',
 };
-const DEFAULT_FALLBACK = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80';
+const DEFAULT_FALLBACK = 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING';
 
 /**
  * Resolve a real venue photo URL using the Ola Places API.
@@ -28,29 +28,48 @@ const DEFAULT_FALLBACK = 'https://images.unsplash.com/photo-1517248135467-4c7edc
  * 
  * Falls back to category-based Unsplash image if Ola API fails or returns no photo.
  */
+let isOlaPlacesDisabled = false;
+
 export async function getVenueImageUrl(
   venueName: string,
   city: string,
   category?: string
 ): Promise<string> {
-  const apiKey = OLA_MAPS_API_KEY;
+  const apiKey = getOlaApiKey();
   const isPlaceholder = !apiKey || apiKey === 'placeholder_ola_maps_key' || apiKey.includes('placeholder');
 
-  if (isPlaceholder) {
+  if (isPlaceholder || isOlaPlacesDisabled) {
     return getCategoryFallback(category);
   }
 
+  const searchQuery = `${venueName} ${city}`;
   try {
     // Step 1: Text Search to find the place_id
-    const searchQuery = `${venueName} ${city}`;
     const searchUrl = `${OLA_BASE_URL}/places/v1/textsearch?input=${encodeURIComponent(searchQuery)}&api_key=${apiKey}`;
 
-    const searchRes = await fetch(searchUrl, {
-      headers: { 'X-Request-Id': `hangoutt-${Date.now()}` },
-    });
+    const searchController = new AbortController();
+    const searchTimeout = setTimeout(() => searchController.abort(), 3500);
+
+    let searchRes: Response;
+    try {
+      searchRes = await fetch(searchUrl, {
+        headers: { 
+          'X-Request-Id': `hangoutt-${Date.now()}`,
+          'Referer': 'http://localhost:3000',
+          'Origin': 'http://localhost:3000'
+        },
+        signal: searchController.signal,
+      });
+    } finally {
+      clearTimeout(searchTimeout);
+    }
 
     if (!searchRes.ok) {
       console.warn(`Ola textsearch returned ${searchRes.status} for "${searchQuery}"`);
+      if (searchRes.status === 403 || searchRes.status === 401) {
+        console.warn("Places API returned auth error (403/401). Activating circuit breaker to disable future calls.");
+        isOlaPlacesDisabled = true;
+      }
       return getCategoryFallback(category);
     }
 
@@ -70,12 +89,28 @@ export async function getVenueImageUrl(
     // Step 2: Place Details to get photo_reference
     const detailsUrl = `${OLA_BASE_URL}/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
 
-    const detailsRes = await fetch(detailsUrl, {
-      headers: { 'X-Request-Id': `hangoutt-details-${Date.now()}` },
-    });
+    const detailsController = new AbortController();
+    const detailsTimeout = setTimeout(() => detailsController.abort(), 3500);
+
+    let detailsRes: Response;
+    try {
+      detailsRes = await fetch(detailsUrl, {
+        headers: { 
+          'X-Request-Id': `hangoutt-details-${Date.now()}`,
+          'Referer': 'http://localhost:3000',
+          'Origin': 'http://localhost:3000'
+        },
+        signal: detailsController.signal,
+      });
+    } finally {
+      clearTimeout(detailsTimeout);
+    }
 
     if (!detailsRes.ok) {
       console.warn(`Ola place details returned ${detailsRes.status} for place_id="${placeId}"`);
+      if (detailsRes.status === 403 || detailsRes.status === 401) {
+        isOlaPlacesDisabled = true;
+      }
       return getCategoryFallback(category);
     }
 
@@ -94,8 +129,13 @@ export async function getVenueImageUrl(
     const photoUrl = `${OLA_BASE_URL}/places/v1/photo?photo_reference=${encodeURIComponent(photoRef)}&api_key=${apiKey}`;
 
     return photoUrl;
-  } catch (err) {
-    console.error(`Ola Places photo resolution failed for "${venueName}":`, err);
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.warn(`Ola Places API request aborted (timeout) for "${searchQuery}". Disabling future calls.`);
+      isOlaPlacesDisabled = true;
+    } else {
+      console.error(`Ola Places photo resolution failed for "${venueName}":`, err);
+    }
     return getCategoryFallback(category);
   }
 }
@@ -110,18 +150,146 @@ export function getCategoryFallback(category?: string): string {
   return DEFAULT_FALLBACK;
 }
 
+const categoryToOlaType: Record<string, string> = {
+  'CAFE': 'cafe',
+  'RESTAURANT': 'restaurant',
+  'PARK': 'park',
+  'ARCADE': 'amusement_park',
+  'BOWLING': 'bowling_alley',
+  'ESCAPE_ROOM': 'tourist_attraction',
+  'MOVIE': 'movie_theater',
+  'MALL': 'shopping_mall',
+  'DESSERT': 'bakery',
+  'SPORTS': 'stadium',
+  'MUSEUM': 'museum',
+};
+
 export async function searchNearbyVenues(
-  _lat: number,
-  _lng: number,
-  _category: VenueCategory,
-  _radiusMeters = 3000
+  lat: number,
+  lng: number,
+  category: VenueCategory,
+  radiusMeters = 3000
 ): Promise<any[]> {
-  // Real endpoint: POST /places/v1/nearbysearch
-  // For Phase 1, return stub results
-  return [];
+  const apiKey = getOlaApiKey();
+  const isPlaceholder = !apiKey || apiKey === 'placeholder_ola_maps_key' || apiKey.includes('placeholder');
+
+  if (isPlaceholder || isOlaPlacesDisabled) {
+    return [];
+  }
+
+  const type = categoryToOlaType[category] || 'restaurant';
+  const url = `${OLA_BASE_URL}/places/v1/nearbysearch?layers=venue&types=${type}&location=${lat},${lng}&radius=${radiusMeters}&api_key=${apiKey}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { 
+          'X-Request-Id': `hangoutt-nearby-${Date.now()}`,
+          'Referer': 'http://localhost:3000',
+          'Origin': 'http://localhost:3000'
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!res.ok) {
+      console.warn(`Ola nearbysearch returned ${res.status} for category ${category}`);
+      if (res.status === 403 || res.status === 401) {
+        console.warn("Nearby Search API returned auth error. Disabling future Ola Places calls.");
+        isOlaPlacesDisabled = true;
+      }
+      return [];
+    }
+
+    const data = await res.json() as any;
+    return data?.predictions || data?.results || [];
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.warn(`Ola Nearby Search request aborted (timeout) for category ${category}. Disabling future calls.`);
+      isOlaPlacesDisabled = true;
+    } else {
+      console.error(`Ola Nearby Search failed for category ${category}:`, err);
+    }
+    return [];
+  }
 }
 
-export async function getVenueDetails(_placeId: string): Promise<any> {
-  // Real endpoint: GET /places/v1/details?place_id=...
-  return {};
+export async function getVenueDetails(placeId: string): Promise<any> {
+  const apiKey = getOlaApiKey();
+  const isPlaceholder = !apiKey || apiKey === 'placeholder_ola_maps_key' || apiKey.includes('placeholder');
+
+  if (isPlaceholder || isOlaPlacesDisabled) {
+    return {};
+  }
+
+  const url = `${OLA_BASE_URL}/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    const res = await fetch(url, {
+      headers: {
+        'X-Request-Id': `hangoutt-details-${Date.now()}`,
+        'Referer': 'http://localhost:3000',
+        'Origin': 'http://localhost:3000',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.warn(`Ola details returned ${res.status} for place_id="${placeId}"`);
+      return {};
+    }
+
+    const data = await res.json() as any;
+    return data?.result || {};
+  } catch (err) {
+    console.error(`Ola Details failed for place_id="${placeId}":`, err);
+    return {};
+  }
+}
+
+export async function searchTextVenues(query: string): Promise<any[]> {
+  const apiKey = getOlaApiKey();
+  const isPlaceholder = !apiKey || apiKey === 'placeholder_ola_maps_key' || apiKey.includes('placeholder');
+
+  if (isPlaceholder || isOlaPlacesDisabled) {
+    return [];
+  }
+
+  const url = `${OLA_BASE_URL}/places/v1/textsearch?input=${encodeURIComponent(query)}&api_key=${apiKey}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    const res = await fetch(url, {
+      headers: {
+        'X-Request-Id': `hangoutt-text-${Date.now()}`,
+        'Referer': 'http://localhost:3000',
+        'Origin': 'http://localhost:3000',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.warn(`Ola textsearch returned ${res.status} for query "${query}"`);
+      return [];
+    }
+
+    const data = await res.json() as any;
+    return data?.predictions || data?.results || [];
+  } catch (err) {
+    console.error(`Ola Text Search failed for query "${query}":`, err);
+    return [];
+  }
 }

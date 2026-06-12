@@ -1,19 +1,21 @@
 import 'server-only';
 import { MapsApiError } from '../errors';
 
-const OLA_MAPS_API_KEY = process.env.OLA_MAPS_API_KEY;
-const BASE_URL = 'https://api.olamaps.it';
+const BASE_URL = 'https://api.olamaps.io';
 
 export async function fetchOlaMaps<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  if (!OLA_MAPS_API_KEY) {
+  const apiKey = process.env.OLA_MAPS_API_KEY;
+  if (!apiKey) {
     console.error('OLA_MAPS_API_KEY is missing.');
     throw new MapsApiError('Maps API is not properly configured.');
   }
 
-  const url = `${BASE_URL}${endpoint}`;
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const url = `${BASE_URL}${endpoint}${separator}api_key=${apiKey}`;
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${OLA_MAPS_API_KEY}`,
+    'Referer': 'http://localhost:3000',
+    'Origin': 'http://localhost:3000',
     ...(options.headers || {}),
   };
 

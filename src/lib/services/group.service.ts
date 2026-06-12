@@ -317,17 +317,7 @@ export const groupService = {
     }
 
     const members = await memberRepository.getMembersWithUserDetails(groupId);
-    const activeMembers = members.filter(member => member.isPresent === 1);
-    if (activeMembers.length === 0) return false;
-
-    const budgetsList = await budgetRepository.getGroupBudgets(groupId);
-    const locationsList = await locationRepository.getGroupLocations(groupId);
-
-    const isReady = activeMembers.every(member => {
-      const hasBudget = budgetsList.some(b => b.userId === member.userId);
-      const hasLocation = locationsList.some(l => l.userId === member.userId);
-      return hasBudget && hasLocation;
-    });
+    const isReady = members.length > 0;
 
     if (isReady && group.status === 'COLLECTING_DETAILS') {
       await groupRepository.update(groupId, {
@@ -350,6 +340,11 @@ export function validateStatusTransition(currentStatus: string, nextStatus: stri
 
   // Allow fallback from GENERATING to READY_TO_GENERATE on failure
   if (currentStatus === 'GENERATING' && nextStatus === 'READY_TO_GENERATE') {
+    return;
+  }
+
+  // Allow fallback from VOTING to GENERATING on regeneration
+  if (currentStatus === 'VOTING' && nextStatus === 'GENERATING') {
     return;
   }
 

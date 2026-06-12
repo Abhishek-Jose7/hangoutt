@@ -36,11 +36,12 @@ export const itinerarySchema = z.object({
   budgetTier: z.enum(['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM']),
   totalEstimatedCostPerHead: z.number().int().min(0),
   totalDurationMinutes: z.number().int().min(60),
-  slots: z.array(slotSchema).min(3).max(5),
+  slots: z.array(slotSchema).min(1).max(5),
+  whyRecommended: z.array(z.string()).min(1).optional(),
 });
 
 export const itineraryResponseSchema = z.object({
-  itineraries: z.array(itinerarySchema).min(3).max(4),
+  itineraries: z.array(itinerarySchema).min(1).max(4),
 });
 
 export type Slot = z.infer<typeof slotSchema>;

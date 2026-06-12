@@ -18,11 +18,11 @@ type RequestOptions = {
 };
 
 export function isHangoutApiConfigured() {
-  return Boolean(process.env.HANGOUT_API_URL && process.env.HANGOUT_API_SECRET);
+  return Boolean(process.env.HANGOUT_API_URL?.trim() && process.env.HANGOUT_API_SECRET?.trim());
 }
 
 function apiUrl(path: string) {
-  const base = process.env.HANGOUT_API_URL;
+  const base = process.env.HANGOUT_API_URL?.trim();
   if (!base) {
     throw new Error('HANGOUT_API_URL is not configured.');
   }
@@ -32,7 +32,7 @@ function apiUrl(path: string) {
 }
 
 export async function hangoutApi<T>(path: string, options: RequestOptions = {}) {
-  const secret = process.env.HANGOUT_API_SECRET;
+  const secret = process.env.HANGOUT_API_SECRET?.trim();
   if (!secret) {
     throw new Error('HANGOUT_API_SECRET is not configured.');
   }

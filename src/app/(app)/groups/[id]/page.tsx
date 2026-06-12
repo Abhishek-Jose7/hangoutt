@@ -508,6 +508,24 @@ export default function GroupDetailsPage() {
           </div>
         )}
 
+        {/* If voting status is active but plans list is empty, show a recovery/loading card */}
+        {isVotingOrClosed && plans.length === 0 && (
+          <Card className="border border-stone-900 bg-stone-950/45 text-center p-8 rounded-[12px] backdrop-blur-md">
+            <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mx-auto mb-4" />
+            <p className="text-xs font-mono uppercase tracking-widest text-neutral-400 mb-2">Loading itineraries...</p>
+            <p className="text-[10px] text-neutral-500 font-mono">If this takes too long or they failed to generate, please regenerate.</p>
+            {isAdmin && (
+              <Button
+                onClick={handlePlanGeneration}
+                disabled={isGenerating}
+                className="mt-4 bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] px-4 py-2 flex items-center justify-center mx-auto"
+              >
+                Regenerate Itineraries
+              </Button>
+            )}
+          </Card>
+        )}
+
         {/* Horizontal Swipe Carousel (Mobile) & Grid (Desktop) of Itineraries */}
         {isVotingOrClosed && plans.length > 0 && (
           <div className="space-y-6">
@@ -1026,8 +1044,8 @@ export default function GroupDetailsPage() {
                 <h3 className="font-mono text-xs font-bold text-[#DC143C] uppercase mb-6 flex justify-between items-center tracking-wider">
                   Member Sync
                   <span className="text-neutral-400 text-[9px] font-bold">
-                    {members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length > 0 
-                      ? Math.round((members.filter((m: any) => (m.isPresent === 1 || m.isPresent === true) && submittedBudgetUserIds.includes(m.userId) && locations.some((l: any) => l.userId === m.userId)).length / members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length) * 100)
+                    {members.length > 0 
+                      ? Math.round((members.filter((m: any) => submittedBudgetUserIds.includes(m.userId) && locations.some((l: any) => l.userId === m.userId)).length / members.length) * 100)
                       : 0}% ACTIVE
                   </span>
                 </h3>
@@ -1037,38 +1055,10 @@ export default function GroupDetailsPage() {
                     const hasBudget = submittedBudgetUserIds.includes(member.userId);
                     const hasLocation = locations.some((l: any) => l.userId === member.userId);
                     const isSynced = hasBudget && hasLocation;
-                    const isPresent = member.isPresent === 1 || member.isPresent === true;
 
                     return (
-                      <li key={member.userId} className={`flex items-center gap-3 transition-all ${isPresent ? '' : 'opacity-40 grayscale'} ${isSynced && isPresent ? '' : 'opacity-75'}`}>
-                        {isAdmin && (
-                          <input
-                            type="checkbox"
-                            checked={isPresent}
-                            disabled={isUpdatingPresence === member.userId || isGenerating}
-                            onChange={async (e) => {
-                              setIsUpdatingPresence(member.userId);
-                              try {
-                                const res = await updateMemberPresenceAction(groupId, {
-                                  [member.userId]: e.target.checked
-                                });
-                                if (res.success) {
-                                  toast.success(`${member.name}'s presence status updated.`);
-                                  await loadData();
-                                } else {
-                                  toast.error(res.error.message || 'Failed to update presence.');
-                                }
-                              } catch (err) {
-                                toast.error('Error updating presence.');
-                              } finally {
-                                setIsUpdatingPresence(null);
-                              }
-                            }}
-                            className="h-3.5 w-3.5 rounded border-[#353534] bg-black text-[#DC143C] focus:ring-0 accent-[#DC143C] cursor-pointer"
-                            title="Confirm presence for this outing"
-                          />
-                        )}
-                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced && isPresent ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
+                      <li key={member.userId} className={`flex items-center gap-3 transition-all ${isSynced ? '' : 'opacity-75'}`}>
+                        <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
                           {member.imageUrl ? (
                             <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover rounded-[2px]" />
                           ) : (
@@ -1080,15 +1070,12 @@ export default function GroupDetailsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-mono font-bold text-[11px] text-white uppercase truncate flex items-center gap-1.5">
                             {member.name}
-                            {!isPresent && (
-                              <span className="text-[7.5px] bg-red-950/45 text-red-500 border border-red-900/50 px-1 py-0.5 rounded-[3px] font-mono font-bold uppercase tracking-wider scale-90">ABSENT</span>
-                            )}
                           </p>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced && isPresent ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
-                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced && isPresent ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
-                              {!isPresent ? 'Excluded' : isSynced ? 'ACCEPTED' : 'Pending'}
-                              {isSynced && isPresent && <Check className="h-3 w-3 text-[#00E1AB]" />}
+                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
+                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
+                              {isSynced ? 'ACCEPTED' : 'Pending'}
+                              {isSynced && <Check className="h-3 w-3 text-[#00E1AB]" />}
                             </span>
                           </div>
                         </div>
@@ -1102,11 +1089,7 @@ export default function GroupDetailsPage() {
                     <Button
                       type="button"
                       onClick={handlePlanGeneration}
-                      disabled={isGenerating || members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).filter((m: any) => {
-                        const hasBudget = submittedBudgetUserIds.includes(m.userId);
-                        const hasLocation = locations.some((l: any) => l.userId === m.userId);
-                        return hasBudget && hasLocation;
-                      }).length !== members.filter((m: any) => m.isPresent === 1 || m.isPresent === true).length}
+                      disabled={isGenerating || members.length === 0}
                       className="w-full bg-[#DC143C] hover:bg-[#B80F2E] text-black text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] py-3.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(220,20,60,0.3)] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isGenerating ? (

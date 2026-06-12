@@ -355,7 +355,10 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
   ]);
 
   const members = (membersRes.results || []) as Array<{ userId: string; name: string; role: string; isPresent: number }>;
-  const presentMembers = members.filter(m => m.isPresent === 1);
+  members.forEach((m) => {
+    m.isPresent = 1;
+  });
+  const presentMembers = members;
   const presentUserIds = presentMembers.map(m => m.userId);
 
   const budgets = ((budgetsRes.results || []) as Array<{ user_id: string; max_budget: number; travel_included: number | null }>)
@@ -444,14 +447,7 @@ function isGroupReady(
     return ['READY_TO_GENERATE', 'GENERATING', 'VOTING', 'COMPLETED', 'ARCHIVED'].includes(status);
   }
 
-  const presentMembers = members.filter(m => m.isPresent !== 0);
-  if (presentMembers.length === 0) return false;
-  return presentMembers.every((member) => {
-    return (
-      budgets.some((budget) => budget.user_id === member.userId) &&
-      locations.some((location) => location.user_id === member.userId)
-    );
-  });
+  return members.length > 0;
 }
 
 async function joinGroup(request: Request, env: Env) {
@@ -651,16 +647,7 @@ async function updateReadiness(db: D1Database, groupId: string) {
   ]);
 
   const members = membersRes.results || [];
-  const presentMembers = members.filter(m => m.isPresent === 1);
-  if (
-    presentMembers.length > 0 &&
-    presentMembers.every((member) => {
-      return (
-        (budgetsRes.results || []).some((budget) => budget.userId === member.userId) &&
-        (locationsRes.results || []).some((location) => location.userId === member.userId)
-      );
-    })
-  ) {
+  if (members.length > 0) {
     await db
       .prepare(`UPDATE groups SET status = 'READY_TO_GENERATE', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(groupId)

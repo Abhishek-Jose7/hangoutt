@@ -50,12 +50,11 @@ export function getHaversineDistance(p1: LatLng, p2: LatLng): number {
 
 export function selectCandidateZones(memberLocations: LatLng[]): CandidateZone[] {
   if (memberLocations.length === 0) {
-    return BENGALURU_ZONES.slice(0, 4); // Default fallback
+    return MUMBAI_ZONES.slice(0, 4); // Default fallback
   }
 
-  // Detect city: Mumbai vs Bengaluru
-  const avgLat = memberLocations.reduce((sum, loc) => sum + loc.lat, 0) / memberLocations.length;
-  const candidatePool = avgLat > 16.0 ? MUMBAI_ZONES : BENGALURU_ZONES;
+  // Force candidate pool to Mumbai
+  const candidatePool = MUMBAI_ZONES;
 
   // Score each candidate zone based on distance averages and disparities (fairness)
   const scoredZones = candidatePool.map((zone) => {

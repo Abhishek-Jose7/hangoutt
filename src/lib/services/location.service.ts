@@ -77,8 +77,8 @@ export const locationService = {
 
   async getGroupMidpoint(groupId: string) {
     const locations = await locationRepository.getGroupLocations(groupId);
-    if (locations.length < 2) {
-      throw new InsufficientLocationsError(`At least 2 locations are required. Current submissions: ${locations.length}.`);
+    if (locations.length < 1) {
+      throw new InsufficientLocationsError(`At least 1 location is required. Current submissions: ${locations.length}.`);
     }
 
     return calculateMidpoint(locations.map(loc => ({ lat: loc.lat, lng: loc.lng })));

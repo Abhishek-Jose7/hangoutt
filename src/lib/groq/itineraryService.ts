@@ -23,121 +23,181 @@ function isRetryable(err: unknown): boolean {
 
 function generateMockItineraries(context: ItineraryPromptContext): ItineraryResponse {
   const itineraries: any[] = [];
-  const budgetTiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
-  
-  const planConfigs = [
-    {
-      name: 'Bandra West',
-      tagline: 'Explore pottery, escape rooms, and coffee roasters in Bandra West.',
-      slots: [
-        { name: 'Clay Studio Pottery Workshop, Bandra West', category: 'POTTERY', price: 250, duration: 90, note: 'A hands-on clay pottery session to get your creative juices flowing together.' },
-        { name: 'The Escape Hunt, Bandra West', category: 'ESCAPE_ROOM', price: 650, duration: 60, note: 'Work together to solve the mystery and escape the room.' },
-        { name: 'Subko Coffee Roasters, Bandra West', category: 'CAFE', price: 120, duration: 60, note: 'Relax and discuss your clay pieces over custom pour-overs.' }
-      ]
-    },
-    {
-      name: 'Thane West',
-      tagline: 'Take a scenic walk in Thane followed by a premium dining experience.',
-      slots: [
-        { name: 'Upvan Lake Nature Walk, Thane', category: 'FREE_EXPERIENCE', price: 0, duration: 120, note: 'A quiet morning stroll discovering scenic lake views and fresh air.' },
-        { name: 'Century Club Premium Restaurant, Ulhasnagar', category: 'RESTAURANT', price: 400, duration: 90, note: 'Enjoy a premium multi-cuisine dinner with the group.' },
-        { name: 'Game Zone Bowling, Thane West', category: 'BOWLING', price: 250, duration: 60, note: 'Grab a lane for a friendly match.' }
-      ]
-    },
-    {
-      name: 'Vashi',
-      tagline: 'Dive into board games and arcade tournament with friends in Vashi.',
-      slots: [
-        { name: 'Vashi Comic Con & Board Game Center', category: 'BOARD_GAME_EVENT', price: 200, duration: 120, note: 'An engaging, competitive board games tournament with your group.' },
-        { name: 'Smaaash Arcade, Vashi', category: 'ARCADE', price: 180, duration: 90, note: 'Play multiplayer retro arcade games followed by gourmet sliders.' },
-        { name: 'Garden Desserts & Cafe, Panvel', category: 'DESSERT', price: 100, duration: 45, note: 'Savor gourmet desserts and wrap up the evening on a sweet note.' }
-      ]
-    },
-    {
-      name: 'Colaba',
-      tagline: 'Savor artisan desserts after a concert and sunset walk at Marine Drive.',
-      slots: [
-        { name: 'Sunset Jazz Concert at antiSOCIAL, CST', category: 'LIVE_MUSIC', price: 600, duration: 150, note: 'Experience incredible acoustics and local bands at an intimate venue near CST.' },
-        { name: 'Marine Drive Promenade Walk, CST', category: 'PARK', price: 0, duration: 60, note: 'Take a relaxing sunset walk along the famous queen\'s necklace.' },
-        { name: 'Kyani & Co. Irani Cafe, CST Area', category: 'DESSERT', price: 120, duration: 45, note: 'Wrap up the evening with fresh seasonal fruit ice cream and classic pudding.' }
-      ]
-    }
-  ];
+  const tiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM'] as const;
 
   const getCategoryImage = (cat: string) => {
     switch (cat) {
-      case 'CAFE': return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80';
-      case 'RESTAURANT': return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80';
-      case 'DESSERT': return 'https://images.unsplash.com/photo-1495147400078-be7375268b54?auto=format&fit=crop&w=600&q=80';
-      case 'PARK': return 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=600&q=80';
-      case 'ARCADE': return 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80';
-      case 'BOWLING': return 'https://images.unsplash.com/photo-1538510105562-aa60003bcbb1?auto=format&fit=crop&w=600&q=80';
-      case 'ESCAPE_ROOM': return 'https://images.unsplash.com/photo-1519074069444-1ba4ae164338?auto=format&fit=crop&w=600&q=80';
-      case 'POTTERY': return 'https://images.unsplash.com/photo-1565192647048-f997ded879ab?auto=format&fit=crop&w=600&q=80';
-      case 'LIVE_MUSIC': return 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80';
-      default: return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80';
+      case 'CAFE': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=CAFE';
+      case 'RESTAURANT': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=RESTAURANT';
+      case 'DESSERT': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=DESSERT';
+      case 'PARK': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=PARK';
+      case 'ARCADE': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=ARCADE';
+      case 'BOWLING': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=BOWLING';
+      case 'ESCAPE_ROOM': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=ESCAPE_ROOM';
+      case 'POTTERY': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=POTTERY';
+      case 'LIVE_MUSIC': return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=LIVE_MUSIC';
+      default: return 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING';
     }
   };
 
-  for (let i = 0; i < 4; i++) {
-    const config = planConfigs[i];
-    const tier = budgetTiers[i];
+  const usedVenueIds = new Set<string>();
+  const usedExperienceIds = new Set<string>();
+
+  const getUnusedVenue = (categories: string[], maxCost: number): any | null => {
+    const found = context.venues.find(v => 
+      categories.includes(v.category) && 
+      !usedVenueIds.has(v.id) && 
+      v.estimatedCostPerHead <= maxCost
+    );
+    if (found) {
+      usedVenueIds.add(found.id);
+    }
+    return found || null;
+  };
+
+  const getUnusedExperience = (maxCost: number): any | null => {
+    const found = context.experiences.find(e => 
+      !usedExperienceIds.has(e.id) && 
+      e.ticketPrice <= maxCost
+    );
+    if (found) {
+      usedExperienceIds.add(found.id);
+    }
+    return found || null;
+  };
+
+  for (let i = 0; i < 3; i++) {
+    const tier = tiers[i];
     const planId = `plan_${i + 1}`;
     
-    const realSlots = config.slots.map((s, idx) => {
-      let experienceId: string | null = null;
-      let venueId: string | null = null;
-      let displayName = s.name;
-      let cost = s.price;
-      let img = getCategoryImage(s.category);
-      let linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(displayName)}`;
+    let maxTotalCost = context.groupAvgBudget;
+    if (tier === 'BUDGET_FRIENDLY') maxTotalCost = context.groupMinBudget;
+    else if (tier === 'PREMIUM') maxTotalCost = context.groupMaxBudget;
 
-      if (s.category === 'POTTERY' || s.category === 'LIVE_MUSIC' || s.category === 'BOARD_GAME_EVENT' || s.category === 'FREE_EXPERIENCE') {
-        const matchedExp = context.experiences.find(e => e.category === s.category);
-        if (matchedExp) {
-          experienceId = matchedExp.id;
-          displayName = matchedExp.title;
-          cost = matchedExp.ticketPrice;
-          if (matchedExp.imageUrl) img = matchedExp.imageUrl;
-          if (matchedExp.sourceUrl) linkUrl = matchedExp.sourceUrl;
-        }
-      } else {
-        const matchedVenue = context.venues.find(v => v.category === s.category);
-        if (matchedVenue) {
-          venueId = matchedVenue.id;
-          displayName = matchedVenue.name;
-          cost = matchedVenue.estimatedCostPerHead;
-          linkUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(matchedVenue.name + ' ' + matchedVenue.address)}`;
-        }
+    const slot1Max = Math.round(maxTotalCost * 0.5);
+    const slot2Max = Math.round(maxTotalCost * 0.4);
+    const slot3Max = Math.round(maxTotalCost * 0.2);
+
+    const slotsData: any[] = [];
+
+    // Slot 1: Primary Experience
+    let primary = getUnusedExperience(slot1Max);
+    if (primary) {
+      slotsData.push({
+        type: 'EXPERIENCE',
+        id: primary.id,
+        name: primary.title,
+        category: primary.category,
+        cost: primary.ticketPrice,
+        duration: 120,
+        imageUrl: primary.imageUrl || getCategoryImage(primary.category),
+        link: primary.sourceUrl || `https://example.com/experience/${primary.id}`,
+        note: `Start the day with a unique ${primary.title.toLowerCase()} matching the group's vibe.`,
+      });
+    } else {
+      const activityVenue = getUnusedVenue(['ESCAPE_ROOM', 'ARCADE', 'BOWLING', 'MUSEUM', 'SPORTS', 'PARK', 'MALL'], slot1Max);
+      if (activityVenue) {
+        slotsData.push({
+          type: 'VENUE',
+          id: activityVenue.id,
+          name: activityVenue.name,
+          category: activityVenue.category,
+          cost: activityVenue.estimatedCostPerHead,
+          duration: 90,
+          imageUrl: getCategoryImage(activityVenue.category),
+          link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activityVenue.name + ' ' + activityVenue.address)}`,
+          note: `Start the day at ${activityVenue.name}, a great ${activityVenue.category.toLowerCase().replace('_', ' ')} in ${context.midpointAddress}.`,
+        });
       }
+    }
 
-      return {
-        order: idx + 1,
-        experienceId,
-        venueId,
-        name: displayName,
-        category: s.category as any,
-        arrivalTime: idx === 0 ? '11:00 AM' : idx === 1 ? '01:30 PM' : '03:30 PM',
-        durationMinutes: s.duration,
-        travelToNextMinutes: idx === config.slots.length - 1 ? null : 15,
-        estimatedCostPerHead: cost,
-        note: s.note,
-        imageUrl: img,
-        link: linkUrl
-      };
-    });
+    // Slot 2: Dining
+    const diningVenue = getUnusedVenue(['RESTAURANT', 'CAFE'], slot2Max) || getUnusedVenue(['RESTAURANT', 'CAFE'], 5000);
+    if (diningVenue) {
+      slotsData.push({
+        type: 'VENUE',
+        id: diningVenue.id,
+        name: diningVenue.name,
+        category: diningVenue.category,
+        cost: diningVenue.estimatedCostPerHead,
+        duration: 90,
+        imageUrl: getCategoryImage(diningVenue.category),
+        link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(diningVenue.name + ' ' + diningVenue.address)}`,
+        note: `Enjoy a delicious meal at ${diningVenue.name} with the group.`,
+      });
+    }
 
-    const totalCost = realSlots.reduce((sum, rs) => sum + rs.estimatedCostPerHead, 0);
-    const totalDuration = realSlots.reduce((sum, rs) => sum + rs.durationMinutes, 0) + 30; // 30 mins travel buffer
+    // Slot 3: Dessert or Scenic Leisure
+    const leisureVenue = getUnusedVenue(['DESSERT', 'PARK', 'MALL', 'CAFE'], slot3Max) || getUnusedVenue(['DESSERT', 'PARK', 'MALL', 'CAFE'], 5000);
+    if (leisureVenue) {
+      slotsData.push({
+        type: 'VENUE',
+        id: leisureVenue.id,
+        name: leisureVenue.name,
+        category: leisureVenue.category,
+        cost: leisureVenue.estimatedCostPerHead,
+        duration: 60,
+        imageUrl: getCategoryImage(leisureVenue.category),
+        link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(leisureVenue.name + ' ' + leisureVenue.address)}`,
+        note: `Unwind afterwards at ${leisureVenue.name} for some relaxing time.`,
+      });
+    }
+
+    if (slotsData.length === 0) {
+      slotsData.push(
+        {
+          type: 'VENUE',
+          id: `fallback_cafe_${planId}`,
+          name: `${context.midpointAddress} Local Cafe`,
+          category: 'CAFE',
+          cost: Math.min(250, slot1Max),
+          duration: 60,
+          imageUrl: getCategoryImage('CAFE'),
+          link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(context.midpointAddress + ' Cafe')}`,
+          note: `A pleasant cafe hangout in ${context.midpointAddress} to get together.`,
+        },
+        {
+          type: 'VENUE',
+          id: `fallback_rest_${planId}`,
+          name: `${context.midpointAddress} Popular Diner`,
+          category: 'RESTAURANT',
+          cost: Math.min(500, slot2Max),
+          duration: 90,
+          imageUrl: getCategoryImage('RESTAURANT'),
+          link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(context.midpointAddress + ' Restaurant')}`,
+          note: `A wonderful culinary experience with the group in ${context.midpointAddress}.`,
+        }
+      );
+    }
+
+    const slots = slotsData.map((s, idx) => ({
+      order: idx + 1,
+      experienceId: s.type === 'EXPERIENCE' ? s.id : null,
+      venueId: s.type === 'VENUE' ? s.id : null,
+      name: s.name,
+      category: s.category,
+      arrivalTime: idx === 0 ? '11:00 AM' : idx === 1 ? '01:30 PM' : '03:30 PM',
+      durationMinutes: s.duration,
+      travelToNextMinutes: idx === slotsData.length - 1 ? null : 15,
+      estimatedCostPerHead: s.cost,
+      note: s.note,
+      imageUrl: s.imageUrl,
+      link: s.link,
+    }));
+
+    const totalCost = slots.reduce((sum, s) => sum + s.estimatedCostPerHead, 0);
+    const totalDuration = slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots.length > 1 ? (slots.length - 1) * 15 : 0);
+
+    const tagline = `A custom ${tier.toLowerCase().replace('_', ' ')} itinerary blended dynamically in ${context.midpointAddress}.`;
 
     itineraries.push({
       id: planId,
-      name: config.name,
-      tagline: config.tagline,
+      name: context.midpointAddress,
+      tagline,
       budgetTier: tier,
       totalEstimatedCostPerHead: totalCost,
       totalDurationMinutes: totalDuration,
-      slots: realSlots
+      slots,
     });
   }
 
@@ -145,22 +205,37 @@ function generateMockItineraries(context: ItineraryPromptContext): ItineraryResp
 }
 
 export async function generateItineraries(
+  draftItineraries: any[],
   context: ItineraryPromptContext
 ): Promise<ItineraryResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || apiKey === 'placeholder_key' || apiKey.startsWith('gsk_placeholder')) {
-    console.log('GROQ_API_KEY is not configured, running mock generator fallback.');
-    return generateMockItineraries(context);
+    console.log('GROQ_API_KEY is not configured, returning draft itineraries directly.');
+    return { itineraries: draftItineraries };
   }
 
-  const userPrompt = buildItineraryPrompt(context);
+  const groupContext = {
+    groupName: context.groupName,
+    groupType: context.groupType,
+    vibes: context.vibes,
+    memberCount: context.memberCount,
+    groupMinBudget: context.groupMinBudget,
+    groupAvgBudget: context.groupAvgBudget,
+    groupMaxBudget: context.groupMaxBudget,
+    preferredCategories: context.preferredCategories,
+    midpointAddress: context.midpointAddress,
+    outingDate: context.outingDate,
+    outingTime: context.outingTime,
+  };
+
+  const userPrompt = buildItineraryPrompt(draftItineraries, groupContext);
 
   const callGroq = async (): Promise<ItineraryResponse> => {
     try {
       const completion = await groqClient.chat.completions.create({
         model: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
         max_tokens: parseInt(process.env.GROQ_MAX_TOKENS || '2048'),
-        temperature: parseFloat(process.env.GROQ_TEMPERATURE || '0.7'),
+        temperature: parseFloat(process.env.GROQ_TEMPERATURE || '0.2'), // lower temperature for strict format adherence
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: ITINERARY_SYSTEM_PROMPT },
@@ -212,8 +287,14 @@ export async function generateItineraries(
     if (isRetryable(err)) {
       console.log('Retryable error encountered, retrying in 2 seconds...');
       await sleep(2000);
-      return await callGroq();
+      try {
+        return await callGroq();
+      } catch (retryErr) {
+        console.warn('Groq retry failed, falling back to draft itineraries:', retryErr);
+        return { itineraries: draftItineraries };
+      }
     }
-    throw err;
+    console.warn('Non-retryable Groq error, falling back to draft itineraries:', err);
+    return { itineraries: draftItineraries };
   }
 }

@@ -46,6 +46,15 @@ export interface GeneratedItinerary {
   totalEstimatedCostPerHead: number;
   totalDurationMinutes: number;
   slots: ItinerarySlot[];
+  mandatoryCost?: number;
+  optionalCostMin?: number;
+  optionalCostMax?: number;
+  whyRecommended?: string[];
+  avgAutoTime?: number;
+  avgAutoCost?: number;
+  avgTotalTime?: number;
+  avgTotalCost?: number;
+  avgWalkTime?: number;
 }
 
 export interface ItineraryResponse {
@@ -64,4 +73,6 @@ export interface ItineraryPromptContext {
   midpointAddress: string;
   venues: Venue[];
   experiences: (Experience & { distanceKm: number })[];
+  outingDate?: string | null;
+  outingTime?: string | null;
 }

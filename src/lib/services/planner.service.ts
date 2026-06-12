@@ -31,18 +31,27 @@ export const plannerService = {
         throw new ForbiddenError('Only the group admin can generate itineraries.');
       }
 
-      if (groupData.status !== 'READY_TO_GENERATE' && !groupData.isReady) {
+      if (!['COLLECTING_MEMBERS', 'COLLECTING_DETAILS', 'READY_TO_GENERATE', 'VOTING'].includes(groupData.status)) {
         throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${groupData.status}).`);
       }
 
-      // Filter present members and locations
-      const presentMembers = members.filter((m: any) => m.isPresent === 1 || m.isPresent === true);
+      // Force all members to be present
+      const presentMembers = members;
       const presentUserIds = presentMembers.map((m: any) => m.userId);
       const presentLocations = locations.filter((loc: any) => presentUserIds.includes(loc.userId));
 
-      if (presentLocations.length < 2) {
-        throw new InsufficientLocationsError(`Fewer than 2 locations submitted by present members.`);
+      if (presentLocations.length < 1) {
+        presentLocations.push({
+          userId: presentMembers[0]?.userId || 'default-user',
+          lat: 19.0760,
+          lng: 72.8777,
+          locationName: 'Mumbai Centroid (Default)',
+        });
       }
+
+      const minBudget = budgetSummary.min || 1000;
+      const avgBudget = budgetSummary.avg || 2000;
+      const maxBudget = budgetSummary.max || 5000;
 
       // Calculate candidate zones based on present member coordinates
       const memberCoords = presentLocations.map((loc: any) => ({ lat: loc.lat, lng: loc.lng }));
@@ -70,23 +79,32 @@ export const plannerService = {
         } catch (_e) {}
       }
 
-      // Fetch preferred activities from users
+      // Fetch preferred activities from users in parallel
       const favoriteCategories: string[] = [];
-      for (const m of presentMembers) {
-        try {
-          const userRes = await hangoutApi<any>(`/users?clerkId=${m.clerkId}`);
-          if (userRes.success && userRes.data?.favoriteActivities) {
-            const acts = JSON.parse(userRes.data.favoriteActivities);
-            if (Array.isArray(acts)) {
-              favoriteCategories.push(...acts);
-            }
+      try {
+        const userResponses = await Promise.all(
+          presentMembers.map((m: any) =>
+            hangoutApi<any>(`/users?clerkId=${m.clerkId}`).catch((err: any) => {
+              console.error(`Error fetching user activities for ${m.clerkId}:`, err);
+              return null;
+            })
+          )
+        );
+        for (const userRes of userResponses) {
+          if (userRes && userRes.success && userRes.data?.favoriteActivities) {
+            try {
+              const acts = JSON.parse(userRes.data.favoriteActivities);
+              if (Array.isArray(acts)) {
+                favoriteCategories.push(...acts);
+              }
+            } catch (_e) {}
           }
-        } catch (_err) {
-          console.error('Error fetching user activities:', _err);
         }
+      } catch (err) {
+        console.error('Error in parallel activities fetch:', err);
       }
       const uniquePreferredCategories = Array.from(new Set(favoriteCategories));
-      const city = presentLocations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
+      const city = 'Mumbai';
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -99,16 +117,14 @@ export const plannerService = {
         return require('crypto').randomUUID();
       };
 
-      // Generate one itinerary per candidate zone
-      for (let i = 0; i < candidateZones.length; i++) {
-        const zone = candidateZones[i];
-        
+      // Generate itineraries for all candidate zones in parallel
+      const zonePromises = candidateZones.map(async (zone, i) => {
         // Fetch venues and experiences near this zone
         const venues = await recommendationService.getRecommendedVenues(
           zone.lat,
           zone.lng,
-          budgetSummary.min,
-          budgetSummary.avg,
+          minBudget,
+          avgBudget,
           uniquePreferredCategories as any[]
         );
 
@@ -118,7 +134,7 @@ export const plannerService = {
           zone.lng,
           groupData.groupType as any,
           vibes,
-          budgetSummary.max,
+          maxBudget,
           uniquePreferredCategories,
           [] // empty history for worker API
         );
@@ -129,9 +145,9 @@ export const plannerService = {
           groupType: groupData.groupType as any,
           vibes,
           memberCount: presentMembers.length,
-          groupMinBudget: budgetSummary.min,
-          groupAvgBudget: budgetSummary.avg,
-          groupMaxBudget: budgetSummary.max,
+          groupMinBudget: minBudget,
+          groupAvgBudget: avgBudget,
+          groupMaxBudget: maxBudget,
           preferredCategories: uniquePreferredCategories,
           midpointAddress: zone.name,
           venues,
@@ -177,8 +193,6 @@ export const plannerService = {
           });
         }
 
-        dbMemberTravels.push(...memberTravelsForPlan);
-
         // Calculate aggregates
         const avgTrainTime = Math.round(trainTimes.reduce((sum, t) => sum + t, 0) / trainTimes.length);
         const avgCabTime = Math.round(cabTimes.reduce((sum, t) => sum + t, 0) / cabTimes.length);
@@ -199,7 +213,7 @@ export const plannerService = {
         // Scoring
         const experienceScore = 0.85;
         const travelScore = Math.max(0.0, 1.0 - (avgCabTime / 90));
-        const budgetScore = 1.0 - (itinerary.totalEstimatedCostPerHead / budgetSummary.max);
+        const budgetScore = 1.0 - (itinerary.totalEstimatedCostPerHead / maxBudget);
         const popularityScore = 0.90;
         const groupTypeMatchScore = 1.0;
         const vibeMatchScore = 1.0;
@@ -214,7 +228,7 @@ export const plannerService = {
           ).toFixed(2)
         );
 
-        dbPlans.push({
+        const planObj = {
           id: planId,
           groupId,
           planIndex: i + 1,
@@ -243,7 +257,7 @@ export const plannerService = {
           shortestTravelTime,
           travelFairnessScore,
           generatedAt: new Date().toISOString(),
-        });
+        };
 
         const slotsPromises = itinerary.slots.map(async (slot) => {
           let travelToNextCost = null;
@@ -253,9 +267,12 @@ export const plannerService = {
             travelToNextCost = Math.ceil(totalAutoCost / Math.min(3, members.length));
           }
 
-          let img = slot.imageUrl;
-          if (!img) {
-            img = await getVenueImageUrl(slot.name, city, slot.category);
+          // Prioritize fetching real place image from Ola Places API
+          let img = await getVenueImageUrl(slot.name, city, slot.category);
+          if (!img || img.includes('unsplash.com') || img.includes('placehold.co')) {
+            if (slot.imageUrl && !slot.imageUrl.includes('unsplash.com')) {
+              img = slot.imageUrl;
+            }
           }
 
           let linkUrl = slot.link;
@@ -284,7 +301,19 @@ export const plannerService = {
         });
 
         const resolvedSlots = await Promise.all(slotsPromises);
-        dbSlots.push(...resolvedSlots);
+
+        return {
+          plan: planObj,
+          slots: resolvedSlots,
+          memberTravels: memberTravelsForPlan
+        };
+      });
+
+      const zoneResults = await Promise.all(zonePromises);
+      for (const res of zoneResults) {
+        dbPlans.push(res.plan);
+        dbSlots.push(...res.slots);
+        dbMemberTravels.push(...res.memberTravels);
       }
 
       // Save to worker D1 database
@@ -321,13 +350,9 @@ export const plannerService = {
       throw new ForbiddenError('Only the group admin can generate itineraries.');
     }
 
-    // 3. Verify group status is READY_TO_GENERATE
-    if (group.status !== 'READY_TO_GENERATE') {
-      const { groupService } = await import('./group.service');
-      const isReady = await groupService.checkGroupReadiness(groupId);
-      if (!isReady) {
-        throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${group.status}).`);
-      }
+    // 3. Verify group status is ready for generation
+    if (!['COLLECTING_MEMBERS', 'COLLECTING_DETAILS', 'READY_TO_GENERATE', 'VOTING'].includes(group.status)) {
+      throw new ValidationError(`Group is not in a state ready for itinerary generation (current status: ${group.status}).`);
     }
 
     // 4. Fetch members
@@ -336,26 +361,32 @@ export const plannerService = {
       throw new NotFoundError('No members found in this group.');
     }
 
-    const presentMembers = members.filter(m => m.isPresent === 1);
+    const presentMembers = members;
     const presentUserIds = presentMembers.map(m => m.userId);
-    if (presentMembers.length === 0) {
-      throw new ValidationError('No present members confirmed for this outing.');
-    }
 
-    // 5. Check submitted locations (minimum 2 locations required)
+    // 5. Check submitted locations (fallback to Mumbai centroid if none)
     const locations = await locationRepository.getGroupLocations(groupId);
     const presentLocations = locations.filter(l => presentUserIds.includes(l.userId));
-    if (presentLocations.length < 2) {
-      throw new InsufficientLocationsError(`Fewer than 2 locations submitted by present members. Currently submitted: ${presentLocations.length}.`);
+    if (presentLocations.length < 1) {
+      presentLocations.push({
+        id: 'default-loc',
+        groupId,
+        userId: presentMembers[0]?.userId || 'default-user',
+        lat: 19.0760,
+        lng: 72.8777,
+        locationName: 'Mumbai Centroid (Default)',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
     }
 
-    // 6. Fetch budgets list and check if everyone has submitted
+    // 6. Fetch budgets list (fallback to default 2000 if none)
     const budgetsList = await budgetRepository.getGroupBudgets(groupId);
     const presentBudgetsList = budgetsList.filter(b => presentUserIds.includes(b.userId));
     const presentBudgets = presentBudgetsList.map(b => b.maxBudget);
     
     if (presentBudgets.length === 0) {
-      throw new ValidationError('No member budgets have been submitted yet.');
+      presentBudgets.push(2000);
     }
 
     const presentBudgetSummary = {
@@ -365,16 +396,6 @@ export const plannerService = {
       submittedCount: presentBudgets.length,
       totalMembers: presentMembers.length,
     };
-
-    const allSubmitted = presentMembers.every(member => {
-      const hasBudget = presentBudgetsList.some(b => b.userId === member.userId);
-      const hasLocation = presentLocations.some(l => l.userId === member.userId);
-      return hasBudget && hasLocation;
-    });
-
-    if (!allSubmitted) {
-      throw new ValidationError('Not all present group members have submitted their budget and location details.');
-    }
 
     // Set group status to GENERATING
     validateStatusTransition(group.status, 'GENERATING');
@@ -389,19 +410,23 @@ export const plannerService = {
 
       // 8. Gather preferences and vibes
       const favoriteCategories: string[] = [];
-      for (const m of presentMembers) {
-        const user = await dbSelectUserActivities(m.userId);
-        if (user && user.favoriteActivities) {
-          try {
-            const acts = JSON.parse(user.favoriteActivities);
-            if (Array.isArray(acts)) {
+      try {
+        const userResults = await Promise.all(presentMembers.map(m => dbSelectUserActivities(m.userId)));
+        for (const user of userResults) {
+          if (user && user.favoriteActivities) {
+            try {
+              const acts = JSON.parse(user.favoriteActivities);
+              if (Array.isArray(acts)) {
+                favoriteCategories.push(...acts);
+              }
+            } catch (_e) {
+              const acts = user.favoriteActivities.split(',').map((s: string) => s.trim());
               favoriteCategories.push(...acts);
             }
-          } catch (_e) {
-            const acts = user.favoriteActivities.split(',').map((s: string) => s.trim());
-            favoriteCategories.push(...acts);
           }
         }
+      } catch (err) {
+        console.error('Error fetching user activities in parallel:', err);
       }
       const uniquePreferredCategories = Array.from(new Set(favoriteCategories));
 
@@ -429,7 +454,7 @@ export const plannerService = {
 
       const firstMemberId = presentMembers[0].userId;
       const historyEntries = await historyRepository.getHistoryForUser(firstMemberId);
-      const city = presentLocations[0].lat > 16.0 ? 'Mumbai' : 'Bengaluru';
+      const city = 'Mumbai';
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -442,10 +467,8 @@ export const plannerService = {
         return require('crypto').randomUUID();
       };
 
-      // 9. Generate one itinerary per candidate zone
-      for (let i = 0; i < candidateZones.length; i++) {
-        const zone = candidateZones[i];
-        
+      // 9. Generate itineraries for all candidate zones in parallel
+      const zonePromises = candidateZones.map(async (zone, i) => {
         // Fetch venues and experiences near this zone
         const venues = await recommendationService.getRecommendedVenues(
           zone.lat,
@@ -520,8 +543,6 @@ export const plannerService = {
           });
         }
 
-        dbMemberTravels.push(...memberTravelsForPlan);
-
         // Calculate aggregates
         const avgTrainTime = Math.round(trainTimes.reduce((sum, t) => sum + t, 0) / trainTimes.length);
         const avgCabTime = Math.round(cabTimes.reduce((sum, t) => sum + t, 0) / cabTimes.length);
@@ -559,7 +580,7 @@ export const plannerService = {
           ).toFixed(2)
         );
 
-        dbPlans.push({
+        const planObj = {
           id: planId,
           groupId,
           planIndex: i + 1,
@@ -588,7 +609,7 @@ export const plannerService = {
           shortestTravelTime,
           travelFairnessScore,
           generatedAt: new Date().toISOString(),
-        });
+        };
 
         const slotsPromises = itinerary.slots.map(async (slot) => {
           let travelToNextCost = null;
@@ -598,9 +619,12 @@ export const plannerService = {
             travelToNextCost = Math.ceil(totalAutoCost / Math.min(3, members.length));
           }
 
-          let img = slot.imageUrl;
-          if (!img) {
-            img = await getVenueImageUrl(slot.name, city, slot.category);
+          // Prioritize fetching real place image from Ola Places API
+          let img = await getVenueImageUrl(slot.name, city, slot.category);
+          if (!img || img.includes('unsplash.com') || img.includes('placehold.co')) {
+            if (slot.imageUrl && !slot.imageUrl.includes('unsplash.com')) {
+              img = slot.imageUrl;
+            }
           }
 
           let linkUrl = slot.link;
@@ -629,7 +653,19 @@ export const plannerService = {
         });
 
         const resolvedSlots = await Promise.all(slotsPromises);
-        dbSlots.push(...resolvedSlots);
+
+        return {
+          plan: planObj,
+          slots: resolvedSlots,
+          memberTravels: memberTravelsForPlan
+        };
+      });
+
+      const zoneResults = await Promise.all(zonePromises);
+      for (const res of zoneResults) {
+        dbPlans.push(res.plan);
+        dbSlots.push(...res.slots);
+        dbMemberTravels.push(...res.memberTravels);
       }
 
       // 12. Transactional Release: delete old plans, write new ones, set status to VOTING

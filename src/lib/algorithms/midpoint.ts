@@ -1,7 +1,7 @@
 import { InsufficientLocationsError } from '../errors';
 
 export function calculateMidpoint(locations: { lat: number; lng: number }[]): { lat: number; lng: number } {
-  if (locations.length < 2) {
+  if (locations.length < 1) {
     throw new InsufficientLocationsError();
   }
   

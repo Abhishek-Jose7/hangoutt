@@ -192,6 +192,15 @@ export const plans = sqliteTable('plans', {
   longestTravelTime: integer('longest_travel_time').default(0).notNull(),
   shortestTravelTime: integer('shortest_travel_time').default(0).notNull(),
   travelFairnessScore: real('travel_fairness_score').default(1.0).notNull(),
+  mandatoryCost: integer('mandatory_cost').default(0).notNull(),
+  optionalCostMin: integer('optional_cost_min').default(0).notNull(),
+  optionalCostMax: integer('optional_cost_max').default(0).notNull(),
+  whyRecommended: text('why_recommended'), // JSON array of reasons
+  avgAutoTime: integer('avg_auto_time').default(0).notNull(),
+  avgAutoCost: integer('avg_auto_cost').default(0).notNull(),
+  avgTotalTime: integer('avg_total_time').default(0).notNull(),
+  avgTotalCost: integer('avg_total_cost').default(0).notNull(),
+  avgWalkTime: integer('avg_walk_time').default(0).notNull(),
   generatedAt: text('generated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
   uniqueGroupPlanIndex: uniqueIndex('plans_group_plan_idx').on(table.groupId, table.planIndex),
@@ -272,5 +281,9 @@ export const memberTravelMetrics = sqliteTable('member_travel_metrics', {
   cabTime: integer('cab_time').notNull(), // in minutes
   cabCost: integer('cab_cost').notNull(), // in INR
   walkTime: integer('walk_time').notNull(), // in minutes
+  autoTime: integer('auto_time').default(0).notNull(),
+  autoCost: integer('auto_cost').default(0).notNull(),
+  totalTime: integer('total_time').default(0).notNull(),
+  totalCost: integer('total_cost').default(0).notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

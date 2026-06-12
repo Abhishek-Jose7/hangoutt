@@ -158,7 +158,13 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
 
     const group = await groupService.getGroupDetails(user.id, groupId);
     const members = await memberRepository.getMembersWithUserDetails(groupId);
-    const presentMembers = members.filter(m => m.isPresent === 1);
+    
+    // Force all members to be present for the outing
+    members.forEach((m) => {
+      m.isPresent = 1;
+    });
+
+    const presentMembers = members;
     const presentUserIds = presentMembers.map(m => m.userId);
 
     const budgets = await budgetRepository.getGroupBudgets(groupId);
