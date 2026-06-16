@@ -404,24 +404,35 @@ export default function PlannerPage() {
                         {slot.slotOrder}
                       </span>
                       
-                      <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200">
+                      <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
                         {/* Slot Image */}
-                        {slot.imageUrl && (
-                          <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
-                            <img
-                              src={slot.imageUrl}
-                              alt={slot.name}
-                              className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
-                            />
-                          </div>
-                        )}
-                        <div className="p-4 flex-grow space-y-2">
+                        <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
+                          <img
+                            src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
+                            alt={slot.name}
+                            className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
+                          />
+                        </div>
+                        <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
                           <div className="flex justify-between items-start gap-2">
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                  {slot.name.toUpperCase()}
-                                </h4>
+                                {slot.link ? (
+                                  <a
+                                    href={slot.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hover:underline hover:text-[#ff3b5f] transition-colors"
+                                  >
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                      {slot.name.toUpperCase()}
+                                    </h4>
+                                  </a>
+                                ) : (
+                                  <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                    {slot.name.toUpperCase()}
+                                  </h4>
+                                )}
                                 {slot.link && (
                                   <a
                                     href={slot.link}

@@ -1257,11 +1257,22 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           'anchor', 'emcee', 'dj ', ' dj', 'mc ', ' mc', 'show host',
           'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
           'photographer', 'videographer', 'academy', 'classes', 'consultant',
-          'office', 'service'
+          'office', 'service', 'hospital', 'doctor', 'cosmetologist', 'dentist',
+          'physiotherapist', 'clinic', 'health', 'dermatologist', 'skin', 'beauty parlour',
+          'salon', 'spa', 'gym', 'fitness'
         ];
         if (
           types.includes('delivery') ||
           types.includes('meal_delivery') ||
+          types.includes('hospital') ||
+          types.includes('health') ||
+          types.includes('doctor') ||
+          types.includes('dentist') ||
+          types.includes('physiotherapist') ||
+          types.includes('spa') ||
+          types.includes('gym') ||
+          types.includes('beauty_salon') ||
+          types.includes('hair_care') ||
           nameLower.includes('delivery only') ||
           nameLower.includes('cloud kitchen') ||
           nameLower.includes('takeaway only') ||

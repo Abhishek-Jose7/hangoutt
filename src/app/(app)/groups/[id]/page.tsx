@@ -485,7 +485,7 @@ export default function GroupDetailsPage() {
             </p>
           </div>
           
-          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && (
+          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && group.status !== 'VOTING' && (
             <div className="flex gap-2">
               <Button 
                 variant="outline" 

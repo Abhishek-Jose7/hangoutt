@@ -1070,14 +1070,14 @@ async function executePlanningEngine(
         return false;
       }
 
-      const maxLimit = isCheaper ? zoneLowestBudget * 0.8 : budgetSummary.max;
+      const maxLimit = isCheaper ? zoneLowestBudget * 0.8 : zoneLowestBudget;
       if (c.estimatedCostPerHead > maxLimit && !c.isFallback) {
         logRejection(c.name, `REJECTED | Reason: Budget (cost ₹${c.estimatedCostPerHead} exceeds cap ₹${Math.round(maxLimit)})`);
         return false;
       }
 
       const dist = getHaversineDistance(avgMemberCoords, { lat: c.lat, lng: c.lng });
-      const maxDistance = isLessTravel ? 5 : 15;
+      const maxDistance = isLessTravel ? 5 : 8;
       if (dist > maxDistance && !c.isFallback) {
         logRejection(c.name, `REJECTED | Reason: Too far (${dist.toFixed(1)}km exceeds allowed ${maxDistance}km)`);
         return false;
@@ -1127,6 +1127,12 @@ async function executePlanningEngine(
   const tiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
 
   const buildPass = async (allowSharedVenues = false) => {
+    const shuffledZones = [...candidateZones];
+    for (let idx = shuffledZones.length - 1; idx > 0; idx--) {
+      const j = Math.floor(Math.random() * (idx + 1));
+      [shuffledZones[idx], shuffledZones[j]] = [shuffledZones[j], shuffledZones[idx]];
+    }
+
     for (let i = 0; i < 4; i++) {
       if (draftItineraries.length >= 4) break;
 
@@ -1135,7 +1141,7 @@ async function executePlanningEngine(
 
       if (draftItineraries.some(it => it.planIndex === planIndex)) continue;
 
-      let zoneObj = candidateZones[i % candidateZones.length];
+      let zoneObj = shuffledZones[i % shuffledZones.length];
       let zoneData = zonesData.find(zd => zd.zone.name === zoneObj.name) || zonesData[0];
 
       const filterAndUnused = (list: any[]) => allowSharedVenues ? list : list.filter(c => !usedPlaceIds.has(c.id));
@@ -1202,15 +1208,27 @@ async function executePlanningEngine(
       }
 
       const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean) => {
-        let match = candidatesPool.find(c => preferredCats.includes(c.category.toUpperCase()));
-        if (!match) {
+        let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
+        if (matches.length === 0) {
           if (isActivity) {
-            match = candidatesPool.find(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
           } else {
-            match = candidatesPool.find(c => ['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            matches = candidatesPool.filter(c => ['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
           }
         }
-        return match || null;
+        if (matches.length === 0) return null;
+
+        const top3 = matches.slice(0, 3);
+        const rand = Math.random();
+        if (top3.length === 1) {
+          return top3[0];
+        } else if (top3.length === 2) {
+          return rand < 0.6 ? top3[0] : top3[1];
+        } else {
+          if (rand < 0.5) return top3[0];
+          if (rand < 0.85) return top3[1];
+          return top3[2];
+        }
       };
 
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity);
@@ -1269,8 +1287,13 @@ async function executePlanningEngine(
       const m3 = getMandatoryCost(slot3Place);
       const totalMandatorySlotsCost = m1 + m2 + m3;
 
-      if (totalMandatorySlotsCost > zoneData.zoneLowestBudget) {
-        logRejection(`Plan-${planIndex}`, `Total slots mandatory cost (₹${totalMandatorySlotsCost}) exceeds lowest member available budget (₹${Math.round(zoneData.zoneLowestBudget)})`);
+      const opt1 = getOptionalCostMin(slot1Place);
+      const opt2 = getOptionalCostMin(slot2Place);
+      const opt3 = getOptionalCostMin(slot3Place);
+      const totalEstimatedSlotsCost = totalMandatorySlotsCost + opt1 + opt2 + opt3;
+
+      if (totalEstimatedSlotsCost > zoneData.zoneLowestBudget) {
+        logRejection(`Plan-${planIndex}`, `Total slots estimated cost (₹${totalEstimatedSlotsCost}) exceeds lowest member available budget (₹${Math.round(zoneData.zoneLowestBudget)})`);
         continue;
       }
 
