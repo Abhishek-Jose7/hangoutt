@@ -34,8 +34,8 @@ export default function GroupDetailsPage() {
   // Form states
   const [budgetVal, setBudgetVal] = useState('');
   const [travelIncluded, setTravelIncluded] = useState(true);
-  const [latVal, setLatVal] = useState('12.9348'); // default Koramangala lat
-  const [lngVal, setLngVal] = useState('77.6189'); // default Koramangala lng
+  const [latVal, setLatVal] = useState('19.0178'); // default Dadar lat
+  const [lngVal, setLngVal] = useState('72.8478'); // default Dadar lng
   const [addressVal, setAddressVal] = useState('');
   const [selectedVibes, setSelectedVibes] = useState<string[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
@@ -246,20 +246,25 @@ export default function GroupDetailsPage() {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
-          setLatVal(latitude.toString());
-          setLngVal(longitude.toString());
           try {
             const res = await reverseGeocodeAction(latitude, longitude);
             toast.dismiss();
             if (res.success && res.data) {
-              setAddressVal(res.data);
-              toast.success(`Location detected: ${res.data}! Press save to register.`);
+              const { name, lat, lng } = res.data;
+              setAddressVal(name);
+              setLatVal(lat.toString());
+              setLngVal(lng.toString());
+              toast.success(`Location detected: ${name}! Press save to register.`);
             } else {
+              setLatVal(latitude.toString());
+              setLngVal(longitude.toString());
               setAddressVal(`Detected Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
               toast.success("Location coordinates detected! Press save to register.");
             }
           } catch (err) {
             toast.dismiss();
+            setLatVal(latitude.toString());
+            setLngVal(longitude.toString());
             setAddressVal(`Detected Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
             toast.success("Location coordinates detected! Press save to register.");
           }
@@ -282,9 +287,8 @@ export default function GroupDetailsPage() {
   const handleLocationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingLocation(true);
-    const isAutoDetect = addressVal.startsWith('Detected Location') || (latVal !== '12.9348' || lngVal !== '77.6189');
-    const lat = isAutoDetect ? parseFloat(latVal) : undefined;
-    const lng = isAutoDetect ? parseFloat(lngVal) : undefined;
+    let lat: number | undefined = parseFloat(latVal);
+    let lng: number | undefined = parseFloat(lngVal);
 
     try {
       const res = await saveLocation({
@@ -342,8 +346,8 @@ export default function GroupDetailsPage() {
         travelIncluded,
       });
 
-      const lat = parseFloat(latVal) || undefined;
-      const lng = parseFloat(lngVal) || undefined;
+      let lat: number | undefined = parseFloat(latVal);
+      let lng: number | undefined = parseFloat(lngVal);
       const locationRes = await saveLocation({
         groupId: groupId,
         locationName: addressVal || "My Location",

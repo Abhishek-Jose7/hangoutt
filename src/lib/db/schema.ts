@@ -291,3 +291,96 @@ export const memberTravelMetrics = sqliteTable('member_travel_metrics', {
   totalCost: integer('total_cost').default(0).notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+// 14. Zones Table
+export const zones = sqliteTable('zones', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(), // Andheri, Bandra, etc.
+  centerLat: real('center_lat').notNull(),
+  centerLng: real('center_lng').notNull(),
+  radius: real('radius').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 15. Places Table
+export const places = sqliteTable('places', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  address: text('address'),
+  lat: real('lat').notNull(),
+  lng: real('lng').notNull(),
+  rating: real('rating'),
+  reviewCount: integer('review_count').default(0).notNull(),
+  sourceName: text('source_name').notNull(), // OLA, etc.
+  sourcePlaceId: text('source_place_id').notNull(),
+  lastVerified: text('last_verified').notNull(),
+  verifiedAt: text('verified_at').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 16. Place Categories Table
+export const placeCategories = sqliteTable('place_categories', {
+  id: text('id').primaryKey(),
+  placeId: text('place_id').notNull().references(() => places.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(), // e.g. BOARD_GAMES, CAFE, PRIMARY_EXPERIENCE, FOOD_STOP
+});
+
+// 17. Place Costs Table
+export const placeCosts = sqliteTable('place_costs', {
+  placeId: text('place_id').primaryKey().references(() => places.id, { onDelete: 'cascade' }),
+  mandatoryCost: integer('mandatory_cost').default(0).notNull(),
+  optionalCostMin: integer('optional_cost_min').default(0).notNull(),
+  optionalCostMax: integer('optional_cost_max').default(0).notNull(),
+});
+
+// 18. Place Scores Table
+export const placeScores = sqliteTable('place_scores', {
+  placeId: text('place_id').primaryKey().references(() => places.id, { onDelete: 'cascade' }),
+  popularity: real('popularity').default(0.0).notNull(),
+  budgetFriendliness: real('budget_friendliness').default(0.0).notNull(),
+  conversation: real('conversation').default(0.0).notNull(),
+  groupSuitability: real('group_suitability').default(0.0).notNull(),
+  dateSuitability: real('date_suitability').default(0.0).notNull(),
+  friendsSuitability: real('friends_suitability').default(0.0).notNull(),
+  familySuitability: real('family_suitability').default(0.0).notNull(),
+  weatherSuitability: real('weather_suitability').default(0.0).notNull(),
+  uniqueness: real('uniqueness').default(0.0).notNull(),
+  experienceScore: real('experience_score').default(0.0).notNull(),
+  overall: real('overall').default(0.0).notNull(),
+});
+
+// 19. Itinerary Templates Table
+export const itineraryTemplates = sqliteTable('itinerary_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(), // BUDGET_FRIENDLY, BALANCED, PREMIUM, etc.
+  slot1Categories: text('slot1_categories').notNull(), // JSON list
+  slot2Categories: text('slot2_categories').notNull(),
+  slot3Categories: text('slot3_categories').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 20. Ranking Metrics Table (Learning System)
+export const rankingMetrics = sqliteTable('ranking_metrics', {
+  placeId: text('place_id').primaryKey().references(() => places.id, { onDelete: 'cascade' }),
+  timesGenerated: integer('times_generated').default(0).notNull(),
+  timesViewed: integer('times_viewed').default(0).notNull(),
+  timesVoted: integer('times_voted').default(0).notNull(),
+  timesWon: integer('times_won').default(0).notNull(),
+});
+
+// 21. Zone Fallbacks Table
+export const zoneFallbacks = sqliteTable('zone_fallbacks', {
+  id: text('id').primaryKey(),
+  zoneName: text('zone_name').notNull(), // Andheri, Bandra, etc.
+  name: text('name').notNull(),
+  category: text('category').notNull(),
+  lat: real('lat').notNull(),
+  lng: real('lng').notNull(),
+  estimatedCostPerHead: integer('estimated_cost_per_head').notNull(),
+  mandatoryCost: integer('mandatory_cost').notNull(),
+  optionalCostMin: integer('optional_cost_min').notNull(),
+  optionalCostMax: integer('optional_cost_max').notNull(),
+  address: text('address'),
+  rating: real('rating'),
+});

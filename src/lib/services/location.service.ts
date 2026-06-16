@@ -32,6 +32,11 @@ export const locationService = {
       throw new ValidationError('Could not resolve coordinates for the provided location.');
     }
 
+    const isWithinBounds = resolvedLat >= 18.8 && resolvedLat <= 19.5 && resolvedLng >= 72.6 && resolvedLng <= 73.3;
+    if (!isWithinBounds) {
+      throw new ValidationError('Location is outside the supported Mumbai, Navi Mumbai, and Thane region. Please enter a location within this area.');
+    }
+
     // Validate coordinates via Zod
     const parsed = saveLocationSchema.safeParse({ groupId, lat: resolvedLat, lng: resolvedLng, locationName: resolvedName });
     if (!parsed.success) {

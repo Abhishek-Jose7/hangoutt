@@ -84,7 +84,7 @@ export default function CreateGroupDialog({ isOpen, onClose }: CreateGroupDialog
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Koramangala Crew, Date Night"
+              placeholder="e.g. Bandra Crew, Date Night"
               required
               disabled={isLoading}
               className="bg-black/60 border border-[#353534] text-white rounded-[4px] font-mono text-xs focus-visible:ring-[#DC143C] focus-visible:border-[#DC143C]"

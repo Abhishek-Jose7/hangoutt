@@ -18,15 +18,15 @@ if (fs.existsSync(envPath)) {
   });
 }
 
-const userId = 'test-user-a-123';
-const groupId = 'test-group-id-123';
+const userId = '5a7a6420-76ea-45c5-aff5-ec36e1000a76';
+const groupId = 'ce6c553d-70c4-49ff-8e0e-877258e424b6';
 
 async function testGeneration() {
   try {
     console.log('Starting itinerary generation with real Groq configuration...');
     // Clear API configurations so it runs local SQLite flow
-    // process.env.HANGOUT_API_URL = '';
-    // process.env.HANGOUT_API_SECRET = '';
+    process.env.HANGOUT_API_URL = '';
+    process.env.HANGOUT_API_SECRET = '';
 
     console.log('Using GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'CONFIGURED (length: ' + process.env.GROQ_API_KEY.length + ')' : 'MISSING');
 

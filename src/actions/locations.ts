@@ -60,10 +60,15 @@ export async function updateLocation(rawInput: unknown): ActionResponse<any> {
   return saveLocation(rawInput);
 }
 
-export async function reverseGeocodeAction(lat: number, lng: number): ActionResponse<string> {
+export async function reverseGeocodeAction(lat: number, lng: number): ActionResponse<{ name: string; lat: number; lng: number }> {
   try {
-    const address = await reverseGeocode(lat, lng);
-    return apiResponse.success(address);
+    const { getNearestStation } = await import('@/lib/maps/geocoding');
+    const nearest = getNearestStation(lat, lng);
+    return apiResponse.success({
+      name: nearest.name,
+      lat: nearest.lat,
+      lng: nearest.lng,
+    });
   } catch (err) {
     return apiResponse.error(err);
   }

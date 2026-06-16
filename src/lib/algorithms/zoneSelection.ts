@@ -11,7 +11,7 @@ export interface CandidateZone {
   lng: number;
 }
 
-// Predefined candidate meetup zones for Mumbai and Bengaluru
+// Predefined candidate meetup zones for Mumbai, Navi Mumbai, and Thane
 const MUMBAI_ZONES: CandidateZone[] = [
   { name: 'Dadar', lat: 19.0178, lng: 72.8478 },
   { name: 'Kurla', lat: 19.0607, lng: 72.8826 },
@@ -20,15 +20,6 @@ const MUMBAI_ZONES: CandidateZone[] = [
   { name: 'Andheri', lat: 19.1136, lng: 72.8697 },
   { name: 'Bandra', lat: 19.0596, lng: 72.8295 },
   { name: 'Belapur', lat: 19.0180, lng: 73.0392 },
-];
-
-const BENGALURU_ZONES: CandidateZone[] = [
-  { name: 'Koramangala', lat: 12.9348, lng: 77.6189 },
-  { name: 'Indiranagar', lat: 12.9719, lng: 77.6412 },
-  { name: 'MG Road', lat: 12.9738, lng: 77.6119 },
-  { name: 'Jayanagar', lat: 12.9250, lng: 77.5897 },
-  { name: 'HSR Layout', lat: 12.9105, lng: 77.6450 },
-  { name: 'Whitefield', lat: 12.9698, lng: 77.7499 },
 ];
 
 // Haversine formula to calculate distance in km between two coordinates

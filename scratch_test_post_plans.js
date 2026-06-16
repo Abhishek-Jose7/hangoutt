@@ -86,8 +86,8 @@ async function testPostPlans() {
       body: JSON.stringify(payload)
     });
     console.log('Response status:', res.status);
-    const data = await res.json();
-    console.log('Response body:', JSON.stringify(data, null, 2));
+    const text = await res.text();
+    console.log('Response body:', text);
   } catch (err) {
     console.error('Error:', err);
   }

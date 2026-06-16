@@ -2,6 +2,7 @@ type Env = {
   DB: D1Database;
   HANGOUT_API_SECRET: string;
   CORS_ORIGIN?: string;
+  OLA_MAPS_API_KEY?: string;
 };
 
 type D1Database = {
@@ -1055,6 +1056,334 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
   return json({ success: true }, { headers: corsHeaders(env) });
 }
 
+const DISCOVERY_ZONES = [
+  { name: 'Andheri', lat: 19.1136, lng: 72.8697, radius: 4000 },
+  { name: 'Bandra', lat: 19.0596, lng: 72.8295, radius: 3000 },
+  { name: 'Borivali', lat: 19.2290, lng: 72.8570, radius: 4000 },
+  { name: 'Dadar', lat: 19.0178, lng: 72.8478, radius: 2500 },
+  { name: 'Kurla', lat: 19.0607, lng: 72.8826, radius: 3000 },
+  { name: 'Ghatkopar', lat: 19.0860, lng: 72.9082, radius: 3000 },
+  { name: 'Powai', lat: 19.1176, lng: 72.9060, radius: 3000 },
+  { name: 'Lower Parel', lat: 19.0034, lng: 72.8276, radius: 2000 },
+  { name: 'Worli', lat: 19.0176, lng: 72.8179, radius: 2500 },
+  { name: 'Thane', lat: 19.2183, lng: 72.9781, radius: 5000 },
+  { name: 'Vashi', lat: 19.0745, lng: 72.9978, radius: 3500 },
+  { name: 'Belapur', lat: 19.0180, lng: 73.0392, radius: 3500 },
+  { name: 'Nerul', lat: 19.0330, lng: 73.0180, radius: 2500 },
+  { name: 'Seawoods', lat: 19.0212, lng: 73.0192, radius: 2500 },
+  { name: 'Kharghar', lat: 19.0222, lng: 73.0644, radius: 3000 },
+  { name: 'Panvel', lat: 18.9894, lng: 73.1175, radius: 4000 }
+];
+
+const CONVERSATION_SCORES_WORKER: Record<string, number> = {
+  POTTERY: 10,
+  BOARD_GAMES: 8,
+  ESCAPE_ROOM: 8,
+  MUSEUM: 7,
+  ART_GALLERY: 7,
+  CAFE: 6,
+  RESTAURANT: 5,
+  PARK: 6,
+  DESSERT: 5,
+  ARCADE: 4,
+  BOWLING: 4,
+  SPORTS: 3,
+  MALL: 3,
+};
+
+async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string) {
+  const categoriesToSearch = [
+    { type: 'cafe', cat: 'CAFE' },
+    { type: 'restaurant', cat: 'RESTAURANT' },
+    { type: 'amusement_park', cat: 'ARCADE' },
+    { type: 'bowling_alley', cat: 'BOWLING' },
+    { type: 'museum', cat: 'MUSEUM' },
+    { type: 'shopping_mall', cat: 'MALL' },
+    { type: 'park', cat: 'PARK' }
+  ];
+
+  let discoveredCount = 0;
+
+  for (const { type, cat } of categoriesToSearch) {
+    const url = `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&types=${type}&location=${lat},${lng}&radius=${radius}&api_key=${apiKey}`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'X-Request-Id': `hangoutt-discover-${Date.now()}`,
+          'Referer': 'http://localhost:3000',
+          'Origin': 'http://localhost:3000'
+        }
+      });
+      if (!res.ok) continue;
+      const data = await res.json() as any;
+      const results = data?.predictions || data?.results || [];
+
+      for (const item of results.slice(0, 10)) {
+        const placeId = item.place_id;
+        if (!placeId) continue;
+
+        // Fetch details
+        const detailsUrl = `https://api.olamaps.io/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
+        const detailsRes = await fetch(detailsUrl, {
+          headers: {
+            'X-Request-Id': `hangoutt-details-${Date.now()}`,
+            'Referer': 'http://localhost:3000',
+            'Origin': 'http://localhost:3000'
+          }
+        });
+        if (!detailsRes.ok) continue;
+        const detailsData = await detailsRes.json() as any;
+        const result = detailsData?.result;
+        if (!result) continue;
+
+        const name = result.name || item.description || 'Unknown Place';
+        const address = result.formatted_address || result.vicinity || '';
+        const placeLat = result.geometry?.location?.lat;
+        const placeLng = result.geometry?.location?.lng;
+        if (!placeLat || !placeLng) continue;
+
+        const rating = result.rating || 4.0;
+        const reviewCount = result.user_ratings_total || 5;
+
+        // Quality filters
+        if (cat === 'CAFE' && rating < 4.0) continue;
+        if (cat === 'RESTAURANT' && rating < 4.1) continue;
+
+        // Calculate costs
+        let mandatoryCost = 0;
+        let optionalCostMin = 0;
+        let optionalCostMax = 0;
+
+        if (cat === 'CAFE') {
+          mandatoryCost = 0;
+          optionalCostMin = 200;
+          optionalCostMax = 600;
+        } else if (cat === 'RESTAURANT') {
+          mandatoryCost = 0;
+          optionalCostMin = 300;
+          optionalCostMax = 1000;
+        } else if (cat === 'BOWLING') {
+          mandatoryCost = 1000;
+          optionalCostMin = 0;
+          optionalCostMax = 200;
+        } else if (cat === 'ARCADE') {
+          mandatoryCost = 800;
+          optionalCostMin = 0;
+          optionalCostMax = 200;
+        } else if (cat === 'MUSEUM') {
+          mandatoryCost = 150;
+          optionalCostMin = 0;
+          optionalCostMax = 0;
+        } else if (cat === 'MALL') {
+          mandatoryCost = 100;
+          optionalCostMin = 200;
+          optionalCostMax = 1000;
+        } else if (cat === 'PARK') {
+          mandatoryCost = 0;
+          optionalCostMin = 0;
+          optionalCostMax = 0;
+        }
+
+        const id = `OLA_${placeId}`;
+        const now = new Date().toISOString();
+
+        // Save to D1
+        await db.prepare(
+          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?)`
+        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, now, now).run();
+
+        // Save categories
+        const catId1 = crypto.randomUUID();
+        await db.prepare(
+          `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
+        ).bind(catId1, id, cat).run();
+
+        // Classify
+        let experienceType = 'OPTIONAL_STOP';
+        if (['BOWLING', 'ARCADE', 'MUSEUM', 'POTTERY'].includes(cat)) {
+          experienceType = 'PRIMARY_EXPERIENCE';
+        } else if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
+          experienceType = 'FOOD_STOP';
+        }
+        const catId2 = crypto.randomUUID();
+        await db.prepare(
+          `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
+        ).bind(catId2, id, experienceType).run();
+
+        // Save costs
+        await db.prepare(
+          `INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max)
+           VALUES (?, ?, ?, ?)`
+        ).bind(id, mandatoryCost, optionalCostMin, optionalCostMax).run();
+
+        // Save scores
+        const popularity = rating / 5.0;
+        const budgetFriendliness = Math.max(0.0, Math.min(1.0, 1.0 - (mandatoryCost / 1500)));
+        const conversationScoreVal = (CONVERSATION_SCORES_WORKER[cat] || 5) / 10.0;
+
+        const groupSuitability = ['CAFE', 'RESTAURANT', 'BOWLING', 'ARCADE'].includes(cat) ? 0.8 : 0.5;
+        const dateSuitability = ['CAFE', 'PARK', 'RESTAURANT'].includes(cat) ? 0.9 : 0.5;
+        const friendsSuitability = ['BOWLING', 'ARCADE', 'CAFE'].includes(cat) ? 0.9 : 0.5;
+        const familySuitability = ['MUSEUM', 'PARK', 'RESTAURANT'].includes(cat) ? 0.9 : 0.5;
+        const weatherSuitability = ['PARK'].includes(cat) ? 0.6 : 1.0;
+        const uniqueness = ['MUSEUM'].includes(cat) ? 0.8 : 0.5;
+        const experienceScore = 0.8;
+        const overall = (popularity + conversationScoreVal + experienceScore) / 3.0;
+
+        await db.prepare(
+          `INSERT OR REPLACE INTO place_scores (
+            place_id, popularity, budget_friendliness, conversation, group_suitability,
+            date_suitability, friends_suitability, family_suitability, weather_suitability,
+            uniqueness, experience_score, overall
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          id, popularity, budgetFriendliness, conversationScoreVal, groupSuitability,
+          dateSuitability, friendsSuitability, familySuitability, weatherSuitability,
+          uniqueness, experienceScore, overall
+        ).run();
+
+        discoveredCount++;
+      }
+    } catch (err) {
+      console.error(`Error discovering ${type} in ${zoneName}:`, err);
+    }
+  }
+
+  return discoveredCount;
+}
+
+async function discoverExperiences(db: D1Database) {
+  await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('BOOKMYSHOW', 'BookMyShow', 1.0)`).run();
+  await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('TAVILY', 'Tavily Search', 1.0)`).run();
+
+  const categories = ['CONCERT', 'WORKSHOP', 'POTTERY', 'PAINTING', 'COMIC_CON', 'ANIME_EVENT', 'STANDUP_COMEDY', 'ART_EXHIBITION'];
+  for (const cat of categories) {
+    await db.prepare(`INSERT OR IGNORE INTO experience_categories (id, name) VALUES (?, ?)`).bind(cat, cat).run();
+  }
+
+  const mockEvents = [
+    {
+      title: "Sanjay's Clay Pottery Masterclass",
+      description: "Learn traditional clay wheel pottery from master artisan Sanjay in a cozy Bandra studio.",
+      category: "POTTERY",
+      city: "Mumbai",
+      lat: 19.0500,
+      lng: 72.8300,
+      price: 1200,
+      url: "https://bookmyshow.com/mumbai/events/pottery-masterclass",
+      imageUrl: "https://images.unsplash.com/photo-1565192647048-f997ded87958?w=500"
+    },
+    {
+      title: "Canvas Painting Social",
+      description: "Unleash your creativity with guided painting, mocktails, and music in Andheri West.",
+      category: "PAINTING",
+      city: "Mumbai",
+      lat: 19.1329,
+      lng: 72.8147,
+      price: 900,
+      url: "https://bookmyshow.com/mumbai/events/painting-social",
+      imageUrl: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=500"
+    },
+    {
+      title: "Mumbai Standup Showcase",
+      description: "Catch Mumbai's funniest comics live at the Lower Parel comedy club.",
+      category: "STANDUP_COMEDY",
+      city: "Mumbai",
+      lat: 19.0034,
+      lng: 72.8276,
+      price: 499,
+      url: "https://bookmyshow.com/mumbai/events/standup-showcase",
+      imageUrl: "https://images.unsplash.com/photo-1585699324551-f6c309eed262?w=500"
+    },
+    {
+      title: "Art & Soul Exhibition",
+      description: "Exquisite contemporary art installations by local artists at the Worli Gallery.",
+      category: "ART_EXHIBITION",
+      city: "Mumbai",
+      lat: 19.0176,
+      lng: 72.8179,
+      price: 0,
+      url: "https://bookmyshow.com/mumbai/events/art-soul",
+      imageUrl: "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=500"
+    },
+    {
+      title: "Anime & Comic Fan Fest",
+      description: "Celebrate anime, cosplay, and gaming at the Vashi convention center.",
+      category: "ANIME_EVENT",
+      city: "Mumbai",
+      lat: 19.0745,
+      lng: 72.9978,
+      price: 350,
+      url: "https://bookmyshow.com/mumbai/events/anime-fest",
+      imageUrl: "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=500"
+    }
+  ];
+
+  let added = 0;
+  const now = new Date().toISOString();
+  const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  for (const event of mockEvents) {
+    const id = crypto.randomUUID();
+    await db.prepare(
+      `INSERT OR REPLACE INTO experiences (
+        id, title, description, category, city, latitude, longitude,
+        start_date, end_date, ticket_price, source, source_url, image_url,
+        rating, popularity_score, is_recurring, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BOOKMYSHOW', ?, ?, 4.5, 0.8, 1, ?, ?)`
+    ).bind(
+      id, event.title, event.description, event.category, event.city, event.lat, event.lng,
+      now, nextMonth, event.price, event.url, event.imageUrl, now, now
+    ).run();
+    added++;
+  }
+
+  return added;
+}
+
+async function handleAdminDiscoverZone(request: Request, env: Env) {
+  const body = await readJson<{ zoneName: string }>(request);
+  const zoneName = body.zoneName;
+  if (!zoneName) {
+    return json({ success: false, error: { message: 'Missing zoneName' } }, { status: 400, headers: corsHeaders(env) });
+  }
+
+  const zone = DISCOVERY_ZONES.find(z => z.name.toLowerCase() === zoneName.toLowerCase());
+  if (!zone) {
+    return json({ success: false, error: { message: `Zone ${zoneName} not supported` } }, { status: 400, headers: corsHeaders(env) });
+  }
+
+  const apiKey = env.OLA_MAPS_API_KEY || '';
+  if (!apiKey) {
+    return json({ success: false, error: { message: 'OLA_MAPS_API_KEY not configured on worker' } }, { status: 500, headers: corsHeaders(env) });
+  }
+
+  const count = await discoverZonePlaces(env.DB, zone.name, zone.lat, zone.lng, zone.radius, apiKey);
+  return json({ success: true, count }, { headers: corsHeaders(env) });
+}
+
+async function handleAdminDiscoverExperiences(request: Request, env: Env) {
+  const count = await discoverExperiences(env.DB);
+  return json({ success: true, count }, { headers: corsHeaders(env) });
+}
+
+async function getAdminPlacesWorker(request: Request, env: Env) {
+  const query = `
+    SELECT 
+      p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
+      c.mandatory_cost AS mandatoryCost, c.optional_cost_min AS optionalCostMin, c.optional_cost_max AS optionalCostMax,
+      s.popularity, s.budget_friendliness AS budgetFriendliness, s.overall,
+      (SELECT group_concat(cat.category, ', ') FROM place_categories cat WHERE cat.place_id = p.id) AS categories
+    FROM places p
+    LEFT JOIN place_costs c ON c.place_id = p.id
+    LEFT JOIN place_scores s ON s.place_id = p.id
+    ORDER BY p.name ASC
+  `;
+  const result = await env.DB.prepare(query).all();
+  return json({ success: true, data: result.results || [] }, { headers: corsHeaders(env) });
+}
+
 async function health(env: Env) {
   await env.DB.prepare(`SELECT id FROM users LIMIT 1`).first();
   return json({ ok: true, database: { reachable: true, driver: 'd1-binding' } }, { headers: corsHeaders(env) });
@@ -1075,6 +1404,10 @@ export default {
 
       const unauthorized = await assertAuthorized(request, env);
       if (unauthorized) return unauthorized;
+
+      if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
+      if (url.pathname === '/api/admin/discover-experiences' && request.method === 'POST') return handleAdminDiscoverExperiences(request, env);
+      if (url.pathname === '/api/admin/places' && request.method === 'GET') return getAdminPlacesWorker(request, env);
 
       if (url.pathname === '/groups' && request.method === 'POST') return createGroup(request, env);
       if (url.pathname === '/groups' && request.method === 'GET') return listGroups(request, env);
@@ -1113,4 +1446,29 @@ export default {
       );
     }
   },
+
+  async scheduled(event: { cron: string }, env: Env, ctx: any) {
+    console.log(`Scheduled worker triggered with cron: ${event.cron}`);
+    const apiKey = env.OLA_MAPS_API_KEY || '';
+    if (!apiKey) {
+      console.error('OLA_MAPS_API_KEY is not set. Scheduled run aborted.');
+      return;
+    }
+
+    if (event.cron.includes('*/6') || event.cron.includes('place')) {
+      const hour = new Date().getHours();
+      const index = Math.floor(hour / 6) % 4; // 0, 1, 2, 3
+      const zonesToProcess = DISCOVERY_ZONES.slice(index * 4, (index + 1) * 4);
+
+      for (const zone of zonesToProcess) {
+        console.log(`Scheduled: Discovering places in zone ${zone.name}...`);
+        await discoverZonePlaces(env.DB, zone.name, zone.lat, zone.lng, zone.radius, apiKey);
+      }
+    }
+
+    if (event.cron.includes('*/12') || event.cron.includes('experience')) {
+      console.log('Scheduled: Discovering experiences...');
+      await discoverExperiences(env.DB);
+    }
+  }
 };

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { Plus, LogIn, Clock, Users } from 'lucide-react';
+import { Plus, LogIn, Clock, Users, Database } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import CreateGroupDialog from './CreateGroupDialog';
@@ -18,6 +18,7 @@ export default function Navbar() {
   const navItems = [
     { name: 'My Groups', href: '/groups', icon: Users },
     { name: 'History', href: '/history', icon: Clock },
+    { name: 'Admin Places', href: '/admin/places', icon: Database },
   ];
 
   return (
