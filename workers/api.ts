@@ -1245,19 +1245,26 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         }
 
         // Hangout Score Quality Gate (Rating >= 4.0, reviews >= 50)
-        if (rating > 0 && (rating < 4.0 || reviewCount < 50)) {
+        if (rating < 4.0 || reviewCount < 50) {
           continue;
         }
 
-        // Filter delivery-only places
+        // Filter delivery-only places and event service providers (e.g. hosts, emcees, wedding prep)
         const types = result.types || [];
         const nameLower = name.toLowerCase();
+        const exclusions = [
+          'anchor', 'emcee', 'dj ', ' dj', 'mc ', ' mc', 'show host',
+          'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
+          'photographer', 'videographer', 'academy', 'classes', 'consultant',
+          'office', 'service'
+        ];
         if (
           types.includes('delivery') ||
           types.includes('meal_delivery') ||
           nameLower.includes('delivery only') ||
           nameLower.includes('cloud kitchen') ||
-          nameLower.includes('takeaway only')
+          nameLower.includes('takeaway only') ||
+          exclusions.some(exc => nameLower.includes(exc))
         ) {
           continue;
         }
@@ -1276,21 +1283,21 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           optionalCostMin = 300;
           optionalCostMax = 1000;
         } else if (cat === 'BOWLING') {
-          mandatoryCost = 1000;
-          optionalCostMin = 0;
-          optionalCostMax = 200;
+          mandatoryCost = 350; // standard per game per person
+          optionalCostMin = 100;
+          optionalCostMax = 400;
         } else if (cat === 'ARCADE') {
-          mandatoryCost = 800;
-          optionalCostMin = 0;
-          optionalCostMax = 200;
+          mandatoryCost = 300; // standard load
+          optionalCostMin = 100;
+          optionalCostMax = 500;
         } else if (cat === 'MUSEUM') {
           mandatoryCost = 150;
           optionalCostMin = 0;
           optionalCostMax = 0;
         } else if (cat === 'MALL') {
-          mandatoryCost = 100;
-          optionalCostMin = 200;
-          optionalCostMax = 1000;
+          mandatoryCost = 0;
+          optionalCostMin = 100;
+          optionalCostMax = 500;
         } else if (cat === 'PARK') {
           mandatoryCost = 0;
           optionalCostMin = 0;

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useUser } from '@clerk/nextjs';
 import { Plus, LogIn, Clock, Users, Database } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -12,13 +12,17 @@ import JoinGroupDialog from './JoinGroupDialog';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { user } = useUser();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
+
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
+  const isAdmin = userEmail && (userEmail === 'abhishekjose780@gmail.com' || userEmail === 'johannjoseph232006@gmail.com');
 
   const navItems = [
     { name: 'My Groups', href: '/groups', icon: Users },
     { name: 'History', href: '/history', icon: Clock },
-    { name: 'Admin Places', href: '/admin/places', icon: Database },
+    ...(isAdmin ? [{ name: 'Admin Places', href: '/admin/places', icon: Database }] : []),
   ];
 
   return (
