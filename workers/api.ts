@@ -1190,6 +1190,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   ];
 
   let discoveredCount = 0;
+  const seenPlaceIds = new Set<string>();
 
   for (const { type, cat } of categoriesToSearch) {
     const url = `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&types=${type}&location=${lat},${lng}&radius=${radius}&api_key=${apiKey}`;
@@ -1207,7 +1208,8 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
 
       for (const item of results.slice(0, 10)) {
         const placeId = item.place_id;
-        if (!placeId) continue;
+        if (!placeId || seenPlaceIds.has(placeId)) continue;
+        seenPlaceIds.add(placeId);
 
         // Fetch details
         const detailsUrl = `https://api.olamaps.io/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
@@ -1232,15 +1234,18 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const rating = result.rating || 0;
         const reviewCount = result.user_ratings_total || 0;
 
-        // Hangout Score Quality Gate (Rating >= 4.0, reviews >= 50)
-        // If rating is greater than 0, enforce quality limits. Otherwise allow 0/unrated as seed.
-        if (rating > 0 && (rating < 4.0 || reviewCount < 50)) {
-          continue;
-        }
+        const id = `OLA_${placeId}`;
 
         // Filter closed places
         const businessStatus = (result.business_status || '').toUpperCase();
         if (businessStatus.includes('CLOSED')) {
+          // Hide place if it's already in the database
+          await db.prepare(`UPDATE places SET is_hidden = 1 WHERE id = ?`).bind(id).run().catch(() => {});
+          continue;
+        }
+
+        // Hangout Score Quality Gate (Rating >= 4.0, reviews >= 50)
+        if (rating > 0 && (rating < 4.0 || reviewCount < 50)) {
           continue;
         }
 
@@ -1292,14 +1297,24 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           optionalCostMax = 0;
         }
 
-        const id = `OLA_${placeId}`;
         const now = new Date().toISOString();
+
+        // Check for existing first_seen
+        let firstSeen = now;
+        try {
+          const existing = await db.prepare(`SELECT first_seen FROM places WHERE id = ?`).bind(id).first<{ first_seen: string }>();
+          if (existing?.first_seen) {
+            firstSeen = existing.first_seen;
+          }
+        } catch (err) {
+          // ignore
+        }
 
         // Save to D1
         await db.prepare(
-          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?)`
-        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, now, now).run();
+          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?, ?)`
+        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, firstSeen, now, now).run();
 
         // Save categories
         const catId1 = crypto.randomUUID();
@@ -1359,6 +1374,42 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   }
 
   return discoveredCount;
+}
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+async function rebuildFeaturedExperiences(db: D1Database) {
+  console.log('Rebuilding featured experiences (top 50 active events)...');
+  await db.prepare(`DELETE FROM featured_experiences`).run();
+
+  const topEvents = await db.prepare(
+    `SELECT id, trending_score 
+     FROM experiences 
+     WHERE is_active = 1 
+     ORDER BY trending_score DESC 
+     LIMIT 50`
+  ).all<any>();
+
+  const results = topEvents.results || [];
+  console.log(`Found ${results.length} active events to feature.`);
+
+  for (const event of results) {
+    const featId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.prepare(
+      `INSERT INTO featured_experiences (id, experience_id, score, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(featId, event.id, event.trending_score, now, now).run();
+  }
+  console.log('Featured experiences rebuilt.');
 }
 
 async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
@@ -1429,21 +1480,39 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
   ];
 
   let added = 0;
-  const now = new Date().toISOString();
-  const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const nowTime = new Date().toISOString();
+  const nextMonthTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   // 1. Insert Base/Mock Events
   for (const event of mockEvents) {
-    const id = crypto.randomUUID();
+    const id = 'exp_' + simpleHash(event.url);
+    
+    // Check existing first_seen
+    let firstSeen = nowTime;
+    try {
+      const existing = await db.prepare(`SELECT first_seen FROM experiences WHERE id = ?`).bind(id).first<{ first_seen: string }>();
+      if (existing?.first_seen) {
+        firstSeen = existing.first_seen;
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24));
+    const freshness = Math.exp(-daysSinceDiscovery / 14);
+    const rating = 4.5;
+    const popularity = 0.8;
+    const trendingScore = 100 * freshness * popularity;
+
     await db.prepare(
       `INSERT OR REPLACE INTO experiences (
         id, title, description, category, city, latitude, longitude,
         start_date, end_date, ticket_price, source, source_url, image_url,
-        rating, popularity_score, is_recurring, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BOOKMYSHOW', ?, ?, 4.5, 0.8, 1, ?, ?)`
+        rating, popularity_score, is_recurring, is_active, trending_score, first_seen, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BOOKMYSHOW', ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)`
     ).bind(
       id, event.title, event.description, event.category, event.city, event.lat, event.lng,
-      now, nextMonth, event.price, event.url, event.imageUrl, now, now
+      nowTime, nextMonthTime, event.price, event.url, event.imageUrl, rating, popularity, trendingScore, firstSeen, nowTime, nowTime
     ).run();
     added++;
   }
@@ -1487,9 +1556,24 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
             const url = res.url || 'https://www.google.com/search?q=' + encodeURIComponent(title);
             const { lat, lng } = parseEventLocation(title + ' ' + description);
             
-            const id = crypto.randomUUID();
-            const nowTime = new Date().toISOString();
-            const nextMonthTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            const id = 'exp_' + simpleHash(url);
+            
+            // Check existing first_seen
+            let firstSeen = nowTime;
+            try {
+              const existing = await db.prepare(`SELECT first_seen FROM experiences WHERE id = ?`).bind(id).first<{ first_seen: string }>();
+              if (existing?.first_seen) {
+                firstSeen = existing.first_seen;
+              }
+            } catch (err) {
+              // ignore
+            }
+
+            const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24));
+            const freshness = Math.exp(-daysSinceDiscovery / 14);
+            const rating = 4.5;
+            const popularity = 0.8;
+            const trendingScore = 100 * freshness * popularity;
 
             // Try to parse price
             let price = 500;
@@ -1502,11 +1586,11 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
               `INSERT OR REPLACE INTO experiences (
                 id, title, description, category, city, latitude, longitude,
                 start_date, end_date, ticket_price, source, source_url, image_url,
-                rating, popularity_score, is_recurring, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, 'Mumbai', ?, ?, ?, ?, ?, 'TAVILY', ?, ?, 4.5, 0.8, 1, ?, ?)`
+                rating, popularity_score, is_recurring, is_active, trending_score, first_seen, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, 'Mumbai', ?, ?, ?, ?, ?, 'TAVILY', ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)`
             ).bind(
               id, title, description, item.cat, lat, lng,
-              nowTime, nextMonthTime, price, url, 'https://images.unsplash.com/photo-1543157145-f78c636d023d?w=500', nowTime, nowTime
+              nowTime, nextMonthTime, price, url, 'https://images.unsplash.com/photo-1543157145-f78c636d023d?w=500', rating, popularity, trendingScore, firstSeen, nowTime, nowTime
             ).run();
             added++;
           }
@@ -1515,6 +1599,23 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
         console.error(`Error searching Tavily for ${item.query}:`, err);
       }
     }
+  }
+
+  // 3. Inactivate stale/expired events
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND updated_at < ?`).bind(thirtyDaysAgo).run();
+    const todayStr = new Date().toISOString().split('T')[0];
+    await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND end_date < ?`).bind(todayStr).run();
+  } catch (err) {
+    console.error('Error inactivating events:', err);
+  }
+
+  // 4. Rebuild featured experiences (Top 50)
+  try {
+    await rebuildFeaturedExperiences(db);
+  } catch (err) {
+    console.error('Error rebuilding featured experiences:', err);
   }
 
   return added;
@@ -1572,6 +1673,26 @@ async function handleAdminCuratePlace(request: Request, env: Env, placeId: strin
 }
 
 async function getAdminPlacesWorker(request: Request, env: Env) {
+  let zonesList: any[] = [];
+  try {
+    const zonesResult = await env.DB.prepare(`SELECT name, center_lat AS centerLat, center_lng AS centerLng FROM zones`).all<any>();
+    zonesList = zonesResult.results || [];
+  } catch (err) {
+    console.error('Error fetching zones in worker:', err);
+  }
+
+  function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
   const query = `
     SELECT 
       p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
@@ -1586,13 +1707,28 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
   `;
   const result = await env.DB.prepare(query).all();
   
-  // Format boolean columns properly for JSON response
-  const data = (result.results || []).map((r: any) => ({
-    ...r,
-    isFeatured: r.isFeatured === 1 || r.isFeatured === true ? 1 : 0,
-    isHidden: r.isHidden === 1 || r.isHidden === true ? 1 : 0,
-    boostFactor: typeof r.boostFactor === 'number' ? r.boostFactor : 1.0,
-  }));
+  // Format boolean columns properly for JSON response and map nearest zone
+  const data = (result.results || []).map((r: any) => {
+    let zoneName = 'Mumbai';
+    let minD = Infinity;
+    for (const z of zonesList) {
+      if (z.centerLat && z.centerLng) {
+        const d = getDistance(r.lat, r.lng, z.centerLat, z.centerLng);
+        if (d < minD) {
+          minD = d;
+          zoneName = z.name;
+        }
+      }
+    }
+
+    return {
+      ...r,
+      zoneName,
+      isFeatured: r.isFeatured === 1 || r.isFeatured === true ? 1 : 0,
+      isHidden: r.isHidden === 1 || r.isHidden === true ? 1 : 0,
+      boostFactor: typeof r.boostFactor === 'number' ? r.boostFactor : 1.0,
+    };
+  });
 
   return json({ success: true, data }, { headers: corsHeaders(env) });
 }

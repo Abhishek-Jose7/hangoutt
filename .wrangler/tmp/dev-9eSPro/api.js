@@ -986,6 +986,7 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
     { type: "park", cat: "PARK" }
   ];
   let discoveredCount = 0;
+  const seenPlaceIds = /* @__PURE__ */ new Set();
   for (const { type, cat } of categoriesToSearch) {
     const url = `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&types=${type}&location=${lat},${lng}&radius=${radius}&api_key=${apiKey}`;
     try {
@@ -1001,7 +1002,8 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
       const results = data?.predictions || data?.results || [];
       for (const item of results.slice(0, 10)) {
         const placeId = item.place_id;
-        if (!placeId) continue;
+        if (!placeId || seenPlaceIds.has(placeId)) continue;
+        seenPlaceIds.add(placeId);
         const detailsUrl = `https://api.olamaps.io/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
         const detailsRes = await fetch(detailsUrl, {
           headers: {
@@ -1021,11 +1023,14 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
         if (!placeLat || !placeLng) continue;
         const rating = result.rating || 0;
         const reviewCount = result.user_ratings_total || 0;
-        if (rating > 0 && (rating < 4 || reviewCount < 50)) {
-          continue;
-        }
+        const id = `OLA_${placeId}`;
         const businessStatus = (result.business_status || "").toUpperCase();
         if (businessStatus.includes("CLOSED")) {
+          await db.prepare(`UPDATE places SET is_hidden = 1 WHERE id = ?`).bind(id).run().catch(() => {
+          });
+          continue;
+        }
+        if (rating > 0 && (rating < 4 || reviewCount < 50)) {
           continue;
         }
         const types = result.types || [];
@@ -1065,12 +1070,19 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
           optionalCostMin = 0;
           optionalCostMax = 0;
         }
-        const id = `OLA_${placeId}`;
         const now = (/* @__PURE__ */ new Date()).toISOString();
+        let firstSeen = now;
+        try {
+          const existing = await db.prepare(`SELECT first_seen FROM places WHERE id = ?`).bind(id).first();
+          if (existing?.first_seen) {
+            firstSeen = existing.first_seen;
+          }
+        } catch (err) {
+        }
         await db.prepare(
-          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?)`
-        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, now, now).run();
+          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?, ?)`
+        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, firstSeen, now, now).run();
         const catId1 = crypto.randomUUID();
         await db.prepare(
           `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
@@ -1129,6 +1141,39 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
   return discoveredCount;
 }
 __name(discoverZonePlaces, "discoverZonePlaces");
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36);
+}
+__name(simpleHash, "simpleHash");
+async function rebuildFeaturedExperiences(db) {
+  console.log("Rebuilding featured experiences (top 50 active events)...");
+  await db.prepare(`DELETE FROM featured_experiences`).run();
+  const topEvents = await db.prepare(
+    `SELECT id, trending_score 
+     FROM experiences 
+     WHERE is_active = 1 
+     ORDER BY trending_score DESC 
+     LIMIT 50`
+  ).all();
+  const results = topEvents.results || [];
+  console.log(`Found ${results.length} active events to feature.`);
+  for (const event of results) {
+    const featId = crypto.randomUUID();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await db.prepare(
+      `INSERT INTO featured_experiences (id, experience_id, score, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(featId, event.id, event.trending_score, now, now).run();
+  }
+  console.log("Featured experiences rebuilt.");
+}
+__name(rebuildFeaturedExperiences, "rebuildFeaturedExperiences");
 async function discoverExperiences(db, tavilyApiKey) {
   await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('BOOKMYSHOW', 'BookMyShow', 1.0)`).run();
   await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('TAVILY', 'Tavily Search', 1.0)`).run();
@@ -1194,16 +1239,29 @@ async function discoverExperiences(db, tavilyApiKey) {
     }
   ];
   let added = 0;
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString();
+  const nowTime = (/* @__PURE__ */ new Date()).toISOString();
+  const nextMonthTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString();
   for (const event of mockEvents) {
-    const id = crypto.randomUUID();
+    const id = "exp_" + simpleHash(event.url);
+    let firstSeen = nowTime;
+    try {
+      const existing = await db.prepare(`SELECT first_seen FROM experiences WHERE id = ?`).bind(id).first();
+      if (existing?.first_seen) {
+        firstSeen = existing.first_seen;
+      }
+    } catch (err) {
+    }
+    const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1e3 * 60 * 60 * 24));
+    const freshness = Math.exp(-daysSinceDiscovery / 14);
+    const rating = 4.5;
+    const popularity = 0.8;
+    const trendingScore = 100 * freshness * popularity;
     await db.prepare(
       `INSERT OR REPLACE INTO experiences (
         id, title, description, category, city, latitude, longitude,
         start_date, end_date, ticket_price, source, source_url, image_url,
-        rating, popularity_score, is_recurring, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BOOKMYSHOW', ?, ?, 4.5, 0.8, 1, ?, ?)`
+        rating, popularity_score, is_recurring, is_active, trending_score, first_seen, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BOOKMYSHOW', ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)`
     ).bind(
       id,
       event.title,
@@ -1212,13 +1270,17 @@ async function discoverExperiences(db, tavilyApiKey) {
       event.city,
       event.lat,
       event.lng,
-      now,
-      nextMonth,
+      nowTime,
+      nextMonthTime,
       event.price,
       event.url,
       event.imageUrl,
-      now,
-      now
+      rating,
+      popularity,
+      trendingScore,
+      firstSeen,
+      nowTime,
+      nowTime
     ).run();
     added++;
   }
@@ -1256,9 +1318,20 @@ async function discoverExperiences(db, tavilyApiKey) {
             const description = res.content || "Enjoy an exciting event in Mumbai.";
             const url = res.url || "https://www.google.com/search?q=" + encodeURIComponent(title);
             const { lat, lng } = parseEventLocation(title + " " + description);
-            const id = crypto.randomUUID();
-            const nowTime = (/* @__PURE__ */ new Date()).toISOString();
-            const nextMonthTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString();
+            const id = "exp_" + simpleHash(url);
+            let firstSeen = nowTime;
+            try {
+              const existing = await db.prepare(`SELECT first_seen FROM experiences WHERE id = ?`).bind(id).first();
+              if (existing?.first_seen) {
+                firstSeen = existing.first_seen;
+              }
+            } catch (err) {
+            }
+            const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1e3 * 60 * 60 * 24));
+            const freshness = Math.exp(-daysSinceDiscovery / 14);
+            const rating = 4.5;
+            const popularity = 0.8;
+            const trendingScore = 100 * freshness * popularity;
             let price = 500;
             const priceMatch = description.match(/(?:rs\.?|inr|₹)\s*(\d+)/i);
             if (priceMatch) {
@@ -1268,8 +1341,8 @@ async function discoverExperiences(db, tavilyApiKey) {
               `INSERT OR REPLACE INTO experiences (
                 id, title, description, category, city, latitude, longitude,
                 start_date, end_date, ticket_price, source, source_url, image_url,
-                rating, popularity_score, is_recurring, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, 'Mumbai', ?, ?, ?, ?, ?, 'TAVILY', ?, ?, 4.5, 0.8, 1, ?, ?)`
+                rating, popularity_score, is_recurring, is_active, trending_score, first_seen, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, 'Mumbai', ?, ?, ?, ?, ?, 'TAVILY', ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)`
             ).bind(
               id,
               title,
@@ -1282,6 +1355,10 @@ async function discoverExperiences(db, tavilyApiKey) {
               price,
               url,
               "https://images.unsplash.com/photo-1543157145-f78c636d023d?w=500",
+              rating,
+              popularity,
+              trendingScore,
+              firstSeen,
               nowTime,
               nowTime
             ).run();
@@ -1292,6 +1369,19 @@ async function discoverExperiences(db, tavilyApiKey) {
         console.error(`Error searching Tavily for ${item.query}:`, err);
       }
     }
+  }
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3).toISOString();
+    await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND updated_at < ?`).bind(thirtyDaysAgo).run();
+    const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND end_date < ?`).bind(todayStr).run();
+  } catch (err) {
+    console.error("Error inactivating events:", err);
+  }
+  try {
+    await rebuildFeaturedExperiences(db);
+  } catch (err) {
+    console.error("Error rebuilding featured experiences:", err);
   }
   return added;
 }
@@ -1337,6 +1427,22 @@ async function handleAdminCuratePlace(request, env, placeId) {
 }
 __name(handleAdminCuratePlace, "handleAdminCuratePlace");
 async function getAdminPlacesWorker(request, env) {
+  let zonesList = [];
+  try {
+    const zonesResult = await env.DB.prepare(`SELECT name, center_lat AS centerLat, center_lng AS centerLng FROM zones`).all();
+    zonesList = zonesResult.results || [];
+  } catch (err) {
+    console.error("Error fetching zones in worker:", err);
+  }
+  function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+  __name(getDistance, "getDistance");
   const query = `
     SELECT 
       p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
@@ -1350,12 +1456,26 @@ async function getAdminPlacesWorker(request, env) {
     ORDER BY p.name ASC
   `;
   const result = await env.DB.prepare(query).all();
-  const data = (result.results || []).map((r) => ({
-    ...r,
-    isFeatured: r.isFeatured === 1 || r.isFeatured === true ? 1 : 0,
-    isHidden: r.isHidden === 1 || r.isHidden === true ? 1 : 0,
-    boostFactor: typeof r.boostFactor === "number" ? r.boostFactor : 1
-  }));
+  const data = (result.results || []).map((r) => {
+    let zoneName = "Mumbai";
+    let minD = Infinity;
+    for (const z of zonesList) {
+      if (z.centerLat && z.centerLng) {
+        const d = getDistance(r.lat, r.lng, z.centerLat, z.centerLng);
+        if (d < minD) {
+          minD = d;
+          zoneName = z.name;
+        }
+      }
+    }
+    return {
+      ...r,
+      zoneName,
+      isFeatured: r.isFeatured === 1 || r.isFeatured === true ? 1 : 0,
+      isHidden: r.isHidden === 1 || r.isHidden === true ? 1 : 0,
+      boostFactor: typeof r.boostFactor === "number" ? r.boostFactor : 1
+    };
+  });
   return json({ success: true, data }, { headers: corsHeaders(env) });
 }
 __name(getAdminPlacesWorker, "getAdminPlacesWorker");

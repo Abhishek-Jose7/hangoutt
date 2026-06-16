@@ -27,10 +27,23 @@ export async function getAdminPlaces(): ActionResponse<any[]> {
 
     // Otherwise, fetch from local SQLite
     const { db } = await import('@/lib/db/client');
-    const { places, placeCosts, placeScores, placeCategories } = await import('@/lib/db/schema');
+    const { places, placeCosts, placeScores, placeCategories, zones } = await import('@/lib/db/schema');
     const { eq } = await import('drizzle-orm');
 
     const dbPlaces = await db.select().from(places);
+    const dbZones = await db.select().from(zones).catch(() => []);
+
+    function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
     
     // Fetch costs, scores, categories and join them in memory to keep it simple and correct
     const results = await Promise.all(dbPlaces.map(async (p: any) => {
@@ -38,6 +51,16 @@ export async function getAdminPlaces(): ActionResponse<any[]> {
       const scores = await db.select().from(placeScores).where(eq(placeScores.placeId, p.id)).limit(1);
       const cats = await db.select().from(placeCategories).where(eq(placeCategories.placeId, p.id));
       
+      let zoneName = 'Mumbai';
+      let minD = Infinity;
+      for (const z of dbZones) {
+        const d = getDistance(p.lat, p.lng, z.centerLat, z.centerLng);
+        if (d < minD) {
+          minD = d;
+          zoneName = z.name;
+        }
+      }
+
       return {
         id: p.id,
         name: p.name,
@@ -55,7 +78,8 @@ export async function getAdminPlaces(): ActionResponse<any[]> {
         popularity: scores[0]?.popularity ?? 0,
         budgetFriendliness: scores[0]?.budgetFriendliness ?? 0,
         overall: scores[0]?.overall ?? 0,
-        categories: cats.map((c: any) => rCategoryToVibe(c.category)).join(', ')
+        categories: cats.map((c: any) => rCategoryToVibe(c.category)).join(', '),
+        zoneName
       };
     }));
 

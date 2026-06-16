@@ -151,6 +151,9 @@ export const experiences = sqliteTable('experiences', {
   rating: real('rating'),
   popularityScore: real('popularity_score').default(0.0).notNull(), // Normalised 0.0 - 1.0
   isRecurring: integer('is_recurring').default(0).notNull(), // Boolean (0 or 1)
+  isActive: integer('is_active').default(1).notNull(), // Active state for events
+  trendingScore: real('trending_score').default(0.0).notNull(), // Trending algorithm score
+  firstSeen: text('first_seen').default(sql`CURRENT_TIMESTAMP`).notNull(), // Track discovery date
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -318,6 +321,7 @@ export const places = sqliteTable('places', {
   isFeatured: integer('is_featured').default(0).notNull(),
   isHidden: integer('is_hidden').default(0).notNull(),
   boostFactor: real('boost_factor').default(1.0).notNull(),
+  firstSeen: text('first_seen').default(sql`CURRENT_TIMESTAMP`).notNull(), // Track discovery date
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -395,6 +399,17 @@ export const featuredPlaces = sqliteTable('featured_places', {
   placeId: text('place_id').references(() => places.id, { onDelete: 'cascade' }),
   experienceId: text('experience_id').references(() => experiences.id, { onDelete: 'cascade' }),
   description: text('description'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// 23. Featured Experiences (Top 50 trending events)
+export const featuredExperiences = sqliteTable('featured_experiences', {
+  id: text('id').primaryKey(),
+  experienceId: text('experience_id')
+    .notNull()
+    .references(() => experiences.id, { onDelete: 'cascade' }),
+  score: real('score').default(0.0).notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

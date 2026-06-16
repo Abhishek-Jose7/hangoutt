@@ -10,7 +10,7 @@ import { recommendationService } from './recommendation.service';
 import { generateItineraries } from '../groq/itineraryService';
 import { selectCandidateZones, getHaversineDistance, LatLng } from '../algorithms/zoneSelection';
 import { db, safeTransaction } from '../db/client';
-import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics } from '../db/schema';
+import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics, featuredExperiences } from '../db/schema';
 import { eq, sql, and, between } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
 import { ItineraryPromptContext } from '../types/planner.types';
@@ -769,17 +769,10 @@ function scorePlaceCandidateRefactored(
 
   const ratingScore = Math.min(1.0, Math.max(0.0, (place.rating || 4.0) / 5.0));
 
-  const msInDay = 24 * 60 * 60 * 1000;
-  const lastVerDate = lastVerified ? new Date(lastVerified).getTime() : Date.now() - 5 * msInDay;
-  const daysSinceVerified = (Date.now() - lastVerDate) / msInDay;
-  let freshness = 0;
-  if (daysSinceVerified <= 1) {
-    freshness = 1.0;
-  } else if (daysSinceVerified <= 14) {
-    freshness = 1.0 - (daysSinceVerified - 1) / 13.0;
-  } else {
-    freshness = -0.5;
-  }
+  // Calculate freshness using decay formula Math.exp(-daysSinceDiscovery / 14) based on firstSeen
+  const firstSeenDate = place.firstSeen ? new Date(place.firstSeen).getTime() : Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const daysSinceDiscovery = Math.max(0, (Date.now() - firstSeenDate) / (24 * 60 * 60 * 1000));
+  const freshness = Math.exp(-daysSinceDiscovery / 14);
 
   // Calculate uniqueness score (Interestingness)
   const nameLower = (place.name || '').toLowerCase();
@@ -820,12 +813,28 @@ function scorePlaceCandidateRefactored(
     }
   }
 
-  // Adjusted weights totaling 1.0 (categoryMatch 30%, budgetMatch 20%, uniquenessScore 15%, popularity 15%, travelFairness 10%, ratingScore 5%, freshness 5%)
-  let score = 0.30 * categoryMatch + 0.20 * budgetMatch + 0.15 * uniquenessScore + 0.15 * popularity + 0.10 * travelFairness + 0.05 * ratingScore + 0.05 * freshness;
+  // Blend popularity and uniquenessScore for places
+  let popularityComponent = popularity;
+  if (!place.isExperience) {
+    popularityComponent = (popularity + uniquenessScore) / 2.0;
+  }
+
+  // Adjusted weights totaling 1.0 (35% Category, 20% Budget, 15% Popularity component, 15% Freshness, 10% Travel, 5% Rating)
+  let score = 0.35 * categoryMatch +
+              0.20 * budgetMatch +
+              0.15 * popularityComponent +
+              0.15 * freshness +
+              0.10 * travelFairness +
+              0.05 * ratingScore;
   
   // Apply boostFactor
   const boost = typeof place.boostFactor === 'number' ? place.boostFactor : 1.0;
   score = score * boost;
+
+  // Apply a 1.25 boost multiplier to candidates whose daysSinceDiscovery < 30 (Recently Discovered)
+  if (daysSinceDiscovery < 30) {
+    score = score * 1.25;
+  }
 
   return score;
 }
@@ -915,7 +924,8 @@ async function executePlanningEngine(
         lastVerified: places.lastVerified,
         isFeatured: places.isFeatured,
         isHidden: places.isHidden,
-        boostFactor: places.boostFactor
+        boostFactor: places.boostFactor,
+        firstSeen: places.firstSeen
       })
       .from(places)
       .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
@@ -954,15 +964,46 @@ async function executePlanningEngine(
           lastVerified: p.lastVerified,
           isFeatured: p.isFeatured,
           isHidden: p.isHidden,
-          boostFactor: p.boostFactor
+          boostFactor: p.boostFactor,
+          firstSeen: p.firstSeen
         } as any);
       }
     });
 
     const dbExperiences = await db
-      .select()
+      .select({
+        id: experiences.id,
+        title: experiences.title,
+        description: experiences.description,
+        category: experiences.category,
+        city: experiences.city,
+        latitude: experiences.latitude,
+        longitude: experiences.longitude,
+        startDate: experiences.startDate,
+        endDate: experiences.endDate,
+        ticketPrice: experiences.ticketPrice,
+        capacity: experiences.capacity,
+        source: experiences.source,
+        sourceUrl: experiences.sourceUrl,
+        imageUrl: experiences.imageUrl,
+        rating: experiences.rating,
+        popularityScore: experiences.popularityScore,
+        isRecurring: experiences.isRecurring,
+        isActive: experiences.isActive,
+        trendingScore: experiences.trendingScore,
+        firstSeen: experiences.firstSeen,
+        createdAt: experiences.createdAt,
+        updatedAt: experiences.updatedAt,
+        featuredId: featuredExperiences.id
+      })
       .from(experiences)
-      .where(eq(experiences.city, 'Mumbai'));
+      .leftJoin(featuredExperiences, eq(featuredExperiences.experienceId, experiences.id))
+      .where(
+        and(
+          eq(experiences.city, 'Mumbai'),
+          eq(experiences.isActive, 1)
+        )
+      );
 
     dbExperiences.forEach((e: any) => {
       // Date verification: Outing date must fall within the experience's start and end date
@@ -977,7 +1018,8 @@ async function executePlanningEngine(
       }
 
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: e.latitude, lng: e.longitude });
-      if (dist <= 10.0) {
+      const isFeatured = e.featuredId !== null;
+      if (dist <= 10.0 || isFeatured) {
         candidates.push({
           id: e.id,
           name: e.title,
@@ -995,9 +1037,10 @@ async function executePlanningEngine(
           optionalCostMin: 0,
           optionalCostMax: 0,
           lastVerified: e.updatedAt,
-          isFeatured: 0,
+          isFeatured: isFeatured ? 1 : 0,
           isHidden: 0,
-          boostFactor: 1.0
+          boostFactor: 1.0,
+          firstSeen: e.firstSeen
         } as any);
       }
     });

@@ -28,6 +28,7 @@ interface PlaceData {
   isFeatured: number;
   isHidden: number;
   boostFactor: number;
+  zoneName?: string;
 }
 
 type SortField = 'name' | 'rating' | 'mandatoryCost' | 'overall';
@@ -410,6 +411,7 @@ export default function AdminPlacesPage() {
                           <ArrowUpDown className="h-3 w-3" />
                         </div>
                       </th>
+                      <th className="py-3 px-4 font-semibold">Zone</th>
                       <th className="py-3 px-4 font-semibold">Category</th>
                       <th className="py-3 px-4 font-semibold cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('rating')}>
                         <div className="flex items-center gap-1.5">
@@ -447,6 +449,11 @@ export default function AdminPlacesPage() {
                         {/* Name */}
                         <td className="py-3 px-4 font-semibold text-white group-hover:text-[#DC143C] transition-colors max-w-xs truncate">
                           {place.name}
+                        </td>
+
+                        {/* Zone */}
+                        <td className="py-3 px-4 font-mono text-[10px] uppercase tracking-wider text-neutral-200">
+                          {place.zoneName || 'Mumbai'}
                         </td>
                         
                         {/* Category */}
