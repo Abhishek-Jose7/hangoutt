@@ -425,13 +425,13 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
           travelIncluded: currentUserTravelIncluded,
           location: currentUserLocation
             ? {
-                id: currentUserLocation.id,
-                groupId,
-                userId: user.id,
-                lat: currentUserLocation.lat,
-                lng: currentUserLocation.lng,
-                locationName: currentUserLocation.location_name,
-              }
+              id: currentUserLocation.id,
+              groupId,
+              userId: user.id,
+              lat: currentUserLocation.lat,
+              lng: currentUserLocation.lng,
+              locationName: currentUserLocation.location_name,
+            }
             : null,
         },
       },
@@ -720,7 +720,7 @@ async function updateUserProfile(request: Request, env: Env) {
     preferredBudgetMax?: number;
     favoriteActivities?: string[];
   }>(request);
-  
+
   const user = await findUserByClerkId(env.DB, body.clerkId);
   if (!user) {
     return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
@@ -886,7 +886,7 @@ async function getPlans(request: Request, env: Env, groupId: string) {
   }
 
   const planIds = groupPlans.map(p => p.id);
-  
+
   // Fetch slots
   const slotsRes = await env.DB.prepare(
     `SELECT 
@@ -1241,7 +1241,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const businessStatus = (result.business_status || '').toUpperCase();
         if (businessStatus.includes('CLOSED')) {
           // Hide place if it's already in the database
-          await db.prepare(`UPDATE places SET is_hidden = 1 WHERE id = ?`).bind(id).run().catch(() => {});
+          await db.prepare(`UPDATE places SET is_hidden = 1 WHERE id = ?`).bind(id).run().catch(() => { });
           continue;
         }
 
@@ -1505,7 +1505,7 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
   // 1. Insert Base/Mock Events
   for (const event of mockEvents) {
     const id = 'exp_' + simpleHash(event.url);
-    
+
     // Check existing first_seen
     let firstSeen = nowTime;
     try {
@@ -1574,9 +1574,9 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
             const description = res.content || 'Enjoy an exciting event in Mumbai.';
             const url = res.url || 'https://www.google.com/search?q=' + encodeURIComponent(title);
             const { lat, lng } = parseEventLocation(title + ' ' + description);
-            
+
             const id = 'exp_' + simpleHash(url);
-            
+
             // Check existing first_seen
             let firstSeen = nowTime;
             try {
@@ -1704,11 +1704,11 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
     const R = 6371; // km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
@@ -1725,7 +1725,7 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
     ORDER BY p.name ASC
   `;
   const result = await env.DB.prepare(query).all();
-  
+
   // Format boolean columns properly for JSON response and map nearest zone
   const data = (result.results || []).map((r: any) => {
     let zoneName = 'Mumbai';
@@ -1787,7 +1787,7 @@ async function handleAddPlace(request: Request, env: Env) {
       `INSERT INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, is_featured, is_hidden, boost_factor, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(placeId, name, address, lat, lng, rating, reviewCount, placeId, now, now, isFeaturedVal, isHiddenVal, boostFactorVal, now, now),
-    
+
     env.DB.prepare(
       `INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max)
        VALUES (?, ?, ?, ?)`
@@ -1963,7 +1963,7 @@ export default {
       if (url.pathname === '/api/admin/discover-experiences' && request.method === 'POST') return handleAdminDiscoverExperiences(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'GET') return getAdminPlacesWorker(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'POST') return handleAddPlace(request, env);
-      
+
       const curateMatch = url.pathname.match(/^\/api\/admin\/places\/([^/]+)\/curate$/);
       if (curateMatch && request.method === 'PATCH') {
         const placeId = curateMatch[1];

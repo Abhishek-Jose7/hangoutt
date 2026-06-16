@@ -245,314 +245,275 @@ export default function PlannerPage() {
         </div>
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs">
-        
-        {/* Navigation / List Panel */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center px-1">
-            <h2 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4" />
-              Itinerary Choices
-            </h2>
-            <Badge variant="outline" className={votingStatus === 'OPEN' ? 'bg-[#DC143C]/10 text-[#DC143C] border-[#DC143C]/20 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]' : 'bg-stone-900/40 text-neutral-400 border border-stone-850 rounded-[4px] font-mono font-bold uppercase py-0.5 px-2.5 text-[9px]'}>
-              VOTING: {votingStatus.toLowerCase()}
-            </Badge>
-          </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 font-mono text-xs w-full">
+        {plans.map((plan) => {
+          const isWinningPlan = group.winningPlanId === plan.id;
+          const voteCount = votes[plan.id] || 0;
 
-          <div className="space-y-3">
-            {plans.map((plan) => {
-              const isActive = plan.id === activePlanId;
-              const voteCount = votes[plan.id] || 0;
-              const hasUserVoted = userVotedPlanId === plan.id;
-              const isPlanWinner = group.winningPlanId === plan.id;
-              
-              return (
-                <Card 
-                  key={plan.id}
-                  onClick={() => setActivePlanId(plan.id)}
-                  className={`cursor-pointer transition duration-200 border rounded-[12px] bg-stone-950/45 backdrop-blur-md shadow-lg hover:border-[#DC143C]/50 ${
-                    isActive ? 'border-[#DC143C] shadow-[#DC143C]/5' : 'border-stone-900/60'
-                  }`}
-                >
-                  <CardHeader className="p-4 pb-2">
-                    <div className="flex justify-between items-start gap-1">
-                      <CardTitle className="text-xs font-bold text-white uppercase tracking-widest font-mono">{plan.name}</CardTitle>
-                      {isPlanWinner ? (
-                        <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 hover:bg-[#00E5A0]/10 hover:text-[#00E5A0] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2">
-                          <Award className="h-2.5 w-2.5" />
-                          Winner
+          return (
+            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full">
+              <CardHeader className="pb-3 border-b border-stone-900/60">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-sm font-bold text-white uppercase font-mono tracking-widest">{plan.name}</CardTitle>
+                      {isWinningPlan ? (
+                        <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 text-[9px] font-mono font-bold py-0.5 px-2 rounded-[4px]">
+                          WINNING PLAN LOCKED
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 hover:bg-[#DC143C]/10 hover:text-[#DC143C] rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2">
-                          <Vote className="h-2.5 w-2.5" />
+                        <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 text-[9px] font-mono font-bold py-0.5 px-2 rounded-[4px]">
+                          <Vote className="h-2.5 w-2.5 mr-1 inline text-[#DC143C]" />
                           {voteCount} votes
                         </Badge>
                       )}
                     </div>
-                    <CardDescription className="text-[10px] text-neutral-400 mt-0.5 line-clamp-1">{plan.tagline}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 text-[10px] text-neutral-400 flex justify-between font-mono font-medium">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-[#DC143C]" />
-                      {Math.round(plan.totalDurationMinutes / 60)}h {plan.totalDurationMinutes % 60}m
-                    </span>
-                    <span className="font-bold text-white">
-                      ₹{plan.totalEstimatedCostPerHead} / head
-                    </span>
-                  </CardContent>
-                  <CardFooter className="p-3 bg-black/20 border-t border-stone-900/60 flex items-center justify-between text-[9px] text-neutral-400 font-mono rounded-b-[12px]">
-                    <span>
-                      {plan.slots.length} ACTIVITES SCHEDULED
-                    </span>
-                    {hasUserVoted && (
-                      <span className="text-[#00E5A0] font-bold flex items-center gap-0.5 uppercase text-[9px]">
-                        <Check className="h-3 w-3 text-[#00E5A0]" />
-                        MY VOTE
-                      </span>
-                    )}
-                  </CardFooter>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Detailed Timeline View Panel */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px]">
-            <CardHeader className="pb-3 border-b border-stone-900/60">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-bold text-white uppercase font-mono tracking-widest">{selectedPlan.name}</CardTitle>
-                    {isWinningPlan && (
-                      <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 text-[9px] font-mono font-bold py-0.5 px-2 rounded-[4px]">
-                        WINNING PLAN LOCKED
-                      </Badge>
-                    )}
+                    <CardDescription className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed">{plan.tagline}</CardDescription>
                   </div>
-                  <CardDescription className="text-xs text-neutral-400 font-sans tracking-wide leading-relaxed">{selectedPlan.tagline}</CardDescription>
+                  {votingStatus === 'OPEN' && (
+                    <Button 
+                      size="sm"
+                      disabled={isCasting || userVotedPlanId === plan.id}
+                      onClick={() => handleVoteCast(plan.id)}
+                      className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] px-5 py-2 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap ${
+                        userVotedPlanId === plan.id
+                          ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
+                          : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
+                      }`}
+                    >
+                      {userVotedPlanId === plan.id ? (
+                        <>
+                          <Check className="mr-1 h-3.5 w-3.5 text-[#00E5A0] inline" /> VOTED
+                        </>
+                      ) : (
+                        <>
+                          <Vote className="mr-1 h-3.5 w-3.5 inline" /> CAST VOTE
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
-                {votingStatus === 'OPEN' && (
+              </CardHeader>
+              <CardContent className="pt-6 space-y-6 flex-grow">
+                
+                {/* Cost & Duration Banner */}
+                <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
+                  <div>
+                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
+                    <p className="text-sm font-bold text-white mt-1">₹{plan.totalEstimatedCostPerHead} <span className="text-[8px] text-neutral-500 font-normal">/ HEAD</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
+                    <p className="text-sm font-bold text-white mt-1">
+                      {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
+                    <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
+                      {plan.budgetTier.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Why Recommended reasons display */}
+                {plan.whyRecommended && Array.isArray(plan.whyRecommended) && plan.whyRecommended.length > 0 && (
+                  <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
+                    <div className="grid grid-cols-1 gap-2 mt-1">
+                      {plan.whyRecommended.slice(0, 3).map((reason: string, rIdx: number) => (
+                        <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
+                          <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
+                          <span>{reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Timeline slots */}
+                <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
+                  {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
+                    return (
+                      <div key={index} className="relative">
+                        {/* Timeline point */}
+                        <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
+                          {slot.slotOrder}
+                        </span>
+                        
+                        <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
+                          {/* Slot Image */}
+                          <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
+                            <img
+                              src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
+                              alt={slot.name}
+                              className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
+                            />
+                          </div>
+                          <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {slot.link ? (
+                                    <a
+                                      href={slot.link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:underline hover:text-[#ff3b5f] transition-colors"
+                                    >
+                                      <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                        {slot.name.toUpperCase()}
+                                      </h4>
+                                    </a>
+                                  ) : (
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                      {slot.name.toUpperCase()}
+                                    </h4>
+                                  )}
+                                  {slot.link && (
+                                    <a
+                                      href={slot.link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
+                                      title="View location or book"
+                                    >
+                                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                        <polyline points="15 3 21 3 21 9" />
+                                        <line x1="10" y1="14" x2="21" y2="3" />
+                                      </svg>
+                                    </a>
+                                  )}
+                                </div>
+                                <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
+                                  {slot.category}
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
+                                {slot.arrivalTime} ({slot.durationMinutes}M)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
+                              {slot.note}
+                            </p>
+                            <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
+                              <span className="flex items-center gap-1">
+                                <DollarSign className="h-3 w-3 text-[#DC143C]" />
+                                ESTIMATED: ₹{slot.estimatedCostPerHead}
+                              </span>
+                              {slot.travelToNextMinutes !== null && (
+                                <span className="text-[#DC143C] font-bold flex items-center gap-1.5 uppercase text-[9px]">
+                                  <span className="flex items-center gap-0.5">
+                                    <svg className="h-3 w-3 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 1.1.9 2 2 2h2" />
+                                      <circle cx="7" cy="17" r="2" />
+                                      <circle cx="17" cy="17" r="2" />
+                                    </svg>
+                                    AUTO: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}
+                                  </span>
+                                  <span className="text-neutral-600">//</span>
+                                  <span>TRANSIT: {slot.travelToNextMinutes} MINS</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Transit Grid */}
+                {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
+                  <div className="border-t border-stone-900/60 pt-6 mt-6">
+                    <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5 mb-2.5">
+                      <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        <path d="M2 12h20" />
+                      </svg>
+                      YOUR TRAVEL BREAKDOWN (TRANSIT GRID)
+                    </h4>
+                    <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
+                      <table className="w-full text-left border-collapse font-mono text-[10px]">
+                        <thead>
+                          <tr className="border-b border-stone-850 text-neutral-400 font-bold">
+                            <th className="py-2 px-3">Member</th>
+                            <th className="py-2 px-3">Train</th>
+                            <th className="py-2 px-3">Cab / Auto</th>
+                            <th className="py-2 px-3">Walk</th>
+                            <th className="py-2 px-3 text-right">Total Commute</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.memberTravelMetrics.map((mt: any) => {
+                            const memberObj = members.find((m: any) => m.userId === mt.userId);
+                            const name = memberObj ? memberObj.name : 'Participant';
+                            return (
+                              <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
+                                <td className="py-2 px-3 font-semibold text-white">{name}</td>
+                                <td className="py-2 px-3">
+                                  {mt.trainTime > 0 ? (
+                                    <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
+                                  ) : (
+                                    <span className="text-neutral-600">N/A</span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3">
+                                  {mt.cabTime > 0 || mt.autoTime > 0 ? (
+                                    <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
+                                  ) : (
+                                    <span className="text-neutral-600">N/A</span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3">
+                                  {mt.walkTime > 0 ? (
+                                    <span>{mt.walkTime}m</span>
+                                  ) : (
+                                    <span className="text-neutral-600">0m</span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-right font-bold text-white">
+                                  {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+              </CardContent>
+              {votingStatus === 'OPEN' && (
+                <CardFooter className="p-4 border-t border-stone-900/60 bg-black/15 flex justify-end rounded-b-[12px]">
                   <Button 
                     size="sm"
-                    disabled={isCasting || userVotedPlanId === selectedPlan.id}
-                    onClick={() => handleVoteCast(selectedPlan.id)}
-                    className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] px-5 py-2 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer ${
-                      userVotedPlanId === selectedPlan.id
+                    disabled={isCasting || userVotedPlanId === plan.id}
+                    onClick={() => handleVoteCast(plan.id)}
+                    className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] w-full py-2.5 shadow-md transition-all hover:scale-[101%] active:scale-[99%] cursor-pointer ${
+                      userVotedPlanId === plan.id
                         ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
                         : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
                     }`}
                   >
-                    {userVotedPlanId === selectedPlan.id ? (
+                    {userVotedPlanId === plan.id ? (
                       <>
-                        <Check className="mr-1 h-3.5 w-3.5 text-[#00E5A0]" /> VOTED
+                        <Check className="mr-1.5 h-3.5 w-3.5 text-[#00E5A0] inline" /> VOTED FOR THIS
                       </>
                     ) : (
                       <>
-                        <Vote className="mr-1 h-3.5 w-3.5" /> CAST VOTE
+                        <Vote className="mr-1.5 h-3.5 w-3.5 inline" /> VOTE FOR THIS ITINERARY
                       </>
                     )}
                   </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-6">
-              
-              {/* Cost & Duration Banner */}
-              <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
-                <div>
-                  <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
-                  <p className="text-base font-bold text-white mt-1">₹{selectedPlan.totalEstimatedCostPerHead} <span className="text-[9px] text-neutral-500 font-normal">/ HEAD</span></p>
-                </div>
-                <div>
-                  <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
-                  <p className="text-base font-bold text-white mt-1">
-                    {Math.floor(selectedPlan.totalDurationMinutes / 60)}H {selectedPlan.totalDurationMinutes % 60}M
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
-                  <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[9px] font-bold text-[#DC143C] py-0.5 px-2.5 rounded-[4px] font-mono">
-                    {selectedPlan.budgetTier.replace('_', ' ')}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Why Recommended reasons display */}
-              {selectedPlan.whyRecommended && Array.isArray(selectedPlan.whyRecommended) && selectedPlan.whyRecommended.length > 0 && (
-                <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
-                    {selectedPlan.whyRecommended.map((reason: string, rIdx: number) => (
-                      <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
-                        <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
-                        <span>{reason}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                </CardFooter>
               )}
-
-              {/* Timeline slots */}
-              <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
-                {selectedPlan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
-                  return (
-                    <div key={index} className="relative">
-                      {/* Timeline point */}
-                      <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
-                        {slot.slotOrder}
-                      </span>
-                      
-                      <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
-                        {/* Slot Image */}
-                        <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
-                          <img
-                            src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
-                            alt={slot.name}
-                            className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
-                          />
-                        </div>
-                        <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
-                          <div className="flex justify-between items-start gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {slot.link ? (
-                                  <a
-                                    href={slot.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="hover:underline hover:text-[#ff3b5f] transition-colors"
-                                  >
-                                    <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                      {slot.name.toUpperCase()}
-                                    </h4>
-                                  </a>
-                                ) : (
-                                  <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                    {slot.name.toUpperCase()}
-                                  </h4>
-                                )}
-                                {slot.link && (
-                                  <a
-                                    href={slot.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
-                                    title="View location or book"
-                                  >
-                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                      <polyline points="15 3 21 3 21 9" />
-                                      <line x1="10" y1="14" x2="21" y2="3" />
-                                    </svg>
-                                  </a>
-                                )}
-                              </div>
-                              <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
-                                {slot.category}
-                              </span>
-                            </div>
-                            <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
-                              {slot.arrivalTime} ({slot.durationMinutes}M)
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
-                            {slot.note}
-                          </p>
-                          <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
-                            <span className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3 text-[#DC143C]" />
-                              ESTIMATED: ₹{slot.estimatedCostPerHead}
-                            </span>
-                            {slot.travelToNextMinutes !== null && (
-                              <span className="text-[#DC143C] font-bold flex items-center gap-1.5 uppercase text-[9px]">
-                                <span className="flex items-center gap-0.5">
-                                  <svg className="h-3 w-3 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 1.1.9 2 2 2h2" />
-                                    <circle cx="7" cy="17" r="2" />
-                                    <circle cx="17" cy="17" r="2" />
-                                  </svg>
-                                  AUTO: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}
-                                </span>
-                                <span className="text-neutral-600">//</span>
-                                <span>TRANSIT: {slot.travelToNextMinutes} MINS</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Transit Grid */}
-              {selectedPlan.memberTravelMetrics && selectedPlan.memberTravelMetrics.length > 0 && (
-                <div className="border-t border-stone-900/60 pt-6 mt-6">
-                  <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5 mb-2.5">
-                    <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                      <path d="M2 12h20" />
-                    </svg>
-                    YOUR TRAVEL BREAKDOWN (TRANSIT GRID)
-                  </h4>
-                  <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
-                    <table className="w-full text-left border-collapse font-mono text-[10px]">
-                      <thead>
-                        <tr className="border-b border-stone-850 text-neutral-400 font-bold">
-                          <th className="py-2 px-3">Member</th>
-                          <th className="py-2 px-3">Train</th>
-                          <th className="py-2 px-3">Cab / Auto</th>
-                          <th className="py-2 px-3">Walk</th>
-                          <th className="py-2 px-3 text-right">Total Commute</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedPlan.memberTravelMetrics.map((mt: any) => {
-                          const memberObj = members.find((m: any) => m.userId === mt.userId);
-                          const name = memberObj ? memberObj.name : 'Participant';
-                          return (
-                            <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
-                              <td className="py-2 px-3 font-semibold text-white">{name}</td>
-                              <td className="py-2 px-3">
-                                {mt.trainTime > 0 ? (
-                                  <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
-                                ) : (
-                                  <span className="text-neutral-600">N/A</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3">
-                                {mt.cabTime > 0 || mt.autoTime > 0 ? (
-                                  <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
-                                ) : (
-                                  <span className="text-neutral-600">N/A</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3">
-                                {mt.walkTime > 0 ? (
-                                  <span>{mt.walkTime}m</span>
-                                ) : (
-                                  <span className="text-neutral-600">0m</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-right font-bold text-white">
-                                {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-            </CardContent>
-          </Card>
-        </div>
- 
+            </Card>
+          );
+        })}
       </div>
 
       {/* Regeneration Modal */}
