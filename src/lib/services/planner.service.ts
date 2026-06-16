@@ -97,11 +97,17 @@ function isVenueOpenAtTime(category: string, outingTime?: string | null): boolea
   }
 
   const cat = category.toUpperCase();
-  if (cat === 'MUSEUM' || cat === 'ART_GALLERY') {
+  if (cat === 'MUSEUM' || cat === 'ART_GALLERY' || cat === 'ART_EXHIBITION') {
     return hour >= 10.0 && hour <= 18.0; // 10 AM to 6 PM
   }
   if (cat === 'PARK') {
     return hour >= 6.0 && hour <= 19.0; // 6 AM to 7 PM
+  }
+  if (cat === 'WORKSHOP' || cat === 'POTTERY' || cat === 'PAINTING') {
+    return hour >= 9.0 && hour <= 21.0; // 9 AM to 9 PM
+  }
+  if (cat === 'COMIC_CON' || cat === 'ANIME_EVENT') {
+    return hour >= 10.0 && hour <= 20.0; // 10 AM to 8 PM
   }
   return true;
 }
@@ -505,9 +511,10 @@ function buildFallbackItineraryData(
     optionalCostMin: slotsOptionalMin,
     optionalCostMax: slotsOptionalMax,
     whyRecommended: [
-      `✓ Fits outing constraints`,
-      `✓ Commute is fair for all members`,
-      `✓ Fits the ${groupData.groupType?.toLowerCase() || 'friends'} vibe`
+      "Everyone can afford this plan",
+      `Average travel time ${avgTotalTime} minutes`,
+      `Matches ${groupData.groupType?.toLowerCase() || 'friends'} vibe`,
+      "Highest conversation score"
     ],
     slots,
     memberTravels: memberTravelsForPlan
@@ -774,7 +781,52 @@ function scorePlaceCandidateRefactored(
     freshness = -0.5;
   }
 
-  const score = 0.40 * categoryMatch + 0.20 * budgetMatch + 0.15 * popularity + 0.10 * travelFairness + 0.10 * ratingScore + 0.05 * freshness;
+  // Calculate uniqueness score (Interestingness)
+  const nameLower = (place.name || '').toLowerCase();
+  const chains = [
+    'mcdonald',
+    'starbucks',
+    'subway',
+    'domino',
+    'kfc',
+    'burger king',
+    'pizza hut',
+    'baskin robbins',
+    'dunkin',
+    'cafe coffee day',
+    'ccd',
+    'pizza express',
+    'barbeque nation',
+    'taco bell',
+    'coffee bean',
+    'third wave',
+    'blue tokai'
+  ];
+
+  const isChain = chains.some(chain => nameLower.includes(chain));
+  let uniquenessScore = 0.6; // default moderate uniqueness
+
+  if (isChain) {
+    uniquenessScore = 0.1; // heavily penalized
+  } else {
+    const uniqueCategories = [
+      'BOARD_GAMES', 'BOARD_GAME_CAFE', 'POTTERY', 'ARCADE', 'WORKSHOP',
+      'MUSEUM', 'BOWLING', 'ESCAPE_ROOM', 'ART_GALLERY', 'ART_EXHIBITION',
+      'CONCERT', 'COMIC_CON', 'ANIME_EVENT', 'STANDUP_COMEDY', 'PAINTING'
+    ];
+    const catUpper = (place.category || '').toUpperCase();
+    if (uniqueCategories.includes(catUpper)) {
+      uniquenessScore = 1.0; // heavily boosted
+    }
+  }
+
+  // Adjusted weights totaling 1.0 (categoryMatch 30%, budgetMatch 20%, uniquenessScore 15%, popularity 15%, travelFairness 10%, ratingScore 5%, freshness 5%)
+  let score = 0.30 * categoryMatch + 0.20 * budgetMatch + 0.15 * uniquenessScore + 0.15 * popularity + 0.10 * travelFairness + 0.05 * ratingScore + 0.05 * freshness;
+  
+  // Apply boostFactor
+  const boost = typeof place.boostFactor === 'number' ? place.boostFactor : 1.0;
+  score = score * boost;
+
   return score;
 }
 
@@ -806,6 +858,7 @@ async function executePlanningEngine(
   const isLessTravel = options.includes('Less Travel');
   const isMoreActivities = options.includes('More Activities');
   const isMoreFood = options.includes('More Food');
+  const isMoreCreative = options.includes('More Creative');
 
   let activeVibes = [...vibes];
   if (options.includes('More Romantic') && !activeVibes.some(v => v.toUpperCase() === 'ROMANTIC')) {
@@ -859,7 +912,10 @@ async function executePlanningEngine(
         mandatoryCost: placeCosts.mandatoryCost,
         optionalCostMin: placeCosts.optionalCostMin,
         optionalCostMax: placeCosts.optionalCostMax,
-        lastVerified: places.lastVerified
+        lastVerified: places.lastVerified,
+        isFeatured: places.isFeatured,
+        isHidden: places.isHidden,
+        boostFactor: places.boostFactor
       })
       .from(places)
       .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
@@ -874,6 +930,12 @@ async function executePlanningEngine(
     const candidates: PlaceCandidate[] = [];
 
     dbPlaces.forEach((p: any) => {
+      // Quality Gate: filter hidden places
+      if (p.isHidden === 1) {
+        logRejection(p.name, 'Hidden by admin curation');
+        return;
+      }
+
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: p.lat, lng: p.lng });
       if (dist <= radiusKm) {
         candidates.push({
@@ -889,7 +951,10 @@ async function executePlanningEngine(
           mandatoryCost: p.mandatoryCost,
           optionalCostMin: p.optionalCostMin,
           optionalCostMax: p.optionalCostMax,
-          lastVerified: p.lastVerified
+          lastVerified: p.lastVerified,
+          isFeatured: p.isFeatured,
+          isHidden: p.isHidden,
+          boostFactor: p.boostFactor
         } as any);
       }
     });
@@ -900,6 +965,17 @@ async function executePlanningEngine(
       .where(eq(experiences.city, 'Mumbai'));
 
     dbExperiences.forEach((e: any) => {
+      // Date verification: Outing date must fall within the experience's start and end date
+      if (groupData.outingDate) {
+        const outingDateStr = groupData.outingDate.split('T')[0];
+        const startStr = e.startDate.split('T')[0];
+        const endStr = e.endDate.split('T')[0];
+        if (outingDateStr < startStr || outingDateStr > endStr) {
+          logRejection(e.title, `Event not active on outing date (${outingDateStr})`);
+          return; // Skip ineligible experience
+        }
+      }
+
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: e.latitude, lng: e.longitude });
       if (dist <= 10.0) {
         candidates.push({
@@ -918,7 +994,10 @@ async function executePlanningEngine(
           mandatoryCost: e.ticketPrice,
           optionalCostMin: 0,
           optionalCostMax: 0,
-          lastVerified: e.updatedAt
+          lastVerified: e.updatedAt,
+          isFeatured: 0,
+          isHidden: 0,
+          boostFactor: 1.0
         } as any);
       }
     });
@@ -1027,7 +1106,14 @@ async function executePlanningEngine(
         slot2Cats = ['CAFE', 'RESTAURANT'];
         slot2IsActivity = false;
         slot3Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'];
+        slot3IsActivity = true;
+      } else if (isMoreCreative) {
+        slot1Cats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'];
         slot1IsActivity = true;
+        slot2Cats = ['CAFE', 'RESTAURANT'];
+        slot2IsActivity = false;
+        slot3Cats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'];
+        slot3IsActivity = true;
       } else if (isMoreFood) {
         slot1Cats = ['CAFE'];
         slot1IsActivity = false;
@@ -1278,12 +1364,29 @@ async function executePlanningEngine(
 
         const rating = 0.40 * (slotsPopularity) + 0.20 * (1.0 - (totalMandatoryCost / 2000)) + 0.20 * (travelFairnessScore) + 0.20 * (1.0);
 
+        let planName = `${zoneObj.name} Outing`;
+        let tagline = `A wonderful day out in ${zoneObj.name}.`;
+        
+        if (planIndex === 1) {
+          planName = `Budget Friendly Outing (${zoneObj.name})`;
+          tagline = `A pocket-friendly day out exploring parks and cozy cafes in ${zoneObj.name}.`;
+        } else if (planIndex === 2) {
+          planName = `Foodie Extravaganza (${zoneObj.name})`;
+          tagline = `A culinary journey with premium cafes, local eateries, and sweet desserts in ${zoneObj.name}.`;
+        } else if (planIndex === 3) {
+          planName = `Action Packed Outing (${zoneObj.name})`;
+          tagline = `An exciting day featuring bowling, arcades, and active entertainment in ${zoneObj.name}.`;
+        } else if (planIndex === 4) {
+          planName = `Creative & Culture Outing (${zoneObj.name})`;
+          tagline = `Discover pottery classes, art galleries, and cultural experiences in ${zoneObj.name}.`;
+        }
+
         return {
           id: planId,
           groupId: groupData.id,
           planIndex,
-          name: zoneObj.name,
-          tagline: `A wonderful ${budgetTier.toLowerCase().replace('_', ' ')} day out in ${zoneObj.name}.`,
+          name: planName,
+          tagline,
           budgetTier,
           totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
           totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots[0].travelToNextMinutes || 0) + (slots[1].travelToNextMinutes || 0),
@@ -1315,9 +1418,10 @@ async function executePlanningEngine(
           optionalCostMin: slotsOptionalMin,
           optionalCostMax: slotsOptionalMax,
           whyRecommended: [
-            `✓ Fits all budgets (Lowest: ₹${Math.round(zoneData.zoneLowestBudget)})`,
-            `✓ Average commute is ${avgTotalTime} mins`,
-            `✓ High conversation and quality outing`
+            totalMandatoryCost + slotsOptionalMin <= zoneData.zoneLowestBudget ? "Everyone can afford this plan" : "Fits budget preferences",
+            `Average travel time ${avgTotalTime} minutes`,
+            vibes && vibes.length > 0 ? `Matches ${vibes.join(' & ')} vibe` : "Matches Activities vibe",
+            planIndex === 1 ? "Highest conversation score" : "Great venue variety"
           ],
           slots,
           memberTravels: memberTravelsForPlan
@@ -1904,6 +2008,18 @@ export const plannerService = {
         }
         if (dbSlots.length > 0) {
           await tx.insert(planSlots).values(dbSlots);
+
+          // Increment timesGenerated locally for the places
+          for (const slot of dbSlots) {
+            if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+              await tx.run(sql`
+                INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+                VALUES (${slot.venueId}, 1, 0, 0, 0)
+                ON CONFLICT(place_id)
+                DO UPDATE SET times_generated = times_generated + 1
+              `);
+            }
+          }
         }
         if (dbMemberTravels.length > 0) {
           await tx.insert(memberTravelMetrics).values(dbMemberTravels);

@@ -13,7 +13,7 @@ export type ApiCurrentUser = ApiUser & {
 };
 
 type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
 };
 

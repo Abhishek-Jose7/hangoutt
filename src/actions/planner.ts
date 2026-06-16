@@ -52,6 +52,24 @@ export async function getPlansForGroupAction(groupId: string): ActionResponse<an
     }
 
     const plansList = await planRepository.getPlansForGroup(groupId);
+
+    // Increment timesViewed locally for the places
+    try {
+      const { db } = await import('@/lib/db/client');
+      const { sql } = await import('drizzle-orm');
+      const uniqueVenueIds = Array.from(new Set(plansList.flatMap(p => p.slots.map(s => s.venueId)).filter(id => id && !id.startsWith('fallback_'))));
+      for (const venueId of uniqueVenueIds) {
+        await db.run(sql`
+          INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+          VALUES (${venueId}, 0, 1, 0, 0)
+          ON CONFLICT(place_id)
+          DO UPDATE SET times_viewed = times_viewed + 1
+        `);
+      }
+    } catch (err) {
+      console.error('Failed to increment local timesViewed:', err);
+    }
+
     return apiResponse.success(plansList);
   } catch (err) {
     return apiResponse.error(err);

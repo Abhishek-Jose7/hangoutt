@@ -85,6 +85,20 @@
       "when": 1781542626524,
       "tag": "0011_friendly_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1781594372678,
+      "tag": "0012_confused_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1781596381430,
+      "tag": "0013_dashing_talon",
+      "breakpoints": true
     }
   ]
 }

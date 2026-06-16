@@ -315,6 +315,9 @@ export const places = sqliteTable('places', {
   sourcePlaceId: text('source_place_id').notNull(),
   lastVerified: text('last_verified').notNull(),
   verifiedAt: text('verified_at').notNull(),
+  isFeatured: integer('is_featured').default(0).notNull(),
+  isHidden: integer('is_hidden').default(0).notNull(),
+  boostFactor: real('boost_factor').default(1.0).notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -384,3 +387,15 @@ export const zoneFallbacks = sqliteTable('zone_fallbacks', {
   address: text('address'),
   rating: real('rating'),
 });
+
+// 22. Featured Places Table
+export const featuredPlaces = sqliteTable('featured_places', {
+  id: text('id').primaryKey(),
+  listName: text('list_name').notNull(), // e.g. "Best Board Game Cafes", "Best Workshops", etc.
+  placeId: text('place_id').references(() => places.id, { onDelete: 'cascade' }),
+  experienceId: text('experience_id').references(() => experiences.id, { onDelete: 'cascade' }),
+  description: text('description'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+

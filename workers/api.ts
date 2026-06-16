@@ -833,6 +833,18 @@ async function savePlans(request: Request, env: Env, groupId: string) {
     ));
   }
 
+  // Increment times_generated for each place in the plan slots
+  for (const slot of body.slots) {
+    if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+      statements.push(env.DB.prepare(
+        `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+         VALUES (?, 1, 0, 0, 0)
+         ON CONFLICT(place_id)
+         DO UPDATE SET times_generated = times_generated + 1`
+      ).bind(slot.venueId));
+    }
+  }
+
   // Update group status to VOTING and open votingStatus
   const isFastTrackVal = (group as any)?.isFastTrack === 1 ? 1 : 0;
   const timerExpiresAt = isFastTrackVal === 1 ? new Date(Date.now() + 30 * 1000).toISOString() : null;
@@ -932,6 +944,25 @@ async function getPlans(request: Request, env: Env, groupId: string) {
     };
   });
 
+  // Increment times_viewed for all unique places being viewed
+  const uniqueVenueIds = Array.from(new Set(slots.map((s: any) => s.venueId).filter(id => id && !id.startsWith('fallback_'))));
+  if (uniqueVenueIds.length > 0) {
+    const viewStatements = [];
+    for (const venueId of uniqueVenueIds) {
+      viewStatements.push(env.DB.prepare(
+        `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+         VALUES (?, 0, 1, 0, 0)
+         ON CONFLICT(place_id)
+         DO UPDATE SET times_viewed = times_viewed + 1`
+      ).bind(venueId));
+    }
+    try {
+      await env.DB.batch(viewStatements);
+    } catch (err) {
+      console.error('Failed to batch update times_viewed metrics:', err);
+    }
+  }
+
   return json({ success: true, data }, { headers: corsHeaders(env) });
 }
 
@@ -973,6 +1004,26 @@ async function castVote(request: Request, env: Env, groupId: string) {
     createdAt: now,
     updatedAt: now
   };
+
+  // Increment times_voted for each place in the plan
+  try {
+    const slotsRes = await env.DB.prepare(`SELECT venue_id FROM plan_slots WHERE plan_id = ?`).bind(body.planId).all<{ venue_id: string | null }>();
+    const voteVenueIds = (slotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fallback_'));
+    const voteStatements = [];
+    for (const venueId of voteVenueIds) {
+      voteStatements.push(env.DB.prepare(
+        `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+         VALUES (?, 0, 0, 1, 0)
+         ON CONFLICT(place_id)
+         DO UPDATE SET times_voted = times_voted + 1`
+      ).bind(venueId));
+    }
+    if (voteStatements.length > 0) {
+      await env.DB.batch(voteStatements);
+    }
+  } catch (err) {
+    console.error('Failed to update times_voted metrics:', err);
+  }
 
   return json({ success: true, data: vote }, { headers: corsHeaders(env) });
 }
@@ -1036,7 +1087,16 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
   const historyId = uuid();
   const now = new Date().toISOString();
 
-  await env.DB.batch([
+  // Query slots to get winning place IDs
+  let winnerVenueIds: string[] = [];
+  try {
+    const winnerSlotsRes = await env.DB.prepare(`SELECT venue_id FROM plan_slots WHERE plan_id = ?`).bind(body.winnerPlanId).all<{ venue_id: string | null }>();
+    winnerVenueIds = (winnerSlotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fallback_')) as string[];
+  } catch (err) {
+    console.error('Failed to query winning plan slots:', err);
+  }
+
+  const closeStatements = [
     env.DB.prepare(
       `UPDATE groups 
        SET status = 'COMPLETED', voting_status = 'CLOSED', winning_plan_id = ?, updated_at = CURRENT_TIMESTAMP
@@ -1051,7 +1111,18 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
       historyId, groupId, body.winnerPlanId, body.outingDate, body.groupName, body.planName, body.planTagline,
       body.venuesJson, body.participantsJson, body.totalCostPerHead, body.winningCategories || null, body.winningBudgetTier || null, body.winningActivities || null, now
     )
-  ]);
+  ];
+
+  for (const venueId of winnerVenueIds) {
+    closeStatements.push(env.DB.prepare(
+      `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+       VALUES (?, 0, 0, 0, 1)
+       ON CONFLICT(place_id)
+       DO UPDATE SET times_won = times_won + 1`
+    ).bind(venueId));
+  }
+
+  await env.DB.batch(closeStatements);
 
   return json({ success: true }, { headers: corsHeaders(env) });
 }
@@ -1090,6 +1161,22 @@ const CONVERSATION_SCORES_WORKER: Record<string, number> = {
   SPORTS: 3,
   MALL: 3,
 };
+
+function parseEventLocation(text: string) {
+  const t = text.toLowerCase();
+  if (t.includes('bandra')) return { lat: 19.0596, lng: 72.8295 };
+  if (t.includes('andheri')) return { lat: 19.1136, lng: 72.8697 };
+  if (t.includes('lower parel') || t.includes('parel')) return { lat: 19.0034, lng: 72.8276 };
+  if (t.includes('worli')) return { lat: 19.0176, lng: 72.8179 };
+  if (t.includes('juhu')) return { lat: 19.1075, lng: 72.8263 };
+  if (t.includes('powai')) return { lat: 19.1176, lng: 72.9060 };
+  if (t.includes('borivali')) return { lat: 19.2290, lng: 72.8570 };
+  if (t.includes('vashi')) return { lat: 19.0745, lng: 72.9978 };
+  if (t.includes('belapur')) return { lat: 19.0180, lng: 73.0392 };
+  if (t.includes('thane')) return { lat: 19.2183, lng: 72.9781 };
+  if (t.includes('dadar')) return { lat: 19.0178, lng: 72.8478 };
+  return { lat: 19.0178, lng: 72.8478 };
+}
 
 async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string) {
   const categoriesToSearch = [
@@ -1142,12 +1229,33 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const placeLng = result.geometry?.location?.lng;
         if (!placeLat || !placeLng) continue;
 
-        const rating = result.rating || 4.0;
-        const reviewCount = result.user_ratings_total || 5;
+        const rating = result.rating || 0;
+        const reviewCount = result.user_ratings_total || 0;
 
-        // Quality filters
-        if (cat === 'CAFE' && rating < 4.0) continue;
-        if (cat === 'RESTAURANT' && rating < 4.1) continue;
+        // Hangout Score Quality Gate (Rating >= 4.0, reviews >= 50)
+        // If rating is greater than 0, enforce quality limits. Otherwise allow 0/unrated as seed.
+        if (rating > 0 && (rating < 4.0 || reviewCount < 50)) {
+          continue;
+        }
+
+        // Filter closed places
+        const businessStatus = (result.business_status || '').toUpperCase();
+        if (businessStatus.includes('CLOSED')) {
+          continue;
+        }
+
+        // Filter delivery-only places
+        const types = result.types || [];
+        const nameLower = name.toLowerCase();
+        if (
+          types.includes('delivery') ||
+          types.includes('meal_delivery') ||
+          nameLower.includes('delivery only') ||
+          nameLower.includes('cloud kitchen') ||
+          nameLower.includes('takeaway only')
+        ) {
+          continue;
+        }
 
         // Calculate costs
         let mandatoryCost = 0;
@@ -1253,7 +1361,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   return discoveredCount;
 }
 
-async function discoverExperiences(db: D1Database) {
+async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
   await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('BOOKMYSHOW', 'BookMyShow', 1.0)`).run();
   await db.prepare(`INSERT OR IGNORE INTO experience_sources (id, name, reliability_weight) VALUES ('TAVILY', 'Tavily Search', 1.0)`).run();
 
@@ -1324,6 +1432,7 @@ async function discoverExperiences(db: D1Database) {
   const now = new Date().toISOString();
   const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  // 1. Insert Base/Mock Events
   for (const event of mockEvents) {
     const id = crypto.randomUUID();
     await db.prepare(
@@ -1337,6 +1446,75 @@ async function discoverExperiences(db: D1Database) {
       now, nextMonth, event.price, event.url, event.imageUrl, now, now
     ).run();
     added++;
+  }
+
+  // 2. Query Tavily Search API if key is available
+  if (tavilyApiKey) {
+    console.log('Tavily Search API key detected. Fetching live experiences...');
+    const searchQueries = [
+      { query: 'upcoming workshops in Mumbai', cat: 'WORKSHOP' },
+      { query: 'upcoming pottery classes in Mumbai', cat: 'POTTERY' },
+      { query: 'upcoming painting classes in Mumbai', cat: 'PAINTING' },
+      { query: 'upcoming comic cons in Mumbai', cat: 'COMIC_CON' },
+      { query: 'upcoming anime events in Mumbai', cat: 'ANIME_EVENT' },
+      { query: 'upcoming standup comedy shows in Mumbai', cat: 'STANDUP_COMEDY' },
+      { query: 'upcoming art exhibitions in Mumbai', cat: 'ART_EXHIBITION' },
+      { query: 'upcoming concerts in Mumbai', cat: 'CONCERT' }
+    ];
+
+    for (const item of searchQueries) {
+      try {
+        const response = await fetch('https://api.tavily.com/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            api_key: tavilyApiKey,
+            query: item.query,
+            search_depth: 'advanced',
+            max_results: 5
+          })
+        });
+
+        if (response.ok) {
+          const searchData = await response.json() as any;
+          const results = searchData?.results || [];
+
+          for (const res of results) {
+            const title = res.title || 'Special Mumbai Event';
+            const description = res.content || 'Enjoy an exciting event in Mumbai.';
+            const url = res.url || 'https://www.google.com/search?q=' + encodeURIComponent(title);
+            const { lat, lng } = parseEventLocation(title + ' ' + description);
+            
+            const id = crypto.randomUUID();
+            const nowTime = new Date().toISOString();
+            const nextMonthTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+            // Try to parse price
+            let price = 500;
+            const priceMatch = description.match(/(?:rs\.?|inr|₹)\s*(\d+)/i);
+            if (priceMatch) {
+              price = parseInt(priceMatch[1], 10);
+            }
+
+            await db.prepare(
+              `INSERT OR REPLACE INTO experiences (
+                id, title, description, category, city, latitude, longitude,
+                start_date, end_date, ticket_price, source, source_url, image_url,
+                rating, popularity_score, is_recurring, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, 'Mumbai', ?, ?, ?, ?, ?, 'TAVILY', ?, ?, 4.5, 0.8, 1, ?, ?)`
+            ).bind(
+              id, title, description, item.cat, lat, lng,
+              nowTime, nextMonthTime, price, url, 'https://images.unsplash.com/photo-1543157145-f78c636d023d?w=500', nowTime, nowTime
+            ).run();
+            added++;
+          }
+        }
+      } catch (err) {
+        console.error(`Error searching Tavily for ${item.query}:`, err);
+      }
+    }
   }
 
   return added;
@@ -1364,14 +1542,40 @@ async function handleAdminDiscoverZone(request: Request, env: Env) {
 }
 
 async function handleAdminDiscoverExperiences(request: Request, env: Env) {
-  const count = await discoverExperiences(env.DB);
+  const count = await discoverExperiences(env.DB, env.OLA_MAPS_API_KEY ? env.OLA_MAPS_API_KEY : undefined); // passes key if configured, or undefined
   return json({ success: true, count }, { headers: corsHeaders(env) });
+}
+
+async function handleAdminCuratePlace(request: Request, env: Env, placeId: string) {
+  const body = await readJson<{
+    isFeatured?: boolean | number;
+    isHidden?: boolean | number;
+    boostFactor?: number;
+  }>(request);
+
+  const existing = await env.DB.prepare(`SELECT id FROM places WHERE id = ?`).bind(placeId).first();
+  if (!existing) {
+    return json({ success: false, error: { message: 'Place not found' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const isFeaturedVal = body.isFeatured === true || body.isFeatured === 1 ? 1 : 0;
+  const isHiddenVal = body.isHidden === true || body.isHidden === 1 ? 1 : 0;
+  const boostFactorVal = typeof body.boostFactor === 'number' ? body.boostFactor : 1.0;
+
+  await env.DB.prepare(
+    `UPDATE places
+     SET is_featured = ?, is_hidden = ?, boost_factor = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).bind(isFeaturedVal, isHiddenVal, boostFactorVal, placeId).run();
+
+  return json({ success: true }, { headers: corsHeaders(env) });
 }
 
 async function getAdminPlacesWorker(request: Request, env: Env) {
   const query = `
     SELECT 
       p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
+      p.is_featured AS isFeatured, p.is_hidden AS isHidden, p.boost_factor AS boostFactor,
       c.mandatory_cost AS mandatoryCost, c.optional_cost_min AS optionalCostMin, c.optional_cost_max AS optionalCostMax,
       s.popularity, s.budget_friendliness AS budgetFriendliness, s.overall,
       (SELECT group_concat(cat.category, ', ') FROM place_categories cat WHERE cat.place_id = p.id) AS categories
@@ -1381,7 +1585,202 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
     ORDER BY p.name ASC
   `;
   const result = await env.DB.prepare(query).all();
-  return json({ success: true, data: result.results || [] }, { headers: corsHeaders(env) });
+  
+  // Format boolean columns properly for JSON response
+  const data = (result.results || []).map((r: any) => ({
+    ...r,
+    isFeatured: r.isFeatured === 1 || r.isFeatured === true ? 1 : 0,
+    isHidden: r.isHidden === 1 || r.isHidden === true ? 1 : 0,
+    boostFactor: typeof r.boostFactor === 'number' ? r.boostFactor : 1.0,
+  }));
+
+  return json({ success: true, data }, { headers: corsHeaders(env) });
+}
+
+async function handleAddPlace(request: Request, env: Env) {
+  const body = await readJson<any>(request);
+  const placeId = body.id || uuid();
+  const name = body.name || 'Unknown Place';
+  const address = body.address || '';
+  const lat = Number(body.lat || 0);
+  const lng = Number(body.lng || 0);
+  const rating = Number(body.rating || 0);
+  const reviewCount = Number(body.reviewCount || 0);
+  const isFeaturedVal = body.isFeatured === true || body.isFeatured === 1 ? 1 : 0;
+  const isHiddenVal = body.isHidden === true || body.isHidden === 1 ? 1 : 0;
+  const boostFactorVal = typeof body.boostFactor === 'number' ? body.boostFactor : 1.0;
+  const now = new Date().toISOString();
+
+  const mandatoryCost = Number(body.mandatoryCost || 0);
+  const optionalCostMin = Number(body.optionalCostMin || 0);
+  const optionalCostMax = Number(body.optionalCostMax || 0);
+
+  const popularity = Number(body.popularity || 0);
+  const budgetFriendliness = Number(body.budgetFriendliness || 0);
+  const conversation = Number(body.conversation || 0);
+  const groupSuitability = Number(body.groupSuitability || 0);
+  const dateSuitability = Number(body.dateSuitability || 0);
+  const friendsSuitability = Number(body.friendsSuitability || 0);
+  const familySuitability = Number(body.familySuitability || 0);
+  const weatherSuitability = Number(body.weatherSuitability || 0);
+  const uniqueness = Number(body.uniqueness || 0);
+  const experienceScore = Number(body.experienceScore || 0);
+  const overall = Number(body.overall || 0);
+
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, is_featured, is_hidden, boost_factor, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(placeId, name, address, lat, lng, rating, reviewCount, placeId, now, now, isFeaturedVal, isHiddenVal, boostFactorVal, now, now),
+    
+    env.DB.prepare(
+      `INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max)
+       VALUES (?, ?, ?, ?)`
+    ).bind(placeId, mandatoryCost, optionalCostMin, optionalCostMax),
+
+    env.DB.prepare(
+      `INSERT OR REPLACE INTO place_scores (
+        place_id, popularity, budget_friendliness, conversation, group_suitability,
+        date_suitability, friends_suitability, family_suitability, weather_suitability,
+        uniqueness, experience_score, overall
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      placeId, popularity, budgetFriendliness, conversation, groupSuitability,
+      dateSuitability, friendsSuitability, familySuitability, weatherSuitability,
+      uniqueness, experienceScore, overall
+    )
+  ];
+
+  // Categories
+  const categories = Array.isArray(body.categories) ? body.categories : (typeof body.categories === 'string' ? body.categories.split(',').map((c: string) => c.trim()) : []);
+  for (const cat of categories) {
+    if (cat) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
+        ).bind(uuid(), placeId, cat.toUpperCase())
+      );
+    }
+  }
+
+  await env.DB.batch(statements);
+  return json({ success: true, id: placeId }, { headers: corsHeaders(env) });
+}
+
+async function handleUpdatePlace(request: Request, env: Env, placeId: string) {
+  const body = await readJson<any>(request);
+  const existing = await env.DB.prepare(`SELECT id FROM places WHERE id = ?`).bind(placeId).first();
+  if (!existing) {
+    return json({ success: false, error: { message: 'Place not found' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const name = body.name;
+  const address = body.address;
+  const lat = body.lat !== undefined ? Number(body.lat) : undefined;
+  const lng = body.lng !== undefined ? Number(body.lng) : undefined;
+  const rating = body.rating !== undefined ? Number(body.rating) : undefined;
+  const reviewCount = body.reviewCount !== undefined ? Number(body.reviewCount) : undefined;
+  const isFeaturedVal = body.isFeatured !== undefined ? (body.isFeatured === true || body.isFeatured === 1 ? 1 : 0) : undefined;
+  const isHiddenVal = body.isHidden !== undefined ? (body.isHidden === true || body.isHidden === 1 ? 1 : 0) : undefined;
+  const boostFactorVal = body.boostFactor !== undefined ? Number(body.boostFactor) : undefined;
+
+  const mandatoryCost = body.mandatoryCost !== undefined ? Number(body.mandatoryCost) : undefined;
+  const optionalCostMin = body.optionalCostMin !== undefined ? Number(body.optionalCostMin) : undefined;
+  const optionalCostMax = body.optionalCostMax !== undefined ? Number(body.optionalCostMax) : undefined;
+
+  const popularity = body.popularity !== undefined ? Number(body.popularity) : undefined;
+  const budgetFriendliness = body.budgetFriendliness !== undefined ? Number(body.budgetFriendliness) : undefined;
+  const conversation = body.conversation !== undefined ? Number(body.conversation) : undefined;
+  const groupSuitability = body.groupSuitability !== undefined ? Number(body.groupSuitability) : undefined;
+  const dateSuitability = body.dateSuitability !== undefined ? Number(body.dateSuitability) : undefined;
+  const friendsSuitability = body.friendsSuitability !== undefined ? Number(body.friendsSuitability) : undefined;
+  const familySuitability = body.familySuitability !== undefined ? Number(body.familySuitability) : undefined;
+  const weatherSuitability = body.weatherSuitability !== undefined ? Number(body.weatherSuitability) : undefined;
+  const uniqueness = body.uniqueness !== undefined ? Number(body.uniqueness) : undefined;
+  const experienceScore = body.experienceScore !== undefined ? Number(body.experienceScore) : undefined;
+  const overall = body.overall !== undefined ? Number(body.overall) : undefined;
+
+  const statements = [];
+
+  // Update places fields
+  let placesUpdate = 'UPDATE places SET updated_at = CURRENT_TIMESTAMP';
+  const placesParams = [];
+  if (name !== undefined) { placesUpdate += ', name = ?'; placesParams.push(name); }
+  if (address !== undefined) { placesUpdate += ', address = ?'; placesParams.push(address); }
+  if (lat !== undefined) { placesUpdate += ', lat = ?'; placesParams.push(lat); }
+  if (lng !== undefined) { placesUpdate += ', lng = ?'; placesParams.push(lng); }
+  if (rating !== undefined) { placesUpdate += ', rating = ?'; placesParams.push(rating); }
+  if (reviewCount !== undefined) { placesUpdate += ', review_count = ?'; placesParams.push(reviewCount); }
+  if (isFeaturedVal !== undefined) { placesUpdate += ', is_featured = ?'; placesParams.push(isFeaturedVal); }
+  if (isHiddenVal !== undefined) { placesUpdate += ', is_hidden = ?'; placesParams.push(isHiddenVal); }
+  if (boostFactorVal !== undefined) { placesUpdate += ', boost_factor = ?'; placesParams.push(boostFactorVal); }
+  placesUpdate += ' WHERE id = ?';
+  placesParams.push(placeId);
+  statements.push(env.DB.prepare(placesUpdate).bind(...placesParams));
+
+  // Update costs
+  let costsUpdate = 'UPDATE place_costs SET place_id = place_id';
+  const costsParams = [];
+  if (mandatoryCost !== undefined) { costsUpdate += ', mandatory_cost = ?'; costsParams.push(mandatoryCost); }
+  if (optionalCostMin !== undefined) { costsUpdate += ', optional_cost_min = ?'; costsParams.push(optionalCostMin); }
+  if (optionalCostMax !== undefined) { costsUpdate += ', optional_cost_max = ?'; costsParams.push(optionalCostMax); }
+  costsUpdate += ' WHERE place_id = ?';
+  costsParams.push(placeId);
+  statements.push(env.DB.prepare(costsUpdate).bind(...costsParams));
+
+  // Update scores
+  let scoresUpdate = 'UPDATE place_scores SET place_id = place_id';
+  const scoresParams = [];
+  if (popularity !== undefined) { scoresUpdate += ', popularity = ?'; scoresParams.push(popularity); }
+  if (budgetFriendliness !== undefined) { scoresUpdate += ', budget_friendliness = ?'; scoresParams.push(budgetFriendliness); }
+  if (conversation !== undefined) { scoresUpdate += ', conversation = ?'; scoresParams.push(conversation); }
+  if (groupSuitability !== undefined) { scoresUpdate += ', group_suitability = ?'; scoresParams.push(groupSuitability); }
+  if (dateSuitability !== undefined) { scoresUpdate += ', date_suitability = ?'; scoresParams.push(dateSuitability); }
+  if (friendsSuitability !== undefined) { scoresUpdate += ', friends_suitability = ?'; scoresParams.push(friendsSuitability); }
+  if (familySuitability !== undefined) { scoresUpdate += ', family_suitability = ?'; scoresParams.push(familySuitability); }
+  if (weatherSuitability !== undefined) { scoresUpdate += ', weather_suitability = ?'; scoresParams.push(weatherSuitability); }
+  if (uniqueness !== undefined) { scoresUpdate += ', uniqueness = ?'; scoresParams.push(uniqueness); }
+  if (experienceScore !== undefined) { scoresUpdate += ', experience_score = ?'; scoresParams.push(experienceScore); }
+  if (overall !== undefined) { scoresUpdate += ', overall = ?'; scoresParams.push(overall); }
+  scoresUpdate += ' WHERE place_id = ?';
+  scoresParams.push(placeId);
+  statements.push(env.DB.prepare(scoresUpdate).bind(...scoresParams));
+
+  // Update categories if provided
+  if (body.categories !== undefined) {
+    statements.push(env.DB.prepare(`DELETE FROM place_categories WHERE place_id = ?`).bind(placeId));
+    const categories = Array.isArray(body.categories) ? body.categories : (typeof body.categories === 'string' ? body.categories.split(',').map((c: string) => c.trim()) : []);
+    for (const cat of categories) {
+      if (cat) {
+        statements.push(
+          env.DB.prepare(
+            `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
+          ).bind(uuid(), placeId, cat.toUpperCase())
+        );
+      }
+    }
+  }
+
+  await env.DB.batch(statements);
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function handleDeletePlace(request: Request, env: Env, placeId: string) {
+  const existing = await env.DB.prepare(`SELECT id FROM places WHERE id = ?`).bind(placeId).first();
+  if (!existing) {
+    return json({ success: false, error: { message: 'Place not found' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const statements = [
+    env.DB.prepare(`DELETE FROM place_categories WHERE place_id = ?`).bind(placeId),
+    env.DB.prepare(`DELETE FROM place_costs WHERE place_id = ?`).bind(placeId),
+    env.DB.prepare(`DELETE FROM place_scores WHERE place_id = ?`).bind(placeId),
+    env.DB.prepare(`DELETE FROM ranking_metrics WHERE place_id = ?`).bind(placeId),
+    env.DB.prepare(`DELETE FROM places WHERE id = ?`).bind(placeId)
+  ];
+
+  await env.DB.batch(statements);
+  return json({ success: true }, { headers: corsHeaders(env) });
 }
 
 async function health(env: Env) {
@@ -1408,6 +1807,20 @@ export default {
       if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
       if (url.pathname === '/api/admin/discover-experiences' && request.method === 'POST') return handleAdminDiscoverExperiences(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'GET') return getAdminPlacesWorker(request, env);
+      if (url.pathname === '/api/admin/places' && request.method === 'POST') return handleAddPlace(request, env);
+      
+      const curateMatch = url.pathname.match(/^\/api\/admin\/places\/([^/]+)\/curate$/);
+      if (curateMatch && request.method === 'PATCH') {
+        const placeId = curateMatch[1];
+        return handleAdminCuratePlace(request, env, placeId);
+      }
+
+      const placeMatch = url.pathname.match(/^\/api\/admin\/places\/([^/]+)$/);
+      if (placeMatch) {
+        const placeId = placeMatch[1];
+        if (request.method === 'PATCH') return handleUpdatePlace(request, env, placeId);
+        if (request.method === 'DELETE') return handleDeletePlace(request, env, placeId);
+      }
 
       if (url.pathname === '/groups' && request.method === 'POST') return createGroup(request, env);
       if (url.pathname === '/groups' && request.method === 'GET') return listGroups(request, env);

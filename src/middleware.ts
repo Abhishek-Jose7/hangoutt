@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 // Define public routes that do not require authentication
 const isPublicRoute = createRouteMatcher([
@@ -9,8 +10,46 @@ const isPublicRoute = createRouteMatcher([
   '/api/webhooks/clerk(.*)',
 ]);
 
+const isAdminRoute = createRouteMatcher([
+  '/admin(.*)',
+]);
+
+const ADMIN_EMAILS = new Set([
+  'abhishekjose780@gmail.com',
+  'johannjoseph232006@gmail.com',
+]);
+
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
+  if (isAdminRoute(req)) {
+    const session = await auth();
+    if (!session.userId) {
+      await auth.protect();
+    }
+
+    const claims = session.sessionClaims as Record<string, any> | null;
+    const claimEmail =
+      claims?.email ||
+      claims?.email_address ||
+      claims?.primary_email_address ||
+      claims?.['https://clerk.dev/email'];
+
+    let userEmail = claimEmail ? String(claimEmail) : null;
+
+    if (!userEmail && session.userId) {
+      try {
+        const { clerkClient } = await import('@clerk/nextjs/server');
+        const client = await clerkClient();
+        const clerkUser = await client.users.getUser(session.userId);
+        userEmail = clerkUser.emailAddresses[0]?.emailAddress || null;
+      } catch (err) {
+        console.error('Error fetching clerk user email in middleware:', err);
+      }
+    }
+
+    if (!userEmail || !ADMIN_EMAILS.has(userEmail.toLowerCase())) {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
+  } else if (!isPublicRoute(req)) {
     await auth.protect();
   }
 });
@@ -23,3 +62,4 @@ export const config = {
     '/(api|trpc)(.*)',
   ],
 };
+

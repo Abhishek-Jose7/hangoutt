@@ -6,7 +6,7 @@ import { createVoteSchema } from '../validators/vote.schema';
 import { ForbiddenError, ValidationError, NotFoundError, VoteClosedError } from '../errors';
 import { db, safeTransaction } from '../db/client';
 import { groups, history } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { validateStatusTransition } from './group.service';
 
 export const votingService = {
@@ -53,6 +53,24 @@ export const votingService = {
       userId,
       planId,
     });
+
+    // Increment timesVoted locally for the places
+    try {
+      if (plan && plan.slots) {
+        for (const slot of plan.slots) {
+          if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+            await db.run(sql`
+              INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+              VALUES (${slot.venueId}, 0, 0, 1, 0)
+              ON CONFLICT(place_id)
+              DO UPDATE SET times_voted = times_voted + 1
+            `);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to increment local timesVoted:', err);
+    }
 
     // 6. Check if all active members have voted. If so, automatically finalize voting.
     const members = await memberRepository.getMembersWithUserDetails(groupId);
@@ -154,6 +172,18 @@ export const votingService = {
           winningBudgetTier: plan.budgetTier,
           winningActivities: JSON.stringify(slots.map(s => s.name)),
         });
+
+        // Increment timesWon locally for the places
+        for (const slot of slots) {
+          if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+            await tx.run(sql`
+              INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+              VALUES (${slot.venueId}, 0, 0, 0, 1)
+              ON CONFLICT(place_id)
+              DO UPDATE SET times_won = times_won + 1
+            `);
+          }
+        }
       }
     });
   },

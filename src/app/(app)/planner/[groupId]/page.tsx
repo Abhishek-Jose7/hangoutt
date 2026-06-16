@@ -6,9 +6,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getGroupDetailsAction } from '@/actions/groups';
-import { getPlansForGroupAction } from '@/actions/planner';
+import { getPlansForGroupAction, generatePlan } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
-import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award } from 'lucide-react';
+import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -27,6 +27,10 @@ export default function PlannerPage() {
   const [loading, setLoading] = useState(true);
   const [isCasting, setIsCasting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [isRegenOpen, setIsRegenOpen] = useState(false);
+  const [selectedRegenOpts, setSelectedRegenOpts] = useState<string[]>([]);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -40,8 +44,17 @@ export default function PlannerPage() {
 
         if (groupRes.success) {
           setGroup(groupRes.data.group);
+          setMembers(groupRes.data.members || []);
           setIsAdmin(groupRes.data.currentUser.role === 'ADMIN');
           setVotingStatus(groupRes.data.group.votingStatus);
+          if (groupRes.data.group.generationOptions) {
+            try {
+              const opts = JSON.parse(groupRes.data.group.generationOptions);
+              if (Array.isArray(opts)) {
+                setSelectedRegenOpts(opts);
+              }
+            } catch (_e) {}
+          }
         }
 
         if (plansRes.success) {
@@ -71,6 +84,38 @@ export default function PlannerPage() {
     }
     loadData();
   }, [groupId]);
+
+  const handleRegenerate = async () => {
+    setIsRegenerating(true);
+    try {
+      const res = await generatePlan(groupId, selectedRegenOpts);
+      if (res.success) {
+        toast.success('Itineraries regenerated successfully!');
+        const [groupRes, plansRes] = await Promise.all([
+          getGroupDetailsAction(groupId),
+          getPlansForGroupAction(groupId)
+        ]);
+        if (groupRes.success) {
+          setGroup(groupRes.data.group);
+          setVotingStatus(groupRes.data.group.votingStatus);
+        }
+        if (plansRes.success) {
+          setPlans(plansRes.data);
+          if (plansRes.data.length > 0) {
+            setActivePlanId(plansRes.data[0].id);
+          }
+        }
+        setIsRegenOpen(false);
+      } else {
+        toast.error(res.error?.message || 'Failed to regenerate plans');
+      }
+    } catch (err) {
+      console.error('Regeneration failed:', err);
+      toast.error('An unexpected error occurred during regeneration.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
 
   const handleVoteCast = async (planId: string) => {
     setIsCasting(true);
@@ -175,6 +220,16 @@ export default function PlannerPage() {
           >
             <ArrowLeft className="h-3.5 w-3.5 text-[#DC143C]" /> BACK TO WORKSPACE
           </Link>
+          {isAdmin && votingStatus === 'OPEN' && (
+            <Button
+              size="sm"
+              onClick={() => setIsRegenOpen(true)}
+              className="bg-stone-900 border border-stone-800 hover:bg-stone-800 hover:text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-[#DC143C]" />
+              REGENERATE PLANS
+            </Button>
+          )}
           {isAdmin && votingStatus === 'OPEN' && (
             <Button
               size="sm"
@@ -324,6 +379,21 @@ export default function PlannerPage() {
                 </div>
               </div>
 
+              {/* Why Recommended reasons display */}
+              {selectedPlan.whyRecommended && Array.isArray(selectedPlan.whyRecommended) && selectedPlan.whyRecommended.length > 0 && (
+                <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                    {selectedPlan.whyRecommended.map((reason: string, rIdx: number) => (
+                      <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
+                        <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Timeline slots */}
               <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
                 {selectedPlan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
@@ -406,11 +476,160 @@ export default function PlannerPage() {
                 })}
               </div>
 
+              {/* Transit Grid */}
+              {selectedPlan.memberTravelMetrics && selectedPlan.memberTravelMetrics.length > 0 && (
+                <div className="border-t border-stone-900/60 pt-6 mt-6">
+                  <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5 mb-2.5">
+                    <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                      <path d="M2 12h20" />
+                    </svg>
+                    YOUR TRAVEL BREAKDOWN (TRANSIT GRID)
+                  </h4>
+                  <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
+                    <table className="w-full text-left border-collapse font-mono text-[10px]">
+                      <thead>
+                        <tr className="border-b border-stone-850 text-neutral-400 font-bold">
+                          <th className="py-2 px-3">Member</th>
+                          <th className="py-2 px-3">Train</th>
+                          <th className="py-2 px-3">Cab / Auto</th>
+                          <th className="py-2 px-3">Walk</th>
+                          <th className="py-2 px-3 text-right">Total Commute</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedPlan.memberTravelMetrics.map((mt: any) => {
+                          const memberObj = members.find((m: any) => m.userId === mt.userId);
+                          const name = memberObj ? memberObj.name : 'Participant';
+                          return (
+                            <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
+                              <td className="py-2 px-3 font-semibold text-white">{name}</td>
+                              <td className="py-2 px-3">
+                                {mt.trainTime > 0 ? (
+                                  <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
+                                ) : (
+                                  <span className="text-neutral-600">N/A</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3">
+                                {mt.cabTime > 0 || mt.autoTime > 0 ? (
+                                  <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
+                                ) : (
+                                  <span className="text-neutral-600">N/A</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3">
+                                {mt.walkTime > 0 ? (
+                                  <span>{mt.walkTime}m</span>
+                                ) : (
+                                  <span className="text-neutral-600">0m</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold text-white">
+                                {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
             </CardContent>
           </Card>
         </div>
  
       </div>
+
+      {/* Regeneration Modal */}
+      {isRegenOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 font-mono">
+          <Card className="w-full max-w-md border border-stone-900 bg-stone-950 text-white rounded-[12px] shadow-2xl overflow-hidden">
+            <CardHeader className="border-b border-stone-900 pb-4">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin-slow" />
+                Regenerate Itineraries
+              </CardTitle>
+              <CardDescription className="text-[10px] text-neutral-400 font-sans">
+                Adjust preferences to regenerate a new set of 4 premium outings for the group.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-3.5">
+              <div className="space-y-2.5">
+                {[
+                  { id: 'Cheaper', label: 'Cheaper Outings', desc: 'Prioritize lower cost cafes and free activities' },
+                  { id: 'More Activities', label: 'More Activities', desc: 'Focus slots on bowling, arcades, and sports' },
+                  { id: 'More Food', label: 'More Food / Culinary', desc: 'Focus slots on cafes, restaurants, and desserts' },
+                  { id: 'More Indoor', label: 'More Indoor Options', desc: 'Exclude outdoor parks and scenic areas' },
+                  { id: 'More Creative', label: 'More Creative Outings', desc: 'Focus slots on pottery, painting, and workshops' },
+                  { id: 'Less Travel', label: 'Less Travel Commute', desc: 'Limit radius to 5km around the group midpoint' }
+                ].map((opt) => {
+                  const isChecked = selectedRegenOpts.includes(opt.id);
+                  return (
+                    <label
+                      key={opt.id}
+                      className={`flex items-start gap-3 p-3 rounded-[8px] border transition-all cursor-pointer ${
+                        isChecked 
+                          ? 'border-[#DC143C]/40 bg-[#DC143C]/5' 
+                          : 'border-stone-900 bg-stone-950 hover:bg-stone-900/40 hover:border-stone-850'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            setSelectedRegenOpts(prev => prev.filter(x => x !== opt.id));
+                          } else {
+                            setSelectedRegenOpts(prev => [...prev, opt.id]);
+                          }
+                        }}
+                        className="mt-1 h-3.5 w-3.5 border-stone-800 text-[#DC143C] focus:ring-[#DC143C] rounded accent-[#DC143C]"
+                      />
+                      <div className="flex flex-col gap-0.5 select-none">
+                        <span className="text-[10px] font-bold text-white uppercase tracking-wider">{opt.label}</span>
+                        <span className="text-[9px] text-neutral-400 font-sans leading-tight">{opt.desc}</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </CardContent>
+            <CardFooter className="border-t border-stone-900 pt-4 bg-black/25 flex justify-end gap-2.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsRegenOpen(false)}
+                disabled={isRegenerating}
+                className="border-stone-850 bg-stone-950 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+                className="bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2 flex items-center gap-1.5 shadow-md shadow-[#DC143C]/10"
+              >
+                {isRegenerating ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    REGENERATING...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    REGENERATE
+                  </>
+                )}
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
     </PageContainer>
   );
 }

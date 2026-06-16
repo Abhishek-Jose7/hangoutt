@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 async function fix() {
   console.log('Updating out-of-bounds coordinates to valid Mumbai coordinates...');
   
-  // Update all instances of Bangalore coordinates (12.9348, 77.6189) to Dadar (19.0178, 72.8478)
+  // Update all instances of old mock coordinates (12.9348, 77.6189) to Dadar (19.0178, 72.8478)
   const result = await db
     .update(locations)
     .set({
