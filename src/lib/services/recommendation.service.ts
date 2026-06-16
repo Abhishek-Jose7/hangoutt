@@ -82,7 +82,7 @@ export const recommendationService = {
                 id: item.place_id || `ola_${category}_${index}`,
                 name: item.name || item.structured_formatting?.main_text || 'Local Venue',
                 category: category,
-                rating: item.rating || Number((4.0 + Math.random() * 0.9).toFixed(1)),
+                rating: item.rating || null,
                 distanceKm: Number(dist.toFixed(2)),
                 estimatedCostPerHead: cost,
                 openNow: item.opening_hours?.open_now ?? true,

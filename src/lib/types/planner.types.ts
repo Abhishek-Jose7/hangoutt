@@ -17,7 +17,7 @@ export interface Venue {
   id: string;
   name: string;
   category: VenueCategory;
-  rating: number;
+  rating: number | null;
   distanceKm: number;
   estimatedCostPerHead: number;
   openNow: boolean;

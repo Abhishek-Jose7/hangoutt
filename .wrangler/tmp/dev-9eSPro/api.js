@@ -1021,8 +1021,9 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
         const placeLat = result.geometry?.location?.lat;
         const placeLng = result.geometry?.location?.lng;
         if (!placeLat || !placeLng) continue;
-        const rating = result.rating || 0;
-        const reviewCount = result.user_ratings_total || 0;
+        const parsedRating = Number(result.rating || 0);
+        const finalRating = parsedRating > 0 ? parsedRating : null;
+        const finalReviewCount = result.user_ratings_total || 0;
         const id = `OLA_${placeId}`;
         const businessStatus = (result.business_status || "").toUpperCase();
         if (businessStatus.includes("CLOSED")) {
@@ -1030,7 +1031,7 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
           });
           continue;
         }
-        if (rating < 4 || reviewCount < 50) {
+        if (finalRating !== null && finalReviewCount > 0 && (finalRating < 4 || finalReviewCount < 20)) {
           continue;
         }
         const types = result.types || [];
@@ -1103,7 +1104,7 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
         await db.prepare(
           `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?, ?)`
-        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, firstSeen, now, now).run();
+        ).bind(id, name, address, placeLat, placeLng, finalRating, finalReviewCount, placeId, now, now, firstSeen, now, now).run();
         const catId1 = crypto.randomUUID();
         await db.prepare(
           `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
@@ -1122,7 +1123,7 @@ async function discoverZonePlaces(db, zoneName, lat, lng, radius, apiKey) {
           `INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max)
            VALUES (?, ?, ?, ?)`
         ).bind(id, mandatoryCost, optionalCostMin, optionalCostMax).run();
-        const popularity = rating / 5;
+        const popularity = finalRating === null ? 0.5 : finalRating / 5;
         const budgetFriendliness = Math.max(0, Math.min(1, 1 - mandatoryCost / 1500));
         const conversationScoreVal = (CONVERSATION_SCORES_WORKER[cat] || 5) / 10;
         const groupSuitability = ["CAFE", "RESTAURANT", "BOWLING", "ARCADE"].includes(cat) ? 0.8 : 0.5;
@@ -1274,7 +1275,7 @@ async function discoverExperiences(db, tavilyApiKey) {
     }
     const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1e3 * 60 * 60 * 24));
     const freshness = Math.exp(-daysSinceDiscovery / 14);
-    const rating = 4.5;
+    const rating = null;
     const popularity = 0.8;
     const trendingScore = 100 * freshness * popularity;
     await db.prepare(
@@ -1350,7 +1351,7 @@ async function discoverExperiences(db, tavilyApiKey) {
             }
             const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1e3 * 60 * 60 * 24));
             const freshness = Math.exp(-daysSinceDiscovery / 14);
-            const rating = 4.5;
+            const rating = null;
             const popularity = 0.8;
             const trendingScore = 100 * freshness * popularity;
             let price = 500;

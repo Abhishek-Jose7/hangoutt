@@ -1492,15 +1492,23 @@ async function executePlanningEngine(
 }
 
 export const plannerService = {
-  async generatePlan(userId: string, groupId: string, options: string[] = []): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
+  async generatePlan(
+    userId: string,
+    groupId: string,
+    options: string[] = [],
+    authContext?: { clerkId?: string }
+  ): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
     const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
     if (isHangoutApiConfigured()) {
-      const { userRepository } = await import('../repositories/user.repository');
-      const userRecord = await userRepository.findById(userId);
-      if (!userRecord) {
-        throw new Error('User not found in local database');
+      let clerkId = authContext?.clerkId;
+      if (!clerkId) {
+        const { userRepository } = await import('../repositories/user.repository');
+        const userRecord = await userRepository.findById(userId);
+        if (!userRecord) {
+          throw new Error('User not found in local database');
+        }
+        clerkId = userRecord.clerkId;
       }
-      const clerkId = userRecord.clerkId;
       const detailsRes = await hangoutApi<any>(`/groups/${groupId}?clerkId=${encodeURIComponent(clerkId)}`);
       if (!detailsRes.success) {
         throw new Error(detailsRes.error?.message || 'Failed to fetch group details from D1');

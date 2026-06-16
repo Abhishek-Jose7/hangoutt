@@ -1,21 +1,33 @@
 'use server';
 
 import { apiResponse } from '@/lib/utils/apiResponse';
-import { ForbiddenError, ValidationError } from '@/lib/errors';
+import { ForbiddenError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
 import { isHangoutApiConfigured, hangoutApi } from '@/lib/cloudflare/hangoutApi';
 import { ActionResponse } from '@/lib/types/api.types';
 
 export async function generatePlan(groupId: string, options: string[] = []): ActionResponse<any> {
   try {
+    if (isHangoutApiConfigured()) {
+      const { getCurrentApiUser } = await import('@/lib/cloudflare/hangoutApi');
+      const { plannerService } = await import('@/lib/services/planner.service');
+      const apiUser = await getCurrentApiUser();
+      const result = await plannerService.generatePlan(apiUser.id || apiUser.clerkId, groupId, options, {
+        clerkId: apiUser.clerkId,
+      });
+
+      revalidatePath(`/groups/${groupId}`);
+      revalidatePath(`/planner/${groupId}`);
+      return apiResponse.success((result as any).plans);
+    }
+
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
     const { memberRepository } = await import('@/lib/repositories/member.repository');
     const { plannerService } = await import('@/lib/services/planner.service');
     const user = await getCurrentUser();
-
     // Verify caller is a member of the group
     const member = await memberRepository.getMember(groupId, user.id);
-    if (!member && !isHangoutApiConfigured()) {
+    if (!member) {
       throw new ForbiddenError('You must be a member of this group to generate plans.');
     }
 

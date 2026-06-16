@@ -1231,8 +1231,9 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const placeLng = result.geometry?.location?.lng;
         if (!placeLat || !placeLng) continue;
 
-        const rating = result.rating || 0;
-        const reviewCount = result.user_ratings_total || 0;
+        const parsedRating = Number(result.rating || 0);
+        const finalRating: number | null = parsedRating > 0 ? parsedRating : null;
+        const finalReviewCount = result.user_ratings_total || 0;
 
         const id = `OLA_${placeId}`;
 
@@ -1244,8 +1245,8 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           continue;
         }
 
-        // Hangout Score Quality Gate (Rating >= 4.0, reviews >= 50)
-        if (rating < 4.0 || reviewCount < 50) {
+        // Hangout Score Quality Gate: reject known-bad data, but keep unknown quality.
+        if (finalRating !== null && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 20)) {
           continue;
         }
 
@@ -1321,7 +1322,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         await db.prepare(
           `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?, ?)`
-        ).bind(id, name, address, placeLat, placeLng, rating, reviewCount, placeId, now, now, firstSeen, now, now).run();
+        ).bind(id, name, address, placeLat, placeLng, finalRating, finalReviewCount, placeId, now, now, firstSeen, now, now).run();
 
         // Save categories
         const catId1 = crypto.randomUUID();
@@ -1348,7 +1349,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         ).bind(id, mandatoryCost, optionalCostMin, optionalCostMax).run();
 
         // Save scores
-        const popularity = rating / 5.0;
+        const popularity = finalRating === null ? 0.5 : finalRating / 5.0;
         const budgetFriendliness = Math.max(0.0, Math.min(1.0, 1.0 - (mandatoryCost / 1500)));
         const conversationScoreVal = (CONVERSATION_SCORES_WORKER[cat] || 5) / 10.0;
 
@@ -1507,7 +1508,7 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
 
     const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24));
     const freshness = Math.exp(-daysSinceDiscovery / 14);
-    const rating = 4.5;
+    const rating = null;
     const popularity = 0.8;
     const trendingScore = 100 * freshness * popularity;
 
@@ -1578,7 +1579,7 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
 
             const daysSinceDiscovery = Math.max(0, (Date.now() - new Date(firstSeen).getTime()) / (1000 * 60 * 60 * 24));
             const freshness = Math.exp(-daysSinceDiscovery / 14);
-            const rating = 4.5;
+            const rating = null;
             const popularity = 0.8;
             const trendingScore = 100 * freshness * popularity;
 

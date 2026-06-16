@@ -28,8 +28,8 @@ export function scoreVenue(
     budgetScore = range > 0 ? (avgBudget - venue.estimatedCostPerHead) / range : 1;
   }
 
-  // 3. Rating Score: normalized out of 5.0
-  const ratingScore = Math.min(1, Math.max(0, (venue.rating || 0) / 5.0));
+  // 3. Rating Score: unknown ratings are neutral, not synthetic.
+  const ratingScore = venue.rating == null ? 0.5 : Math.min(1, Math.max(0, venue.rating / 5.0));
 
   // 4. Preference Score: 1 if category matches preferences, 0 otherwise
   const preferenceScore = preferredCategories.includes(venue.category) ? 1 : 0;
