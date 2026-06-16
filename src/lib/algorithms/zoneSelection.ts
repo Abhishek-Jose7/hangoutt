@@ -13,13 +13,15 @@ export interface CandidateZone {
 
 // Predefined candidate meetup zones for Mumbai, Navi Mumbai, and Thane
 const MUMBAI_ZONES: CandidateZone[] = [
+  { name: 'Bandra', lat: 19.0596, lng: 72.8295 },
   { name: 'Dadar', lat: 19.0178, lng: 72.8478 },
   { name: 'Kurla', lat: 19.0607, lng: 72.8826 },
-  { name: 'Vashi', lat: 19.0745, lng: 72.9978 },
   { name: 'Ghatkopar', lat: 19.0860, lng: 72.9082 },
+  { name: 'Vashi', lat: 19.0745, lng: 72.9978 },
   { name: 'Andheri', lat: 19.1136, lng: 72.8697 },
-  { name: 'Bandra', lat: 19.0596, lng: 72.8295 },
   { name: 'Belapur', lat: 19.0180, lng: 73.0392 },
+  { name: 'Seawoods', lat: 19.0210, lng: 73.0186 },
+  { name: 'Borivali', lat: 19.2290, lng: 72.8570 },
 ];
 
 // Haversine formula to calculate distance in km between two coordinates
@@ -46,6 +48,15 @@ export function selectCandidateZones(memberLocations: LatLng[]): CandidateZone[]
 
   // Force candidate pool to Mumbai
   const candidatePool = MUMBAI_ZONES;
+  const byName = (name: string) => candidatePool.find(zone => zone.name === name);
+
+  const latSpread = Math.max(...memberLocations.map(loc => loc.lat)) - Math.min(...memberLocations.map(loc => loc.lat));
+  const lngSpread = Math.max(...memberLocations.map(loc => loc.lng)) - Math.min(...memberLocations.map(loc => loc.lng));
+  if (latSpread > 0.12 && lngSpread > 0.10) {
+    return ['Bandra', 'Dadar', 'Kurla', 'Ghatkopar']
+      .map(byName)
+      .filter((zone): zone is CandidateZone => Boolean(zone));
+  }
 
   // Score each candidate zone based on distance averages and disparities (fairness)
   const scoredZones = candidatePool.map((zone) => {

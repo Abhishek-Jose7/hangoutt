@@ -356,8 +356,13 @@ function buildFallbackItineraryData(
 ) {
   const budgetTiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
-  
-  const zoneObj = { name: 'Dadar', lat: 19.0178, lng: 72.8478 };
+  const fallbackZones = [
+    { name: 'Bandra', lat: 19.0596, lng: 72.8295 },
+    { name: 'Dadar', lat: 19.0178, lng: 72.8478 },
+    { name: 'Kurla', lat: 19.0607, lng: 72.8826 },
+    { name: 'Ghatkopar', lat: 19.0860, lng: 72.9082 },
+  ];
+  const zoneObj = fallbackZones[(planIndex - 1) % fallbackZones.length];
   const selectedPlaces = getFallbackSlotsForPlan(planIndex);
   
   const slots = selectedPlaces.map((place, slotIdx) => {
@@ -407,7 +412,7 @@ function buildFallbackItineraryData(
       mandatoryCost,
       optionalCostMin,
       optionalCostMax,
-      imageUrl: place.imageUrl || `https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=500`,
+      imageUrl: place.imageUrl || null,
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
       note: `Enjoy a wonderful outing at ${place.name} matching the ${groupData.groupType?.toLowerCase() || 'friends'} vibe.`,
       lat: place.lat,
@@ -1407,20 +1412,16 @@ async function executePlanningEngine(
 
         const rating = 0.40 * (slotsPopularity) + 0.20 * (1.0 - (totalMandatoryCost / 2000)) + 0.20 * (travelFairnessScore) + 0.20 * (1.0);
 
-        let planName = `${zoneObj.name} Outing`;
+        let planName = zoneObj.name;
         let tagline = `A wonderful day out in ${zoneObj.name}.`;
         
         if (planIndex === 1) {
-          planName = `Budget Friendly Outing (${zoneObj.name})`;
           tagline = `A pocket-friendly day out exploring parks and cozy cafes in ${zoneObj.name}.`;
         } else if (planIndex === 2) {
-          planName = `Foodie Extravaganza (${zoneObj.name})`;
           tagline = `A culinary journey with premium cafes, local eateries, and sweet desserts in ${zoneObj.name}.`;
         } else if (planIndex === 3) {
-          planName = `Action Packed Outing (${zoneObj.name})`;
           tagline = `An exciting day featuring bowling, arcades, and active entertainment in ${zoneObj.name}.`;
         } else if (planIndex === 4) {
-          planName = `Creative & Culture Outing (${zoneObj.name})`;
           tagline = `Discover pottery classes, art galleries, and cultural experiences in ${zoneObj.name}.`;
         }
 
