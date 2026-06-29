@@ -154,7 +154,7 @@ export const votingService = {
           id: uuid(),
           groupId,
           planId: winnerPlanId,
-          outingDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+          outingDate: group.outingDate || new Date().toISOString().split('T')[0], // YYYY-MM-DD
           groupName: group.name,
           planName: plan.name,
           planTagline: plan.tagline,

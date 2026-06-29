@@ -311,18 +311,30 @@ export const groupService = {
       throw new NotFoundError('Group not found.');
     }
 
-    // Readiness checks are only relevant in COLLECTING_DETAILS
-    if (group.status !== 'COLLECTING_DETAILS' && group.status !== 'READY_TO_GENERATE') {
-      return group.status === 'READY_TO_GENERATE' || group.status === 'GENERATING' || group.status === 'VOTING' || group.status === 'COMPLETED' || group.status === 'ARCHIVED';
+    // Already past the collection phase — treat as ready
+    if (!['COLLECTING_DETAILS', 'READY_TO_GENERATE'].includes(group.status)) {
+      return ['READY_TO_GENERATE', 'GENERATING', 'VOTING', 'COMPLETED', 'ARCHIVED'].includes(group.status);
     }
 
     const members = await memberRepository.getMembersWithUserDetails(groupId);
-    const isReady = members.length > 0;
+    if (members.length === 0) return false;
+
+    const activeUserIds = members.map((m) => m.userId);
+
+    // Check which members have submitted both a budget and a location
+    const [groupBudgets, groupLocations] = await Promise.all([
+      budgetRepository.getGroupBudgets(groupId),
+      locationRepository.getGroupLocations(groupId),
+    ]);
+
+    const submittedCount = activeUserIds.filter(
+      (id) => groupBudgets.some((b) => b.userId === id) && groupLocations.some((l) => l.userId === id)
+    ).length;
+
+    const isReady = submittedCount >= members.length;
 
     if (isReady && group.status === 'COLLECTING_DETAILS') {
-      await groupRepository.update(groupId, {
-        status: 'READY_TO_GENERATE',
-      });
+      await groupRepository.update(groupId, { status: 'READY_TO_GENERATE' });
     }
 
     return isReady;

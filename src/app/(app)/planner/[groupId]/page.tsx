@@ -537,6 +537,7 @@ export default function PlannerPage() {
                   { id: 'More Food', label: 'More Food / Culinary', desc: 'Focus slots on cafes, restaurants, and desserts' },
                   { id: 'More Indoor', label: 'More Indoor Options', desc: 'Exclude outdoor parks and scenic areas' },
                   { id: 'More Creative', label: 'More Creative Outings', desc: 'Focus slots on pottery, painting, and workshops' },
+                  { id: 'More Romantic', label: 'More Romantic', desc: 'Boost cafes, scenic spots, and live music for date vibes' },
                   { id: 'Less Travel', label: 'Less Travel Commute', desc: 'Limit radius to 5km around the group midpoint' }
                 ].map((opt) => {
                   const isChecked = selectedRegenOpts.includes(opt.id);

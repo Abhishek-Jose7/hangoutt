@@ -34,5 +34,9 @@ export const userRepository = {
     }
     return result[0];
   },
+
+  async deleteByClerkId(clerkId: string): Promise<void> {
+    await db.delete(users).where(eq(users.clerkId, clerkId));
+  },
 };
 export type UserRepository = typeof userRepository;

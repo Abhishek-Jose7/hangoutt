@@ -122,7 +122,7 @@ export async function closeVoting(groupId: string): ActionResponse<{ success: bo
         body: {
           clerkId: user.clerkId,
           winnerPlanId,
-          outingDate: new Date().toISOString().split('T')[0],
+          outingDate: detailsRes.data.group.outingDate || new Date().toISOString().split('T')[0],
           groupName: detailsRes.data.group.name,
           planName: winnerPlan.name,
           planTagline: winnerPlan.tagline,

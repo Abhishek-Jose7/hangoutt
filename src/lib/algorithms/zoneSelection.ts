@@ -48,15 +48,6 @@ export function selectCandidateZones(memberLocations: LatLng[]): CandidateZone[]
 
   // Force candidate pool to Mumbai
   const candidatePool = MUMBAI_ZONES;
-  const byName = (name: string) => candidatePool.find(zone => zone.name === name);
-
-  const latSpread = Math.max(...memberLocations.map(loc => loc.lat)) - Math.min(...memberLocations.map(loc => loc.lat));
-  const lngSpread = Math.max(...memberLocations.map(loc => loc.lng)) - Math.min(...memberLocations.map(loc => loc.lng));
-  if (latSpread > 0.12 && lngSpread > 0.10) {
-    return ['Bandra', 'Dadar', 'Kurla', 'Ghatkopar']
-      .map(byName)
-      .filter((zone): zone is CandidateZone => Boolean(zone));
-  }
 
   // Score each candidate zone based on distance averages and disparities (fairness)
   const scoredZones = candidatePool.map((zone) => {

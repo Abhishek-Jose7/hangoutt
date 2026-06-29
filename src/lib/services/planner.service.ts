@@ -327,6 +327,13 @@ function getFallbackSlotsForPlan(planIndex: number): PlaceCandidate[] {
       MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_prithvi_cafe')!,
       MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_marine_drive')!,
     ];
+  } else if (planIndex === 2) {
+    // CAFE → activity → RESTAURANT (matches the buildItineraryData slot structure for plan 2)
+    return [
+      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_grandmamas')!,
+      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_museum_solutions')!,
+      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_joeys')!,
+    ];
   } else if (planIndex === 3) {
     return [
       MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_palacio')!,
@@ -424,12 +431,14 @@ function buildFallbackItineraryData(
     const current = slots[sIdx];
     const next = slots[sIdx + 1];
     const slotDist = getHaversineDistance({ lat: current.lat, lng: current.lng }, { lat: next.lat, lng: next.lng });
-    
+
     const travelMin = Math.max(15, Math.round(slotDist * 4.0) + 5);
     const travelCost = Math.round(23 + Math.max(0, slotDist - 1.5) * 15);
-    
+
     current.travelToNextMinutes = travelMin;
     (current as any).travelToNextCost = Math.ceil(travelCost / Math.min(3, presentMembers.length));
+    // Propagate corrected arrival time to the next slot
+    next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + travelMin);
   }
 
   const memberTravelsForPlan: any[] = [];
@@ -479,6 +488,22 @@ function buildFallbackItineraryData(
 
   const planId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : require('crypto').randomUUID();
 
+  const avgTrainTime = memberTravelsForPlan.length > 0
+    ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.trainTime || 0), 0) / memberTravelsForPlan.length)
+    : 0;
+  const avgTrainCost = memberTravelsForPlan.length > 0
+    ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.trainCost || 0), 0) / memberTravelsForPlan.length)
+    : 0;
+  const avgAutoTime = memberTravelsForPlan.length > 0
+    ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.autoTime || 0), 0) / memberTravelsForPlan.length)
+    : 0;
+  const avgAutoCost = memberTravelsForPlan.length > 0
+    ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.autoCost || 0), 0) / memberTravelsForPlan.length)
+    : 0;
+  const avgWalkTime = memberTravelsForPlan.length > 0
+    ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.walkingTime || 0), 0) / memberTravelsForPlan.length)
+    : 0;
+
   return {
     id: planId,
     groupId: groupData.id,
@@ -499,19 +524,19 @@ function buildFallbackItineraryData(
     vibeMatchScore: 1.0,
     compositeScore: 0.85,
 
-    avgTrainTime: 20,
-    avgCabTime: 25,
-    avgTrainCost: 15,
-    avgCabCost: 150,
+    avgTrainTime,
+    avgCabTime: avgAutoTime,
+    avgTrainCost,
+    avgCabCost: avgAutoCost,
     longestTravelTime,
     shortestTravelTime,
     travelFairnessScore,
 
-    avgAutoTime: 25,
-    avgAutoCost: 150,
+    avgAutoTime,
+    avgAutoCost,
     avgTotalTime,
     avgTotalCost,
-    avgWalkTime: 10,
+    avgWalkTime,
     mandatoryCost: totalMandatoryCost,
     optionalCostMin: slotsOptionalMin,
     optionalCostMax: slotsOptionalMax,
@@ -551,91 +576,6 @@ const CONVERSATION_SCORES: Record<string, number> = {
   THEATRE: 3,
   MALL: 3,
 };
-
-function scorePlaceCandidate(
-  place: PlaceCandidate,
-  groupType: string,
-  vibes: string[],
-  maxBudget: number,
-  lowestBudget: number,
-  avgMemberCoords: LatLng,
-  options: string[] = []
-): number {
-  // 1. Experience score based on category weights
-  const weights = CATEGORY_WEIGHTS[groupType.toUpperCase()] || CATEGORY_WEIGHTS.CUSTOM;
-  const weight = weights[place.category.toUpperCase()] || 5;
-  const experienceScore = weight / 10.0;
-
-  // 2. Budget score
-  let budgetScore = 0.0;
-  if (place.estimatedCostPerHead <= lowestBudget) {
-    budgetScore = 1.0;
-  } else if (place.estimatedCostPerHead <= maxBudget) {
-    const range = maxBudget - lowestBudget;
-    budgetScore = range > 0 ? 1.0 - ((place.estimatedCostPerHead - lowestBudget) / range) : 1.0;
-  }
-  budgetScore = Math.min(1.0, Math.max(0.0, budgetScore));
-
-  // 3. Travel score from average member coordinate
-  const dist = getHaversineDistance(avgMemberCoords, { lat: place.lat, lng: place.lng });
-  const distPenaltyMultiplier = options.includes('Less Travel') ? 3.0 : 1.0;
-  const travelScore = Math.max(0.0, 1.0 - ((dist * distPenaltyMultiplier) / 15.0)); // 15km scale
-
-  // 4. Rating score
-  const ratingScore = Math.min(1.0, Math.max(0.0, (place.rating || 4.0) / 5.0));
-
-  // 5. Vibe score
-  const vibeMap: Record<string, string[]> = {
-    CHILL: ['PARK', 'CAFE', 'DESSERT'],
-    CREATIVE: ['POTTERY', 'PAINTING', 'WORKSHOP', 'MUSEUM', 'ART_GALLERY'],
-    FOODIE: ['RESTAURANT', 'DESSERT', 'CAFE'],
-    CULTURAL: ['MUSEUM', 'ART_GALLERY'],
-    COMPETITIVE: ['ARCADE', 'BOWLING', 'ESCAPE_ROOM'],
-    ADVENTUROUS: ['ESCAPE_ROOM'],
-    ROMANTIC: ['CAFE', 'RESTAURANT', 'PARK'],
-    LUXURY: ['RESTAURANT', 'ART_GALLERY'],
-    BUDGET: ['PARK', 'MUSEUM', 'CAFE']
-  };
-
-  let matchCount = 0;
-  for (const vibe of vibes) {
-    const cats = vibeMap[vibe.toUpperCase()];
-    if (cats && cats.includes(place.category.toUpperCase())) {
-      matchCount++;
-    }
-  }
-  const vibeScore = Math.min(1.0, matchCount * 0.5);
-
-  // 6. Conversation score boost (especially for Date group types)
-  const conversationScore = CONVERSATION_SCORES[place.category.toUpperCase()] || 5;
-  const conversationBoost = (conversationScore / 10.0) * (groupType.toUpperCase() === 'DATE' ? 2.5 : 1.0);
-
-  // 7. Romantic boost if More Romantic option is chosen
-  let romanticBoost = 0.0;
-  if (options.includes('More Romantic') && ['CAFE', 'RESTAURANT', 'LIVE_MUSIC', 'SCENIC_EXPERIENCE'].includes(place.category.toUpperCase())) {
-    romanticBoost = 1.0;
-  }
-
-  // 8. Activities vs Food boost if options are chosen
-  let typeBoost = 0.0;
-  const isFoodCategory = ['CAFE', 'RESTAURANT', 'DESSERT'].includes(place.category.toUpperCase());
-  if (options.includes('More Food') && isFoodCategory) {
-    typeBoost = 1.0;
-  } else if (options.includes('More Activities') && !isFoodCategory) {
-    typeBoost = 1.0;
-  }
-
-  return (
-    experienceScore * 2.0 +
-    budgetScore * 1.5 +
-    travelScore * 1.5 +
-    ratingScore * 1.0 +
-    vibeScore * 1.0 +
-    conversationBoost * 1.5 +
-    romanticBoost * 1.0 +
-    typeBoost * 1.0
-  );
-}
 
 function addMinutesToTimeString(timeStr: string, minutesToAdd: number): string {
   let hour = 11;
@@ -1186,9 +1126,9 @@ async function executePlanningEngine(
         } else if (planIndex === 2) {
           slot1Cats = ['CAFE'];
           slot1IsActivity = false;
-          slot2Cats = ['RESTAURANT'];
-          slot2IsActivity = false;
-          slot3Cats = ['DESSERT'];
+          slot2Cats = ['MUSEUM', 'ART_GALLERY', 'PARK', 'ARCADE'];
+          slot2IsActivity = true;
+          slot3Cats = ['RESTAURANT', 'DESSERT'];
           slot3IsActivity = false;
         } else if (planIndex === 3) {
           slot1Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM'];
@@ -1373,12 +1313,14 @@ async function executePlanningEngine(
           const current = slots[sIdx];
           const next = slots[sIdx + 1];
           const slotDist = getHaversineDistance({ lat: current.lat, lng: current.lng }, { lat: next.lat, lng: next.lng });
-          
+
           const travelMin = Math.max(15, Math.round(slotDist * 4.0) + 5);
           const travelCost = Math.round(23 + Math.max(0, slotDist - 1.5) * 15);
-          
+
           current.travelToNextMinutes = travelMin;
           (current as any).travelToNextCost = Math.ceil(travelCost / Math.min(3, presentMembers.length));
+          // Propagate corrected arrival time to the next slot
+          next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + travelMin);
         }
 
         const memberTravelsForPlan: any[] = [];
@@ -1433,15 +1375,33 @@ async function executePlanningEngine(
           return sum + (matched?.score || 0.8);
         }, 0) / slots.length;
 
-        const rating = 0.40 * (slotsPopularity) + 0.20 * (1.0 - (totalMandatoryCost / 2000)) + 0.20 * (travelFairnessScore) + 0.20 * (1.0);
+        const budgetDenominator = Math.max(1, zoneData.zoneLowestBudget);
+        const rating = 0.40 * (slotsPopularity) + 0.20 * Math.max(0, 1.0 - (totalMandatoryCost / budgetDenominator)) + 0.20 * (travelFairnessScore) + 0.20 * (1.0);
+
+        // Compute real per-member travel averages from breakdown data
+        const avgTrainTime = memberTravelsForPlan.length > 0
+          ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.trainTime || 0), 0) / memberTravelsForPlan.length)
+          : 0;
+        const avgTrainCost = memberTravelsForPlan.length > 0
+          ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.trainCost || 0), 0) / memberTravelsForPlan.length)
+          : 0;
+        const avgAutoTime = memberTravelsForPlan.length > 0
+          ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.autoTime || 0), 0) / memberTravelsForPlan.length)
+          : 0;
+        const avgAutoCost = memberTravelsForPlan.length > 0
+          ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.autoCost || 0), 0) / memberTravelsForPlan.length)
+          : 0;
+        const avgWalkTime = memberTravelsForPlan.length > 0
+          ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.walkingTime || 0), 0) / memberTravelsForPlan.length)
+          : 0;
 
         let planName = zoneObj.name;
         let tagline = `A wonderful day out in ${zoneObj.name}.`;
-        
+
         if (planIndex === 1) {
           tagline = `A pocket-friendly day out exploring parks and cozy cafes in ${zoneObj.name}.`;
         } else if (planIndex === 2) {
-          tagline = `A culinary journey with premium cafes, local eateries, and sweet desserts in ${zoneObj.name}.`;
+          tagline = `Start with coffee, explore a local attraction, then end the day with a great meal in ${zoneObj.name}.`;
         } else if (planIndex === 3) {
           tagline = `An exciting day featuring bowling, arcades, and active entertainment in ${zoneObj.name}.`;
         } else if (planIndex === 4) {
@@ -1461,26 +1421,26 @@ async function executePlanningEngine(
 
           experienceScore: slotsPopularity,
           travelScore: travelFairnessScore,
-          budgetScore: Math.max(0.0, 1.0 - (totalMandatoryCost / 2000)),
+          budgetScore: Math.max(0.0, 1.0 - (totalMandatoryCost / budgetDenominator)),
           fairnessScore: travelFairnessScore,
           popularityScore: slotsPopularity,
           groupTypeMatchScore: 1.0,
           vibeMatchScore: 1.0,
           compositeScore: rating,
 
-          avgTrainTime: 20,
-          avgCabTime: 25,
-          avgTrainCost: 15,
-          avgCabCost: 150,
+          avgTrainTime,
+          avgCabTime: avgAutoTime,
+          avgTrainCost,
+          avgCabCost: avgAutoCost,
           longestTravelTime,
           shortestTravelTime,
           travelFairnessScore,
 
-          avgAutoTime: 25,
-          avgAutoCost: 150,
+          avgAutoTime,
+          avgAutoCost,
           avgTotalTime,
           avgTotalCost,
-          avgWalkTime: 10,
+          avgWalkTime,
           mandatoryCost: totalMandatoryCost,
           optionalCostMin: slotsOptionalMin,
           optionalCostMax: slotsOptionalMax,

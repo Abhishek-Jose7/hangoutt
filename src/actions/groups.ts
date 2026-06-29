@@ -129,7 +129,14 @@ export async function getUserGroupsAction(): ActionResponse<any[]> {
 export async function getUserHistoryAction(): ActionResponse<any[]> {
   try {
     if (isHangoutApiConfigured()) {
-      return apiResponse.success([]);
+      const user = await getCurrentApiUser();
+      const response = await hangoutApi<any>(`/users/history?clerkId=${encodeURIComponent(user.clerkId)}`);
+      if (!response.success) {
+        // Worker may not expose this endpoint yet; return empty rather than throw
+        console.warn('[getUserHistoryAction] D1 history endpoint unavailable:', response.error?.message);
+        return apiResponse.success([]);
+      }
+      return apiResponse.success(response.data ?? []);
     }
 
     const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');

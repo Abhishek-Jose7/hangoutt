@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
   if (eventType === 'user.created' || eventType === 'user.updated') {
     const data = evt.data as any;
-    
+
     // Extract email
     const email = data.email_addresses?.[0]?.email_address || '';
     // Extract name
@@ -76,10 +76,10 @@ export async function POST(req: Request) {
         console.log(`Synced user update for clerkId: ${clerkId}`);
       } else {
         // Create user record
-        const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' 
-          ? crypto.randomUUID() 
+        const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
           : require('crypto').randomUUID();
-          
+
         await userRepository.create({
           id: uuid,
           clerkId,
@@ -92,6 +92,20 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error('Error synchronizing user record:', err);
       return new NextResponse('Database write failure during synchronization', { status: 500 });
+    }
+  } else if (eventType === 'user.deleted') {
+    if (!clerkId) {
+      return new NextResponse('Error occurred -- missing Clerk user ID', { status: 400 });
+    }
+
+    try {
+      // Cascade deletes (groupMembers, budgets, locations, votes) are configured on the FK.
+      // Note: groups.creator_id has no cascade — created groups will keep a dangling reference.
+      await userRepository.deleteByClerkId(clerkId);
+      console.log(`Deleted user record for clerkId: ${clerkId}`);
+    } catch (err) {
+      console.error('Error deleting user record:', err);
+      return new NextResponse('Database delete failure during user removal', { status: 500 });
     }
   }
 
