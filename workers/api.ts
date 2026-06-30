@@ -1252,7 +1252,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
       const data = await res.json() as any;
       const results = data?.predictions || data?.results || [];
 
-      for (const item of results.slice(0, 10)) {
+      for (const item of results.slice(0, 6)) {
         const placeId = item.place_id;
         if (!placeId || seenPlaceIds.has(placeId)) continue;
         seenPlaceIds.add(placeId);
@@ -1314,21 +1314,32 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const badPatterns = [
           'anchor', 'emcee', 'dj ', ' dj', 'show host',
           'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
-          'photographer', 'videographer', 'consultant', 'pvt ltd', 'pvt. ltd',
+          'photographer', 'videographer', 'consultant', 'pvt ltd', 'pvt. ltd', 'limited', 'ltd.',
           'cosmetologist', 'physiotherapist', 'dermatologist',
           'beauty parlour', 'salon', 'spa', 'gym', 'fitness center',
           'metro station', 'railway station', 'bus stand', 'bus terminal', 'bus depot',
           'airport lounge', 'airport terminal',
           'corporate park', 'corporate tower', 'corporate hub',
-          'apartment', ' apts', 'housing society', 'co-op housing', 'chawl',
+          'apartment', ' apts', 'housing society', 'co-op housing', 'chawl', ' chs', 'chs ', 'c.h.s', 'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
           'gate no', ' gate 1', ' gate 2', 'garden gate', 'world garden gate',
           'puppeteer', 'ventriloquist', 'puppet-maker',
           'cable vision', 'cable tv', 'cable network', 'infotainment',
           'wall painting', 'statue structure', 'maidan',
           'kidzania', 'smaaash junior', 'kids play area',
-          'delivery only', 'cloud kitchen', 'takeaway only',
+          'delivery only', 'cloud kitchen', 'takeaway only', 'rto',
+          'monginis', 'ribbons & balloons', 'souffle cake', 'cake shop', 'cake counter', 'cake express', 'farsan', 'dairy',
+          'abcd', 'imagica', 'vastu park', 'abrol vastu', 'auditorium', 'selfie point', 'selfie',
+          'sathrasta', 'transit', 'compound', 'estate', 'marriage hall', 'banquet hall', 'community hall'
         ];
         if (badPatterns.some((p: string) => nameLower.includes(p))) continue;
+
+        // Check if name has plaza or market, but is NOT a whitelisted shopping mall / cinema / restaurant
+        if (nameLower.includes('plaza') || nameLower.includes('market')) {
+          const whitelist = ['cinema', 'theatre', 'multiplex', 'phoenix marketcity', 'jio world plaza', 'palladium', 'mall', 'dosa plaza'];
+          if (!whitelist.some(w => nameLower.includes(w))) {
+            continue;
+          }
+        }
 
         // 'amusement_park' catches water parks, theme parks, corporate parks — tighter gate
         if (type === 'amusement_park' && finalReviewCount < 50) continue;

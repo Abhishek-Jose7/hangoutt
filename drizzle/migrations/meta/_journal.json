@@ -106,6 +106,20 @@
       "when": 1781613153073,
       "tag": "0014_silent_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1782825137726,
+      "tag": "0015_self_healing",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1782825137726,
+      "tag": "0016_place_cat_unique",
+      "breakpoints": true
     }
   ]
 }
