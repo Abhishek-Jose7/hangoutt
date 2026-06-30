@@ -48,6 +48,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-30T13:29:16.722Z"
+    },
+    {
+      "id": "b3389362-76c8-483d-8f2b-f00b42021852",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "hah",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-shm\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-wal\",\"drizzle/migrations/0017_nosy_firebrand.sql\",\"drizzle/migrations/meta/0017_snapshot.json\",\"drizzle/migrations/meta/_journal.json\",\"local.db\",\"scratch/bootstrap_google_places.js\",\"scratch/debug_drizzle_migrate.js\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T18:27:20.605Z"
     }
   ]
 }

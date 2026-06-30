@@ -314,7 +314,11 @@ function buildFallbackItineraryData(
     })();
     const isNight = outingHour >= 19;
 
+    const hasMoviePreference = (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
+      (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie'));
+
     const rankedPool = MUMBAI_FALLBACK_CANDIDATES
+      .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
       .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) }))
       .sort((a, b) => a._d - b._d)
       .map(({ _d: _, ...c }) => c as PlaceCandidate);
@@ -1024,6 +1028,10 @@ async function executePlanningEngine(
   const isMoreActivities = options.includes('More Activities');
   const isMoreFood = options.includes('More Food');
   const isMoreCreative = options.includes('More Creative');
+  const hasMoviePreference = (preferredCategories && preferredCategories.some(cat => cat.toUpperCase() === 'MOVIE')) ||
+    (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
+    (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie')) ||
+    (vibes && vibes.some(v => String(v).toLowerCase().includes('movie')));
 
   let activeVibes = [...vibes];
   if (options.includes('More Romantic') && !activeVibes.some(v => v.toUpperCase() === 'ROMANTIC')) {
@@ -1101,6 +1109,11 @@ async function executePlanningEngine(
       // Quality Gate: filter hidden places
       if (p.isHidden === 1) {
         logRejection(p.name, 'Hidden by admin curation');
+        return;
+      }
+
+      if (p.category.toUpperCase() === 'MOVIE' && !hasMoviePreference) {
+        logRejection(p.name, 'Excluded because no movie preference was specified');
         return;
       }
 
@@ -1247,8 +1260,9 @@ async function executePlanningEngine(
       // 3. Only use zoneFallbacks if still sparse after live fetch
       if (candidates.length < 5) {
         const fallbacks = await resolveZoneFallbacks(zone.name, zone.lat, zone.lng);
-        if (fallbacks.length > 0) {
-          candidates.push(...fallbacks);
+        const filteredFallbacks = hasMoviePreference ? fallbacks : fallbacks.filter(f => f.category.toUpperCase() !== 'MOVIE');
+        if (filteredFallbacks.length > 0) {
+          candidates.push(...filteredFallbacks);
         }
       }
     }
