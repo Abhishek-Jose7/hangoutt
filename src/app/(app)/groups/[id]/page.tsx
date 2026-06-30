@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getGroupDetailsAction, startDetailsCollectionAction } from '@/actions/groups';
+import { getGroupDetailsAction, startDetailsCollectionAction, getUserHistoryAction } from '@/actions/groups';
 import { submitBudget } from '@/actions/budgets';
 import { saveLocation, reverseGeocodeAction } from '@/actions/locations';
 import { submitMemberVibes, updateMemberPresenceAction } from '@/actions/members';
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
+import { OutingFeedback } from '@/components/OutingFeedback';
 import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useParams } from 'next/navigation';
@@ -55,6 +56,7 @@ export default function GroupDetailsPage() {
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [isCasting, setIsCasting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [historyRecord, setHistoryRecord] = useState<any>(null);
 
 
 
@@ -98,10 +100,11 @@ export default function GroupDetailsPage() {
 
         // If plans are generated, load plans, vote counts, and user's vote
         if (['VOTING', 'COMPLETED', 'ARCHIVED'].includes(res.data.group.status)) {
-          const [plansRes, voteTalliesRes, userVoteRes] = await Promise.all([
+          const [plansRes, voteTalliesRes, userVoteRes, historyRes] = await Promise.all([
             getPlansForGroupAction(groupId),
             countVotes(groupId),
             getUserVoteForGroup(groupId),
+            ['COMPLETED', 'ARCHIVED'].includes(res.data.group.status) ? getUserHistoryAction() : Promise.resolve(null),
           ]);
 
           if (plansRes.success) {
@@ -116,6 +119,10 @@ export default function GroupDetailsPage() {
           }
           if (userVoteRes.success) {
             setUserVotedPlanId(userVoteRes.data);
+          }
+          if (historyRes && historyRes.success && historyRes.data) {
+            const record = historyRes.data.find((h: any) => h.groupId === groupId);
+            if (record) setHistoryRecord(record);
           }
         }
       } else {
@@ -539,6 +546,7 @@ export default function GroupDetailsPage() {
               (() => {
                 const winner = plans.find((p: any) => p.id === group.winningPlanId) || plans[0];
                 return (
+                  <>
                   <Card className="relative overflow-hidden border border-[#00E1AB]/20 rounded-[8px] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-6 space-y-6">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E1AB]/5 rounded-full blur-3xl pointer-events-none" />
                     
@@ -617,6 +625,22 @@ export default function GroupDetailsPage() {
                       </div>
                     </div>
                   </Card>
+
+                  {/* Post-outing feedback */}
+                  {historyRecord && (
+                    <OutingFeedback
+                      historyId={historyRecord.id}
+                      groupId={groupId}
+                      planId={winner?.id}
+                      slots={(winner?.slots ?? []).sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => ({
+                        id: s.id,
+                        name: s.name,
+                        placeId: s.venueId,
+                        category: s.category,
+                      }))}
+                    />
+                  )}
+                  </>
                 );
               })()
             ) : (

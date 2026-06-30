@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "data": [
+    {
+      "id": "unclassified-work",
+      "name": "Unclassified Work",
+      "description": "",
+      "status": "active",
+      "created_at": "2026-06-29T16:22:30.990Z",
+      "updated_at": "2026-06-29T16:22:31.006Z"
+    }
+  ]
+}

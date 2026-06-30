@@ -10,12 +10,12 @@ import { recommendationService } from './recommendation.service';
 import { generateItineraries } from '../groq/itineraryService';
 import { selectCandidateZones, getHaversineDistance, LatLng } from '../algorithms/zoneSelection';
 import { db, safeTransaction } from '../db/client';
-import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics, featuredExperiences } from '../db/schema';
+import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics, featuredExperiences, discoveryQueue, apiBudget } from '../db/schema';
 import { eq, sql, and, between } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
-import { ItineraryPromptContext } from '../types/planner.types';
+import { ItineraryPromptContext, VenueCategory } from '../types/planner.types';
 import { validateStatusTransition } from './group.service';
-import { getVenueImageUrl, getVenueDetails, searchTextVenues } from '../maps/places';
+import { getVenueImageUrl, getVenueDetails, searchTextVenues, searchNearbyVenues } from '../maps/places';
 
 function calculateMumbaiTravelBreakdown(from: LatLng, to: LatLng, outingTime?: string | null) {
   let isPeakTraffic = false;
@@ -155,222 +155,231 @@ function validateCoordinates(lat: number, lng: number): boolean {
   return lat >= 18.8 && lat <= 19.5 && lng >= 72.6 && lng <= 73.3;
 }
 
-const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
-  // Activities / Museums (PRIMARY)
-  {
-    id: 'fallback_palacio',
-    name: 'The Game Palacio',
-    category: 'BOWLING',
-    rating: 4.6,
-    lat: 19.0596,
-    lng: 72.8295,
-    estimatedCostPerHead: 1000,
-    address: 'Bandra West, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_smaaash',
-    name: 'Smaaash',
-    category: 'ARCADE',
-    rating: 4.4,
-    lat: 19.0034,
-    lng: 72.8276,
-    estimatedCostPerHead: 800,
-    address: 'Lower Parel, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_museum_solutions',
-    name: 'Museum of Solutions',
-    category: 'MUSEUM',
-    rating: 4.8,
-    lat: 19.0080,
-    lng: 72.8250,
-    estimatedCostPerHead: 500,
-    address: 'Lower Parel, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_pottery_lab',
-    name: 'Bandra Pottery Lab',
-    category: 'POTTERY',
-    rating: 4.7,
-    lat: 19.0500,
-    lng: 72.8300,
-    estimatedCostPerHead: 1200,
-    address: 'Bandra West, Mumbai',
-    openNow: true,
-    isExperience: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_snow_world',
-    name: 'Snow World Mumbai',
-    category: 'SPORTS',
-    rating: 4.2,
-    lat: 19.0607,
-    lng: 72.8826,
-    estimatedCostPerHead: 600,
-    address: 'Kurla West, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-
-  // Cafes / Restaurants (FOOD)
-  {
-    id: 'fallback_prithvi_cafe',
-    name: 'Prithvi Cafe',
-    category: 'CAFE',
-    rating: 4.6,
-    lat: 19.1075,
-    lng: 72.8263,
-    estimatedCostPerHead: 300,
-    address: 'Juhu, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_grandmamas',
-    name: "Grandmama's Cafe",
-    category: 'CAFE',
-    rating: 4.3,
-    lat: 19.0178,
-    lng: 72.8478,
-    estimatedCostPerHead: 600,
-    address: 'Dadar East, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_pizza_bay',
-    name: 'Pizza By The Bay',
-    category: 'RESTAURANT',
-    rating: 4.5,
-    lat: 18.9345,
-    lng: 72.8272,
-    estimatedCostPerHead: 1000,
-    address: 'Churchgate, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_joeys',
-    name: "Joey's Pizza",
-    category: 'RESTAURANT',
-    rating: 4.5,
-    lat: 19.1136,
-    lng: 72.8697,
-    estimatedCostPerHead: 500,
-    address: 'Andheri West, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-
-  // Parks / Scenic (OPTIONAL)
-  {
-    id: 'fallback_shivaji_park',
-    name: 'Shivaji Park',
-    category: 'PARK',
-    rating: 4.5,
-    lat: 19.0268,
-    lng: 72.8415,
-    estimatedCostPerHead: 0,
-    address: 'Dadar West, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_marine_drive',
-    name: 'Marine Drive Promenade',
-    category: 'PARK',
-    rating: 4.8,
-    lat: 18.9448,
-    lng: 72.8236,
-    estimatedCostPerHead: 0,
-    address: 'Marine Lines, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_carter_road',
-    name: 'Carter Road Promenade',
-    category: 'PARK',
-    rating: 4.6,
-    lat: 19.0690,
-    lng: 72.8360,
-    estimatedCostPerHead: 0,
-    address: 'Bandra West, Mumbai',
-    openNow: true,
-    isFallback: true
-  },
-  {
-    id: 'fallback_le15',
-    name: 'Le15 Patisserie',
-    category: 'DESSERT',
-    rating: 4.4,
-    lat: 19.0596,
-    lng: 72.8295,
-    estimatedCostPerHead: 300,
-    address: 'Bandra West, Mumbai',
-    openNow: true,
-    isFallback: true
-  }
+const PLANNER_REQUIRED_CATEGORIES: VenueCategory[] = [
+  'CAFE', 'RESTAURANT', 'ARCADE', 'PARK', 'ESCAPE_ROOM', 'DESSERT', 'BOWLING', 'MUSEUM'
 ];
 
-function getFallbackSlotsForPlan(planIndex: number): PlaceCandidate[] {
-  if (planIndex === 1) {
-    return [
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_shivaji_park')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_prithvi_cafe')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_marine_drive')!,
-    ];
-  } else if (planIndex === 2) {
-    // CAFE → activity → RESTAURANT (matches the buildItineraryData slot structure for plan 2)
-    return [
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_grandmamas')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_museum_solutions')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_joeys')!,
-    ];
-  } else if (planIndex === 3) {
-    return [
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_palacio')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_pizza_bay')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_smaaash')!,
-    ];
-  } else if (planIndex === 4) {
-    return [
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_pottery_lab')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_joeys')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_carter_road')!,
-    ];
-  } else {
-    return [
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_museum_solutions')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_grandmamas')!,
-      MUMBAI_FALLBACK_CANDIDATES.find(c => c.id === 'fallback_le15')!,
-    ];
-  }
+const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; max: number }> = {
+  CAFE:        { mandatory: 0,   min: 200, max: 600  },
+  RESTAURANT:  { mandatory: 0,   min: 300, max: 1000 },
+  DESSERT:     { mandatory: 0,   min: 150, max: 400  },
+  PARK:        { mandatory: 0,   min: 0,   max: 0    },
+  ARCADE:      { mandatory: 300, min: 100, max: 500  },
+  BOWLING:     { mandatory: 350, min: 100, max: 400  },
+  ESCAPE_ROOM: { mandatory: 700, min: 0,   max: 0    },
+  MUSEUM:      { mandatory: 150, min: 0,   max: 0    },
+  MALL:        { mandatory: 0,   min: 100, max: 500  },
+  SPORTS:      { mandatory: 300, min: 0,   max: 200  },
+  MOVIE:       { mandatory: 350, min: 0,   max: 100  },
+};
+
+const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
+  // ── CAFÉ ──────────────────────────────────────────────────────────────────
+  { id: 'fb_cafe_prithvi',    name: 'Prithvi Cafe',              category: 'CAFE',        rating: 4.6, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 300,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true },
+  { id: 'fb_cafe_candies',    name: 'Candies',                   category: 'CAFE',        rating: 4.5, lat: 19.0590, lng: 72.8280, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_cafe_doolally_k', name: 'Doolally Taproom Khar',     category: 'CAFE',        rating: 4.4, lat: 19.0715, lng: 72.8356, estimatedCostPerHead: 400,  address: 'Khar West, Mumbai',       openNow: true, isFallback: true },
+  { id: 'fb_cafe_doolally_a', name: 'Doolally Taproom Andheri',  category: 'CAFE',        rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 400,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_cafe_chai_kings', name: 'Chai Kings',                category: 'CAFE',        rating: 4.3, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 150,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_cafe_vashi_bru',  name: 'Cafe Bru Vashi',            category: 'CAFE',        rating: 4.2, lat: 19.0745, lng: 72.9978, estimatedCostPerHead: 250,  address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_cafe_thane_smg',  name: 'Social Thane',              category: 'CAFE',        rating: 4.3, lat: 19.2010, lng: 72.9780, estimatedCostPerHead: 350,  address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_cafe_grandmamas', name: "Grandmama's Cafe",          category: 'CAFE',        rating: 4.3, lat: 19.0178, lng: 72.8478, estimatedCostPerHead: 500,  address: 'Dadar East, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_cafe_leopold',    name: 'Cafe Leopold',              category: 'CAFE',        rating: 4.3, lat: 18.9219, lng: 72.8319, estimatedCostPerHead: 450,  address: 'Colaba, Mumbai',          openNow: true, isFallback: true },
+  { id: 'fb_cafe_tea_trail',  name: 'Tea Trails',                category: 'CAFE',        rating: 4.2, lat: 19.0734, lng: 72.9989, estimatedCostPerHead: 200,  address: 'Inorbit Mall, Vashi',     openNow: true, isFallback: true },
+
+  // ── RESTAURANT ────────────────────────────────────────────────────────────
+  { id: 'fb_rest_joeys_a',    name: "Joey's Pizza Andheri",      category: 'RESTAURANT',  rating: 4.5, lat: 19.1136, lng: 72.8697, estimatedCostPerHead: 500,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_rest_cafe_madras',name: 'Cafe Madras',               category: 'RESTAURANT',  rating: 4.6, lat: 19.0232, lng: 72.8640, estimatedCostPerHead: 200,  address: 'Matunga, Mumbai',         openNow: true, isFallback: true },
+  { id: 'fb_rest_swati',      name: 'Swati Snacks',              category: 'RESTAURANT',  rating: 4.5, lat: 18.9682, lng: 72.8108, estimatedCostPerHead: 250,  address: 'Tardeo, Mumbai',          openNow: true, isFallback: true },
+  { id: 'fb_rest_pav_bhaji',  name: 'Sardar Pav Bhaji',          category: 'RESTAURANT',  rating: 4.4, lat: 18.9682, lng: 72.8108, estimatedCostPerHead: 150,  address: 'Tardeo, Mumbai',          openNow: true, isFallback: true },
+  { id: 'fb_rest_pizza_bay',  name: 'Pizza By The Bay',          category: 'RESTAURANT',  rating: 4.5, lat: 18.9345, lng: 72.8272, estimatedCostPerHead: 800,  address: 'Churchgate, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_rest_vashi',      name: 'New Yorker Vashi',          category: 'RESTAURANT',  rating: 4.3, lat: 19.0700, lng: 72.9940, estimatedCostPerHead: 600,  address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_rest_thane',      name: 'Hotel Geetanjali',          category: 'RESTAURANT',  rating: 4.2, lat: 19.2183, lng: 72.9781, estimatedCostPerHead: 300,  address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_rest_borivali',   name: 'Rajdhani Thali Borivali',   category: 'RESTAURANT',  rating: 4.4, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 400,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_rest_powai',      name: 'Meal of Fortune Powai',     category: 'RESTAURANT',  rating: 4.2, lat: 19.1176, lng: 72.9060, estimatedCostPerHead: 450,  address: 'Powai, Mumbai',           openNow: true, isFallback: true },
+
+  // ── DESSERT ───────────────────────────────────────────────────────────────
+  { id: 'fb_dessert_le15',    name: 'Le15 Patisserie',           category: 'DESSERT',     rating: 4.4, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 300,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_dessert_naturals',name: 'Naturals Ice Cream',        category: 'DESSERT',     rating: 4.5, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 150,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true },
+  { id: 'fb_dessert_theo',    name: 'Theobroma Colaba',          category: 'DESSERT',     rating: 4.4, lat: 18.9219, lng: 72.8319, estimatedCostPerHead: 250,  address: 'Colaba, Mumbai',          openNow: true, isFallback: true },
+  { id: 'fb_dessert_borivali',name: 'Sweet Chariot Borivali',    category: 'DESSERT',     rating: 4.2, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 200,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_dessert_thane',   name: 'Bake House Thane',          category: 'DESSERT',     rating: 4.1, lat: 19.2183, lng: 72.9781, estimatedCostPerHead: 200,  address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_dessert_vashi',   name: 'Cupcake Therapy Vashi',     category: 'DESSERT',     rating: 4.2, lat: 19.0745, lng: 72.9978, estimatedCostPerHead: 200,  address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
+
+  // ── PARK / FREE ───────────────────────────────────────────────────────────
+  { id: 'fb_park_shivaji',    name: 'Shivaji Park',              category: 'PARK',        rating: 4.5, lat: 19.0268, lng: 72.8415, estimatedCostPerHead: 0,    address: 'Dadar West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_park_marine',     name: 'Marine Drive Promenade',    category: 'PARK',        rating: 4.8, lat: 18.9448, lng: 72.8236, estimatedCostPerHead: 0,    address: 'Marine Lines, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_park_carter',     name: 'Carter Road Promenade',     category: 'PARK',        rating: 4.6, lat: 19.0690, lng: 72.8360, estimatedCostPerHead: 0,    address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_park_versova',    name: 'Versova Beach',             category: 'PARK',        rating: 4.4, lat: 19.1385, lng: 72.8116, estimatedCostPerHead: 0,    address: 'Versova, Andheri West',   openNow: true, isFallback: true },
+  { id: 'fb_park_gorai',      name: 'Gorai Beach',               category: 'PARK',        rating: 4.3, lat: 19.2320, lng: 72.8220, estimatedCostPerHead: 0,    address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_park_upvan',      name: 'Upvan Lake Thane',          category: 'PARK',        rating: 4.4, lat: 19.2148, lng: 73.0018, estimatedCostPerHead: 0,    address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_park_vashi_cp',   name: 'Central Park Vashi',        category: 'PARK',        rating: 4.3, lat: 19.0733, lng: 72.9971, estimatedCostPerHead: 0,    address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_park_sion_fort',  name: 'Sion Fort',                 category: 'PARK',        rating: 4.2, lat: 19.0373, lng: 72.8630, estimatedCostPerHead: 0,    address: 'Sion, Mumbai',            openNow: true, isFallback: true },
+  { id: 'fb_park_natl',       name: 'Sanjay Gandhi National Park',category: 'PARK',       rating: 4.7, lat: 19.2280, lng: 72.8741, estimatedCostPerHead: 50,   address: 'Borivali East, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_park_kharghar',   name: 'Central Park Kharghar',     category: 'PARK',        rating: 4.5, lat: 19.0460, lng: 73.0680, estimatedCostPerHead: 0,    address: 'Kharghar, Navi Mumbai',   openNow: true, isFallback: true },
+
+  // ── ARCADE ────────────────────────────────────────────────────────────────
+  { id: 'fb_arcade_smaaash',  name: 'Smaaash Lower Parel',       category: 'ARCADE',      rating: 4.4, lat: 19.0034, lng: 72.8276, estimatedCostPerHead: 600,  address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_arcade_ezone_v',  name: 'E-Zone Inorbit Vashi',      category: 'ARCADE',      rating: 4.2, lat: 19.0734, lng: 72.9989, estimatedCostPerHead: 400,  address: 'Inorbit Mall, Vashi',     openNow: true, isFallback: true },
+  { id: 'fb_arcade_xero',     name: 'Xero Degrees Andheri',      category: 'ARCADE',      rating: 4.1, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 350,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_arcade_rcity',    name: 'Timezone R City Ghatkopar', category: 'ARCADE',      rating: 4.2, lat: 19.0860, lng: 72.9082, estimatedCostPerHead: 400,  address: 'R City Mall, Ghatkopar',  openNow: true, isFallback: true },
+  { id: 'fb_arcade_viviana',  name: 'Funky Monkey Viviana Thane',category: 'ARCADE',      rating: 4.0, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 400,  address: 'Viviana Mall, Thane',     openNow: true, isFallback: true },
+
+  // ── BOWLING ───────────────────────────────────────────────────────────────
+  { id: 'fb_bowl_palacio_b',  name: 'The Game Palacio Bandra',   category: 'BOWLING',     rating: 4.6, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 900,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_bowl_palacio_a',  name: 'The Game Palacio Andheri',  category: 'BOWLING',     rating: 4.5, lat: 19.1136, lng: 72.8697, estimatedCostPerHead: 900,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_bowl_clubhouse',  name: 'Smaaash Bowling Lower Parel',category: 'BOWLING',    rating: 4.3, lat: 19.0034, lng: 72.8276, estimatedCostPerHead: 500,  address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_bowl_viviana',    name: 'Bowling Co Viviana Thane',  category: 'BOWLING',     rating: 4.1, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 500,  address: 'Viviana Mall, Thane',     openNow: true, isFallback: true },
+
+  // ── ESCAPE ROOM ───────────────────────────────────────────────────────────
+  { id: 'fb_escape_mystery_a',name: 'Mystery Rooms Andheri',     category: 'ESCAPE_ROOM', rating: 4.5, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 700,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_escape_clue_b',   name: 'Clue Hunt Bandra',          category: 'ESCAPE_ROOM', rating: 4.4, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 750,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_escape_breakout', name: 'Breakout Andheri',          category: 'ESCAPE_ROOM', rating: 4.3, lat: 19.1050, lng: 72.8650, estimatedCostPerHead: 700,  address: 'Andheri East, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_escape_riddle',   name: 'The Riddle Room Powai',     category: 'ESCAPE_ROOM', rating: 4.2, lat: 19.1176, lng: 72.9060, estimatedCostPerHead: 750,  address: 'Powai, Mumbai',           openNow: true, isFallback: true },
+
+  // ── MUSEUM ────────────────────────────────────────────────────────────────
+  { id: 'fb_museum_solutions',name: 'Museum of Solutions',        category: 'MUSEUM',      rating: 4.8, lat: 19.0080, lng: 72.8250, estimatedCostPerHead: 500,  address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_museum_csmt',     name: 'Chhatrapati Shivaji Museum', category: 'MUSEUM',     rating: 4.7, lat: 18.9267, lng: 72.8322, estimatedCostPerHead: 150,  address: 'Fort, Mumbai',            openNow: true, isFallback: true },
+  { id: 'fb_museum_bdu',      name: 'Dr. Bhau Daji Lad Museum',  category: 'MUSEUM',      rating: 4.5, lat: 18.9789, lng: 72.8374, estimatedCostPerHead: 200,  address: 'Byculla, Mumbai',         openNow: true, isFallback: true },
+  { id: 'fb_museum_nehru',    name: 'Nehru Science Centre',       category: 'MUSEUM',     rating: 4.3, lat: 19.0192, lng: 72.8169, estimatedCostPerHead: 80,   address: 'Worli, Mumbai',           openNow: true, isFallback: true },
+
+  // ── MALL ──────────────────────────────────────────────────────────────────
+  { id: 'fb_mall_phoenix',    name: 'Phoenix Mills Lower Parel',  category: 'MALL',        rating: 4.4, lat: 19.0002, lng: 72.8270, estimatedCostPerHead: 0,    address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_mall_inorbit',    name: 'Inorbit Mall Vashi',         category: 'MALL',        rating: 4.3, lat: 19.0734, lng: 72.9989, estimatedCostPerHead: 0,    address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_mall_rcity',      name: 'R City Mall Ghatkopar',      category: 'MALL',        rating: 4.2, lat: 19.0860, lng: 72.9082, estimatedCostPerHead: 0,    address: 'Ghatkopar West, Mumbai',  openNow: true, isFallback: true },
+  { id: 'fb_mall_viviana',    name: 'Viviana Mall Thane',         category: 'MALL',        rating: 4.4, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 0,    address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_mall_oberoi',     name: 'Oberoi Mall Goregaon',       category: 'MALL',        rating: 4.2, lat: 19.1610, lng: 72.8520, estimatedCostPerHead: 0,    address: 'Goregaon East, Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_mall_palladium',  name: 'Palladium Mall Lower Parel', category: 'MALL',        rating: 4.3, lat: 19.0020, lng: 72.8270, estimatedCostPerHead: 0,    address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+
+  // ── SPORTS ────────────────────────────────────────────────────────────────
+  { id: 'fb_sports_snow',     name: 'Snow World Mumbai',          category: 'SPORTS',      rating: 4.2, lat: 19.0607, lng: 72.8826, estimatedCostPerHead: 600,  address: 'Kurla West, Mumbai',      openNow: true, isFallback: true },
+  { id: 'fb_sports_jumpzone', name: 'JumpZone Andheri',           category: 'SPORTS',      rating: 4.3, lat: 19.1180, lng: 72.8580, estimatedCostPerHead: 450,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_sports_footsal',  name: 'Footsal Powai',              category: 'SPORTS',      rating: 4.2, lat: 19.1176, lng: 72.9060, estimatedCostPerHead: 300,  address: 'Powai, Mumbai',           openNow: true, isFallback: true },
+
+  // ── MOVIE ─────────────────────────────────────────────────────────────────
+  { id: 'fb_movie_pvr_bandra',name: 'PVR Cinemas Bandra',         category: 'MOVIE',       rating: 4.3, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_movie_inox_a',    name: 'INOX Andheri',               category: 'MOVIE',       rating: 4.2, lat: 19.1136, lng: 72.8697, estimatedCostPerHead: 350,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
+  { id: 'fb_movie_pvr_thane', name: 'PVR Cinemas Thane',          category: 'MOVIE',       rating: 4.2, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 300,  address: 'Viviana Mall, Thane',     openNow: true, isFallback: true },
+  { id: 'fb_movie_pvr_vashi', name: 'PVR Cinemas Vashi',          category: 'MOVIE',       rating: 4.1, lat: 19.0734, lng: 72.9989, estimatedCostPerHead: 300,  address: 'Inorbit Mall, Vashi',     openNow: true, isFallback: true },
+
+  // ── POTTERY / WORKSHOP ────────────────────────────────────────────────────
+  { id: 'fb_pottery_bandra',  name: 'Bandra Pottery Lab',         category: 'POTTERY',     rating: 4.7, lat: 19.0500, lng: 72.8300, estimatedCostPerHead: 1200, address: 'Bandra West, Mumbai',     openNow: true, isExperience: true, isFallback: true },
+  { id: 'fb_pottery_andheri', name: 'The Pottery Studio Andheri', category: 'POTTERY',     rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 1000, address: 'Andheri West, Mumbai',    openNow: true, isExperience: true, isFallback: true },
+];
+
+export function buildFallbackItineraryDataForEval(
+  planIndex: number,
+  groupData: any,
+  presentMembers: any[],
+  presentLocations: any[],
+  memberLocations?: LatLng[],
+  groupBudget?: number
+) {
+  return buildFallbackItineraryData(planIndex, groupData, presentMembers, presentLocations, memberLocations, groupBudget);
 }
 
 function buildFallbackItineraryData(
   planIndex: number,
   groupData: any,
   presentMembers: any[],
-  presentLocations: any[]
+  presentLocations: any[],
+  memberLocations?: LatLng[],
+  groupBudget?: number
 ) {
   const budgetTiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
-  const fallbackZones = [
+
+  // Dynamically pick best zone from member locations instead of using hardcoded zones
+  const locs = memberLocations && memberLocations.length > 0
+    ? memberLocations
+    : presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
+
+  const rankedZones = locs.length > 0 ? selectCandidateZones(locs) : [
     { name: 'Bandra', lat: 19.0596, lng: 72.8295 },
     { name: 'Dadar', lat: 19.0178, lng: 72.8478 },
     { name: 'Kurla', lat: 19.0607, lng: 72.8826 },
     { name: 'Ghatkopar', lat: 19.0860, lng: 72.9082 },
   ];
-  const zoneObj = fallbackZones[(planIndex - 1) % fallbackZones.length];
-  const selectedPlaces = getFallbackSlotsForPlan(planIndex);
+
+  const zoneIdx = (planIndex - 1) % Math.max(1, rankedZones.length);
+  const zoneObj = rankedZones[zoneIdx];
+
+    const budgetCap = groupBudget && groupBudget > 0 ? groupBudget : 5000;
+    const TRAVEL_EST = 80;
+    const venueTotal = Math.max(0, budgetCap - TRAVEL_EST);
+
+    const outingHour = (() => {
+      const t = groupData.outingTime || '12:00';
+      const m = t.match(/^(\d{1,2}):(\d{2})/);
+      return m ? parseInt(m[1]) : 12;
+    })();
+    const isNight = outingHour >= 19;
+
+    const rankedPool = MUMBAI_FALLBACK_CANDIDATES
+      .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) }))
+      .sort((a, b) => a._d - b._d)
+      .map(({ _d: _, ...c }) => c as PlaceCandidate);
+
+    const pickCat = (cat: string, exclude: Set<string>, maxCost = Infinity): PlaceCandidate | undefined =>
+      rankedPool.find(c => c.category.toUpperCase() === cat && !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
+    const pickBestAffordable = (exclude: Set<string>, maxCost: number): PlaceCandidate | undefined =>
+      rankedPool.find(c => !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
+    const pickFree = (exclude: Set<string>): PlaceCandidate | undefined =>
+      rankedPool.find(c => c.estimatedCostPerHead === 0 && !exclude.has(c.id) && isVenueOpenAtTime(c.category, groupData.outingTime));
+
+    const TEMPLATES: Array<[string, string, string]> = [
+      ['ARCADE',       'CAFE',        'PARK'],
+      ['ESCAPE_ROOM',  'RESTAURANT',  'PARK'],
+      ['MUSEUM',       'CAFE',        'DESSERT'],
+      ['BOWLING',      'RESTAURANT',  'MALL'],
+    ];
+    const [t0, t1, t2] = TEMPLATES[(planIndex - 1) % TEMPLATES.length];
+
+    function pickAffordableSlots(): PlaceCandidate[] {
+      const used = new Set<string>();
+      const picks: PlaceCandidate[] = [];
+
+      if (venueTotal <= 0) {
+        for (const c of rankedPool.filter(c => c.estimatedCostPerHead === 0).slice(0, 3)) {
+          if (!used.has(c.id)) { picks.push(c); used.add(c.id); }
+        }
+      } else if (venueTotal < 500) {
+        // Tight budget: 1 modest paid + 2 free (parks, promenades)
+        const paid = pickBestAffordable(used, venueTotal);
+        if (paid) { picks.push(paid); used.add(paid.id); }
+        const f1 = pickFree(used) ?? pickBestAffordable(used, 100);
+        if (f1) { picks.push(f1); used.add(f1.id); }
+        const f2 = pickFree(used) ?? pickBestAffordable(used, 100);
+        if (f2) { picks.push(f2); used.add(f2.id); }
+      } else if (venueTotal < 1000) {
+        // Moderate: 1 activity + 1 food + 1 free
+        const perSlot = Math.floor(venueTotal / 2);
+        const act = pickCat(t0, used, perSlot) ?? pickBestAffordable(used, perSlot);
+        if (act) { picks.push(act); used.add(act.id); }
+        const food = pickCat(t1, used, perSlot) ?? pickBestAffordable(used, perSlot);
+        if (food) { picks.push(food); used.add(food.id); }
+        const scenic = pickFree(used) ?? pickBestAffordable(used, 200);
+        if (scenic) { picks.push(scenic); used.add(scenic.id); }
+      } else {
+        // Comfortable: full 3-stop template
+        const perSlot = Math.floor(venueTotal / 3);
+        const s0 = pickCat(t0, used, perSlot) ?? pickBestAffordable(used, perSlot);
+        if (s0) { picks.push(s0); used.add(s0.id); }
+        const s1 = pickCat(t1, used, perSlot) ?? pickBestAffordable(used, perSlot);
+        if (s1) { picks.push(s1); used.add(s1.id); }
+        const s2 = pickCat(t2, used, perSlot) ?? pickFree(used) ?? pickBestAffordable(used, perSlot);
+        if (s2) { picks.push(s2); used.add(s2.id); }
+      }
+
+      while (picks.length < 3) {
+        const pad = rankedPool.find(c => !used.has(c.id));
+        if (!pad) break;
+        picks.push(pad);
+        used.add(pad.id);
+      }
+      return picks.slice(0, 3);
+    }
+
+    const selectedPlaces = pickAffordableSlots();
   
   const slots = selectedPlaces.map((place, slotIdx) => {
     let arrivalTime = '11:00 AM';
@@ -551,6 +560,194 @@ function buildFallbackItineraryData(
   };
 }
 
+// ─── Reactive self-heal helpers ───────────────────────────────────────────────
+
+async function getReactiveBudgetRemaining(): Promise<number> {
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const rows = await db
+      .select()
+      .from(apiBudget)
+      .where(and(eq(apiBudget.dayUtc, today), eq(apiBudget.source, 'reactive')))
+      .limit(1);
+    const row = rows[0];
+    return row ? Math.max(0, row.callsLimit - row.callsUsed) : 300;
+  } catch {
+    return 300;
+  }
+}
+
+async function incrementReactiveBudget(): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date().toISOString();
+  try {
+    const uuid = typeof crypto !== 'undefined' ? crypto.randomUUID() : require('crypto').randomUUID();
+    try {
+      await db.insert(apiBudget).values({
+        id: uuid, dayUtc: today, source: 'reactive',
+        callsUsed: 1, callsLimit: 300, updatedAt: now,
+      });
+    } catch {
+      await db.update(apiBudget)
+        .set({ callsUsed: sql`calls_used + 1`, updatedAt: now })
+        .where(and(eq(apiBudget.dayUtc, today), eq(apiBudget.source, 'reactive')));
+    }
+  } catch {
+    // Non-critical
+  }
+}
+
+async function reactiveVenueFetch(
+  zone: { name: string; lat: number; lng: number },
+  missingCategories: string[]
+): Promise<PlaceCandidate[]> {
+  const remaining = await getReactiveBudgetRemaining();
+  if (remaining <= 0) {
+    console.log('[REACTIVE] API budget exhausted today, skipping reactive fetch');
+    return [];
+  }
+
+  const fetched: PlaceCandidate[] = [];
+  const now = new Date().toISOString();
+  const maxToFetch = Math.min(missingCategories.length, 3, remaining);
+
+  for (const category of missingCategories.slice(0, maxToFetch)) {
+    try {
+      const results = await searchNearbyVenues(zone.lat, zone.lng, category as VenueCategory, 2500);
+      await incrementReactiveBudget();
+
+      for (const item of results.slice(0, 5)) {
+        const placeId = item.place_id;
+        if (!placeId) continue;
+
+        const placeLat = item.geometry?.location?.lat ?? item.lat;
+        const placeLng = item.geometry?.location?.lng ?? item.lng;
+        if (!placeLat || !placeLng || !validateCoordinates(placeLat, placeLng)) continue;
+
+        const name = item.name || item.description || '';
+        if (name.length < 3) continue;
+
+        const rating = item.rating ? Number(item.rating) : null;
+        const reviewCount = item.user_ratings_total || 0;
+        // Only reject if Ola has enough evidence the venue is genuinely bad.
+        // Unrated venues may be legitimate — Ola has far fewer reviews than Google Maps.
+        if (rating !== null && rating > 0 && reviewCount > 0 && (rating < 4.0 || reviewCount < 20)) continue;
+
+        const id = `OLA_${placeId}`;
+        const costs = REACTIVE_CATEGORY_COSTS[category] ?? { mandatory: 200, min: 0, max: 400 };
+        const popularity = rating ? rating / 5.0 : 0.5;
+        const budgetFriendliness = Math.max(0, Math.min(1, 1.0 - (costs.mandatory / 1500)));
+        const overall = (popularity + 0.5 + 0.8) / 3.0;
+
+        try {
+          const randomUUID = () => typeof crypto !== 'undefined' ? crypto.randomUUID() : require('crypto').randomUUID();
+
+          await db.insert(places).values({
+            id, name,
+            address: item.formatted_address || item.vicinity || '',
+            lat: placeLat, lng: placeLng,
+            rating, reviewCount,
+            sourceName: 'OLA', sourcePlaceId: placeId,
+            lastVerified: now, verifiedAt: now,
+            firstSeen: now, businessStatus: 'OPERATIONAL',
+            createdAt: now, updatedAt: now,
+          }).onConflictDoUpdate({
+            target: places.id,
+            set: { lastVerified: now, updatedAt: now, rating, reviewCount },
+          });
+
+          await db.insert(placeCategories).values({ id: randomUUID(), placeId: id, category })
+            .onConflictDoUpdate({ target: [placeCategories.placeId, placeCategories.category], set: { category } });
+
+          const expType = ['BOWLING', 'ARCADE', 'MUSEUM', 'POTTERY', 'ESCAPE_ROOM'].includes(category)
+            ? 'PRIMARY_EXPERIENCE'
+            : ['CAFE', 'RESTAURANT', 'DESSERT'].includes(category)
+              ? 'FOOD_STOP'
+              : 'OPTIONAL_STOP';
+          await db.insert(placeCategories).values({ id: randomUUID(), placeId: id, category: expType })
+            .onConflictDoUpdate({ target: [placeCategories.placeId, placeCategories.category], set: { category: expType } });
+
+          await db.insert(placeCosts).values({
+            placeId: id, mandatoryCost: costs.mandatory,
+            optionalCostMin: costs.min, optionalCostMax: costs.max,
+          }).onConflictDoUpdate({
+            target: placeCosts.placeId,
+            set: { mandatoryCost: costs.mandatory, optionalCostMin: costs.min, optionalCostMax: costs.max },
+          });
+
+          await db.insert(placeScores).values({
+            placeId: id, popularity, budgetFriendliness, conversation: 0.5,
+            groupSuitability: 0.7, dateSuitability: 0.7, friendsSuitability: 0.7,
+            familySuitability: 0.7, weatherSuitability: 0.8, uniqueness: 0.6,
+            experienceScore: 0.8, overall,
+          }).onConflictDoUpdate({
+            target: placeScores.placeId,
+            set: { popularity, overall },
+          });
+
+          fetched.push({
+            id, name, category,
+            rating: rating ?? 4.0,
+            lat: placeLat, lng: placeLng,
+            estimatedCostPerHead: costs.mandatory + costs.min,
+            address: item.formatted_address || item.vicinity || '',
+            openNow: true, isFallback: false,
+          } as any);
+        } catch (insertErr) {
+          console.error(`[REACTIVE] DB insert failed for ${id}:`, insertErr);
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error(`[REACTIVE] searchNearbyVenues failed for ${category} in ${zone.name}:`, err);
+      }
+    }
+  }
+
+  console.log(`[REACTIVE] Added ${fetched.length} venues for ${zone.name} — gaps: ${missingCategories.slice(0, maxToFetch).join(', ')}`);
+  return fetched;
+}
+
+function enqueueGapDiscovery(
+  zone: { name: string; lat: number; lng: number; radius?: number },
+  categories: string[]
+): void {
+  void (async () => {
+    const now = new Date().toISOString();
+    for (const cat of categories) {
+      try {
+        const existing = await db
+          .select({ id: discoveryQueue.id })
+          .from(discoveryQueue)
+          .where(and(
+            eq(discoveryQueue.zoneName, zone.name),
+            eq(discoveryQueue.category, cat),
+            eq(discoveryQueue.status, 'PENDING')
+          ))
+          .limit(1);
+        if (existing.length > 0) continue;
+
+        const uuid = typeof crypto !== 'undefined' ? crypto.randomUUID() : require('crypto').randomUUID();
+        await db.insert(discoveryQueue).values({
+          id: uuid, zoneName: zone.name,
+          zoneLat: zone.lat, zoneLng: zone.lng,
+          zoneRadius: zone.radius ?? 3000,
+          category: cat,
+          priorityScore: 0.8,
+          reason: 'planner_gap',
+          status: 'PENDING',
+          attemptCount: 0,
+          createdAt: now, updatedAt: now,
+        });
+      } catch {
+        // Non-critical
+      }
+    }
+  })();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 const CONVERSATION_SCORES: Record<string, number> = {
   POTTERY: 10,
   BOARD_GAME: 8,
@@ -680,7 +877,13 @@ async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: 
     }));
   }
 
-  return [];
+  // Final safety net: proximity-sort MUMBAI_FALLBACK_CANDIDATES when DB table is empty
+  console.log(`[FALLBACK] zoneFallbacks table is empty for "${zoneName}". Using in-memory candidates sorted by proximity.`);
+  return MUMBAI_FALLBACK_CANDIDATES
+    .map(c => ({ ...c, _dist: getHaversineDistance({ lat: zoneLat, lng: zoneLng }, { lat: c.lat, lng: c.lng }) }))
+    .sort((a, b) => (a as any)._dist - (b as any)._dist)
+    .slice(0, 10)
+    .map(({ _dist: _, ...c }) => c as PlaceCandidate);
 }
 
 function scorePlaceCandidateRefactored(
@@ -784,6 +987,14 @@ function scorePlaceCandidateRefactored(
   return score;
 }
 
+export async function executePlanningEngineForEval(
+  groupData: any, presentMembers: any[], budgetSummary: any,
+  presentLocations: any[], preferredCategories: string[], vibes: string[],
+  historyEntries: any[], lowestBudget: number, options: string[] = []
+): Promise<any[]> {
+  return executePlanningEngine(groupData, presentMembers, budgetSummary, presentLocations, preferredCategories, vibes, historyEntries, lowestBudget, options);
+}
+
 async function executePlanningEngine(
   groupData: any,
   presentMembers: any[],
@@ -835,7 +1046,9 @@ async function executePlanningEngine(
       const travelCost = travelBreakdown.totalCost;
 
       const budgetRecord = budgetsList.find(b => b.userId === m.userId);
-      const maxBudget = budgetRecord ? budgetRecord.maxBudget : 2000;
+      // Fall back to the engine's lowestBudget param (from presentBudgetSummary.min) when DB
+      // has no record — avoids defaulting to 2000 for synthetic/eval groups.
+      const maxBudget = budgetRecord ? budgetRecord.maxBudget : (lowestBudget > 0 ? lowestBudget : 2000);
       const travelIncluded = budgetRecord ? budgetRecord.travelIncluded : 1;
 
       const availableBudget = travelIncluded === 1 ? maxBudget - travelCost : maxBudget;
@@ -888,6 +1101,14 @@ async function executePlanningEngine(
       // Quality Gate: filter hidden places
       if (p.isHidden === 1) {
         logRejection(p.name, 'Hidden by admin curation');
+        return;
+      }
+
+      // Reject only if Ola confirms the venue is bad (rated, has reviews, and scores poorly).
+      // Don't reject unrated venues — Ola has far fewer reviews than Google and many
+      // genuine hangout spots have no Ola rating yet.
+      if (p.rating && p.rating > 0 && (p.reviewCount ?? 0) > 0 && (p.rating < 4.0 || (p.reviewCount ?? 0) < 20)) {
+        logRejection(p.name, `Low quality (rating=${p.rating}, reviews=${p.reviewCount ?? 0})`);
         return;
       }
 
@@ -964,6 +1185,19 @@ async function executePlanningEngine(
 
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: e.latitude, lng: e.longitude });
       const isFeatured = e.featuredId !== null;
+
+      // Workshop/pottery/class experiences are niche — only include them when the group
+      // explicitly wants creative activities, otherwise they crowd out cafes, arcades, parks.
+      const WORKSHOP_CATS = new Set(['WORKSHOP', 'POTTERY', 'PAINTING', 'CREATIVE', 'BOARD_GAME', 'BOARD_GAME_EVENT']);
+      const experienceCat = (e.category ?? '').toUpperCase();
+      if (WORKSHOP_CATS.has(experienceCat)) {
+        const groupWantsWorkshop = preferredCategories.some(p => WORKSHOP_CATS.has(p.toUpperCase()));
+        if (!groupWantsWorkshop && !isMoreCreative && !isFeatured) {
+          logRejection(e.title, `Workshop/class excluded — group preferences don't include creative activities`);
+          return;
+        }
+      }
+
       if (dist <= 10.0 || isFeatured) {
         candidates.push({
           id: e.id,
@@ -991,8 +1225,32 @@ async function executePlanningEngine(
     });
 
     if (candidates.length < 5) {
-      const fallbacks = await resolveZoneFallbacks(zone.name, zone.lat, zone.lng);
-      candidates.push(...fallbacks);
+      // 1. Detect which required categories are missing
+      const existingCats = new Set(candidates.map(c => c.category.toUpperCase()));
+      const gaps = PLANNER_REQUIRED_CATEGORIES.filter(cat => !existingCats.has(cat)).slice(0, 3);
+
+      // 2. Reactive live fetch — bounded at 3 categories, 2s per Ola call
+      if (gaps.length > 0) {
+        try {
+          const fetched = await reactiveVenueFetch({ name: zone.name, lat: zone.lat, lng: zone.lng }, gaps);
+          if (fetched.length > 0) {
+            console.log(`[PLANNER] Reactive fetch added ${fetched.length} venues to ${zone.name}`);
+            candidates.push(...fetched);
+          }
+        } catch (reactiveErr) {
+          console.warn('[PLANNER] Reactive fetch failed:', reactiveErr);
+        }
+        // Signal background worker to fill this zone — fire-and-forget
+        enqueueGapDiscovery({ name: zone.name, lat: zone.lat, lng: zone.lng, radius: radiusKm * 1000 }, gaps);
+      }
+
+      // 3. Only use zoneFallbacks if still sparse after live fetch
+      if (candidates.length < 5) {
+        const fallbacks = await resolveZoneFallbacks(zone.name, zone.lat, zone.lng);
+        if (fallbacks.length > 0) {
+          candidates.push(...fallbacks);
+        }
+      }
     }
 
     const openCandidates = candidates.filter(c => {
@@ -1010,9 +1268,10 @@ async function executePlanningEngine(
         return false;
       }
 
-      const maxLimit = isCheaper ? zoneLowestBudget * 0.8 : zoneLowestBudget;
-      if (c.estimatedCostPerHead > maxLimit && !c.isFallback) {
-        logRejection(c.name, `REJECTED | Reason: Budget (cost ₹${c.estimatedCostPerHead} exceeds cap ₹${Math.round(maxLimit)})`);
+      const effectiveBudget = isCheaper ? zoneLowestBudget * 0.8 : zoneLowestBudget;
+      const perSlotCap = Math.max(150, Math.floor(effectiveBudget / 3));
+      if (c.estimatedCostPerHead > perSlotCap && !c.isFallback) {
+        logRejection(c.name, `REJECTED | Reason: Budget (cost ₹${c.estimatedCostPerHead} exceeds per-slot cap ₹${perSlotCap})`);
         return false;
       }
 
@@ -1147,13 +1406,23 @@ async function executePlanningEngine(
         }
       }
 
+      // Track categories already picked in this plan to avoid e.g. CAFE+CAFE in same plan
+      const selectedPlanCats = new Set<string>();
+
       const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean) => {
         let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
         if (matches.length === 0) {
           if (isActivity) {
             matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
           } else {
-            matches = candidatesPool.filter(c => ['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
+            // Prefer a food category not already used in this plan (avoids café+café)
+            matches = candidatesPool.filter(c =>
+              FOOD_CATS.includes(c.category.toUpperCase()) && !selectedPlanCats.has(c.category.toUpperCase())
+            );
+            if (matches.length === 0) {
+              matches = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
+            }
           }
         }
         if (matches.length === 0) return null;
@@ -1173,14 +1442,17 @@ async function executePlanningEngine(
 
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity);
       if (!slot1Place) continue;
+      selectedPlanCats.add(slot1Place.category.toUpperCase());
       candidatesPool = candidatesPool.filter(c => c.id !== slot1Place.id);
 
       const slot2Place = selectPlaceForSlot(slot2Cats, slot2IsActivity);
       if (!slot2Place) continue;
+      selectedPlanCats.add(slot2Place.category.toUpperCase());
       candidatesPool = candidatesPool.filter(c => c.id !== slot2Place.id);
 
       const slot3Place = selectPlaceForSlot(slot3Cats, slot3IsActivity);
       if (!slot3Place) continue;
+      selectedPlanCats.add(slot3Place.category.toUpperCase());
       candidatesPool = candidatesPool.filter(c => c.id !== slot3Place.id);
 
       const getMandatoryCost = (place: PlaceCandidate) => {
@@ -1291,6 +1563,7 @@ async function executePlanningEngine(
           experienceId: place.isExperience ? place.id : null,
           name: place.name,
           category: place.category,
+          rating: place.rating ?? null,
           arrivalTime,
           durationMinutes: duration,
           travelToNextMinutes: slotIdx === 2 ? null : 15,
@@ -1599,11 +1872,13 @@ export const plannerService = {
         console.error('[PLANNER] executePlanningEngine failed, falling back to hardcoded plans:', engineErr);
       }
 
-      // If the planning engine produced no plans, fall back to hardcoded itineraries
+      // If the planning engine produced no plans, fall back to budget+location-aware builder
       if (draftPlans.length === 0) {
         console.warn('[PLANNER] No plans generated by engine. Using fallback itinerary builder.');
+        const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
+        const budget = lowestBudget || budgetSummary?.min || 1000;
         for (let fi = 1; fi <= 3; fi++) {
-          draftPlans.push(buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations));
+          draftPlans.push(buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget));
         }
       }
 
@@ -1902,11 +2177,13 @@ export const plannerService = {
         console.error('[PLANNER-LOCAL] executePlanningEngine failed, falling back to hardcoded plans:', engineErr);
       }
 
-      // If the planning engine produced no plans, fall back to hardcoded itineraries
+      // If the planning engine produced no plans, fall back to budget+location-aware builder
       if (draftPlans.length === 0) {
         console.warn('[PLANNER-LOCAL] No plans generated by engine. Using fallback itinerary builder.');
+        const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
+        const budget = lowestBudget || presentBudgetSummary?.min || 1000;
         for (let fi = 1; fi <= 3; fi++) {
-          draftPlans.push(buildFallbackItineraryData(fi, group, presentMembers, presentLocations));
+          draftPlans.push(buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget));
         }
       }
 

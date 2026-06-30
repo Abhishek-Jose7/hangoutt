@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, real, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 // 1. Users Table (synced from Clerk)
 export const users = sqliteTable('users', {
@@ -321,7 +321,10 @@ export const places = sqliteTable('places', {
   isFeatured: integer('is_featured').default(0).notNull(),
   isHidden: integer('is_hidden').default(0).notNull(),
   boostFactor: real('boost_factor').default(1.0).notNull(),
-  firstSeen: text('first_seen').default(sql`CURRENT_TIMESTAMP`).notNull(), // Track discovery date
+  firstSeen: text('first_seen').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  businessStatus: text('business_status').default('OPERATIONAL').notNull(),
+  openingHoursJson: text('opening_hours_json'),
+  phone: text('phone'),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -330,8 +333,10 @@ export const places = sqliteTable('places', {
 export const placeCategories = sqliteTable('place_categories', {
   id: text('id').primaryKey(),
   placeId: text('place_id').notNull().references(() => places.id, { onDelete: 'cascade' }),
-  category: text('category').notNull(), // e.g. BOARD_GAMES, CAFE, PRIMARY_EXPERIENCE, FOOD_STOP
-});
+  category: text('category').notNull(),
+}, (table) => ({
+  uniquePlaceCat: uniqueIndex('place_categories_place_cat_idx').on(table.placeId, table.category),
+}));
 
 // 17. Place Costs Table
 export const placeCosts = sqliteTable('place_costs', {
@@ -413,4 +418,80 @@ export const featuredExperiences = sqliteTable('featured_experiences', {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+// 24. Zone Coverage Table (materialized coverage matrix — recomputed nightly + after discovery)
+export const zoneCoverage = sqliteTable('zone_coverage', {
+  id: text('id').primaryKey(),
+  zoneName: text('zone_name').notNull(),
+  category: text('category').notNull(),
+  countViable: integer('count_viable').default(0).notNull(),
+  countTotal: integer('count_total').default(0).notNull(),
+  deficitScore: real('deficit_score').default(0.0).notNull(),
+  lastRecomputedAt: text('last_recomputed_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  uniqueZoneCat: uniqueIndex('zone_coverage_zone_cat_idx').on(table.zoneName, table.category),
+  deficitIdx: index('zone_coverage_deficit_idx').on(table.deficitScore),
+}));
+
+// 25. Discovery Queue Table (priority work queue for background venue discovery)
+export const discoveryQueue = sqliteTable('discovery_queue', {
+  id: text('id').primaryKey(),
+  zoneName: text('zone_name').notNull(),
+  zoneLat: real('zone_lat').notNull(),
+  zoneLng: real('zone_lng').notNull(),
+  zoneRadius: integer('zone_radius').default(3000).notNull(),
+  category: text('category').notNull(),
+  priorityScore: real('priority_score').default(0.0).notNull(),
+  reason: text('reason').default('scheduled_refresh').notNull(),
+  status: text('status').default('PENDING').notNull(), // PENDING | IN_PROGRESS | COMPLETED | FAILED
+  attemptCount: integer('attempt_count').default(0).notNull(),
+  lastAttemptedAt: text('last_attempted_at'),
+  lastError: text('last_error'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  statusPriorityIdx: index('discovery_queue_status_priority_idx').on(table.status, table.priorityScore),
+  zoneCatIdx: index('discovery_queue_zone_cat_idx').on(table.zoneName, table.category),
+}));
+
+// 26. API Budget Table (daily quota tracking per source)
+export const apiBudget = sqliteTable('api_budget', {
+  id: text('id').primaryKey(),
+  dayUtc: text('day_utc').notNull(), // e.g. "2026-06-30"
+  source: text('source').notNull(),  // "reactive" | "predictive" | "maintenance"
+  callsUsed: integer('calls_used').default(0).notNull(),
+  callsLimit: integer('calls_limit').default(1000).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  uniqueDaySource: uniqueIndex('api_budget_day_source_idx').on(table.dayUtc, table.source),
+}));
+
+// 27. Venue Feedback Table (post-outing user ratings per venue)
+export const venueFeedback = sqliteTable('venue_feedback', {
+  id: text('id').primaryKey(),
+  historyId: text('history_id').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  placeId: text('place_id'),
+  rating: integer('rating').notNull(), // 1-5
+  wouldVisitAgain: integer('would_visit_again').default(0).notNull(), // 0|1
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  placeIdx: index('venue_feedback_place_idx').on(table.placeId),
+  historyIdx: index('venue_feedback_history_idx').on(table.historyId),
+}));
+
+// 28. Itinerary Feedback Table (post-outing user rating for the whole plan)
+export const itineraryFeedback = sqliteTable('itinerary_feedback', {
+  id: text('id').primaryKey(),
+  historyId: text('history_id').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  planId: text('plan_id'),
+  overallRating: integer('overall_rating').notNull(), // 1-5
+  travelRating: integer('travel_rating').default(3).notNull(), // 1-5
+  favoriteSlotId: text('favorite_slot_id'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  historyIdx: index('itinerary_feedback_history_idx').on(table.historyId),
+  uniqueUserHistory: uniqueIndex('itinerary_feedback_user_history_idx').on(table.userId, table.historyId),
+}));
 

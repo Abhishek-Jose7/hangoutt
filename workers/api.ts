@@ -1128,22 +1128,64 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
 }
 
 const DISCOVERY_ZONES = [
-  { name: 'Andheri', lat: 19.1136, lng: 72.8697, radius: 4000 },
-  { name: 'Bandra', lat: 19.0596, lng: 72.8295, radius: 3000 },
-  { name: 'Borivali', lat: 19.2290, lng: 72.8570, radius: 4000 },
+  // === South Mumbai ===
+  { name: 'Colaba', lat: 18.9219, lng: 72.8319, radius: 2000 },
+  { name: 'Fort', lat: 18.9389, lng: 72.8354, radius: 2000 },
+  { name: 'Churchgate', lat: 18.9347, lng: 72.8263, radius: 2000 },
+  { name: 'Marine Lines', lat: 18.9455, lng: 72.8215, radius: 2000 },
+  { name: 'Girgaon', lat: 18.9536, lng: 72.8159, radius: 2000 },
+  { name: 'Grant Road', lat: 18.9636, lng: 72.8178, radius: 2000 },
+  { name: 'Mumbai Central', lat: 18.9697, lng: 72.8199, radius: 2000 },
+  { name: 'Mahalakshmi', lat: 18.9798, lng: 72.8167, radius: 2000 },
+  // === Central Mumbai ===
+  { name: 'Byculla', lat: 18.9795, lng: 72.8364, radius: 2000 },
+  { name: 'Worli', lat: 19.0082, lng: 72.8178, radius: 2500 },
+  { name: 'Lower Parel', lat: 18.9996, lng: 72.8283, radius: 2500 },
+  { name: 'Prabhadevi', lat: 19.0073, lng: 72.8273, radius: 2000 },
+  { name: 'Parel', lat: 19.0016, lng: 72.8429, radius: 2000 },
   { name: 'Dadar', lat: 19.0178, lng: 72.8478, radius: 2500 },
+  { name: 'Matunga', lat: 19.0292, lng: 72.8457, radius: 2000 },
+  { name: 'Sewri', lat: 19.0089, lng: 72.8600, radius: 2000 },
+  { name: 'Wadala', lat: 19.0263, lng: 72.8631, radius: 2000 },
+  { name: 'Sion', lat: 19.0453, lng: 72.8695, radius: 2000 },
+  // === Western Suburbs ===
+  { name: 'Mahim', lat: 19.0411, lng: 72.8380, radius: 2000 },
+  { name: 'Bandra', lat: 19.0596, lng: 72.8295, radius: 3000 },
+  { name: 'BKC', lat: 19.0660, lng: 72.8668, radius: 2500 },
+  { name: 'Khar', lat: 19.0717, lng: 72.8355, radius: 2000 },
+  { name: 'Santacruz', lat: 19.0824, lng: 72.8425, radius: 2500 },
+  { name: 'Juhu', lat: 19.1075, lng: 72.8263, radius: 2500 },
+  { name: 'Vile Parle', lat: 19.0990, lng: 72.8486, radius: 2500 },
+  { name: 'Andheri', lat: 19.1136, lng: 72.8697, radius: 3500 },
+  { name: 'Versova', lat: 19.1385, lng: 72.8116, radius: 2500 },
+  { name: 'Jogeshwari', lat: 19.1346, lng: 72.8456, radius: 2500 },
+  { name: 'Goregaon', lat: 19.1544, lng: 72.8482, radius: 3000 },
+  { name: 'Malad', lat: 19.1872, lng: 72.8483, radius: 3000 },
+  { name: 'Kandivali', lat: 19.2054, lng: 72.8544, radius: 3000 },
+  { name: 'Borivali', lat: 19.2290, lng: 72.8570, radius: 3500 },
+  { name: 'Dahisar', lat: 19.2618, lng: 72.8595, radius: 3000 },
+  // === Eastern Suburbs (Central Line) ===
   { name: 'Kurla', lat: 19.0607, lng: 72.8826, radius: 3000 },
+  { name: 'Chunabhatti', lat: 19.0417, lng: 72.8888, radius: 2000 },
+  { name: 'Chembur', lat: 19.0622, lng: 72.8999, radius: 2500 },
   { name: 'Ghatkopar', lat: 19.0860, lng: 72.9082, radius: 3000 },
+  { name: 'Vikhroli', lat: 19.1048, lng: 72.9297, radius: 2500 },
   { name: 'Powai', lat: 19.1176, lng: 72.9060, radius: 3000 },
-  { name: 'Lower Parel', lat: 19.0034, lng: 72.8276, radius: 2000 },
-  { name: 'Worli', lat: 19.0176, lng: 72.8179, radius: 2500 },
-  { name: 'Thane', lat: 19.2183, lng: 72.9781, radius: 5000 },
+  { name: 'Bhandup', lat: 19.1519, lng: 72.9396, radius: 2500 },
+  { name: 'Mulund', lat: 19.1724, lng: 72.9596, radius: 3000 },
+  { name: 'Thane', lat: 19.2183, lng: 72.9781, radius: 4500 },
+  { name: 'Dombivli', lat: 19.2149, lng: 73.0893, radius: 3500 },
+  // === Harbour Line / Navi Mumbai ===
+  { name: 'Mankhurd', lat: 19.0683, lng: 72.9272, radius: 2500 },
   { name: 'Vashi', lat: 19.0745, lng: 72.9978, radius: 3500 },
-  { name: 'Belapur', lat: 19.0180, lng: 73.0392, radius: 3500 },
-  { name: 'Nerul', lat: 19.0330, lng: 73.0180, radius: 2500 },
+  { name: 'Sanpada', lat: 19.0630, lng: 72.9998, radius: 2500 },
+  { name: 'Juinagar', lat: 19.0445, lng: 73.0064, radius: 2000 },
+  { name: 'Nerul', lat: 19.0341, lng: 73.0198, radius: 2500 },
   { name: 'Seawoods', lat: 19.0212, lng: 73.0192, radius: 2500 },
-  { name: 'Kharghar', lat: 19.0222, lng: 73.0644, radius: 3000 },
-  { name: 'Panvel', lat: 18.9894, lng: 73.1175, radius: 4000 }
+  { name: 'Belapur', lat: 19.0180, lng: 73.0392, radius: 3000 },
+  { name: 'Kharghar', lat: 19.0460, lng: 73.0680, radius: 3000 },
+  { name: 'Airoli', lat: 19.1505, lng: 73.0095, radius: 2500 },
+  { name: 'Panvel', lat: 18.9894, lng: 73.1175, radius: 4000 },
 ];
 
 const CONVERSATION_SCORES_WORKER: Record<string, number> = {
@@ -1158,6 +1200,7 @@ const CONVERSATION_SCORES_WORKER: Record<string, number> = {
   DESSERT: 5,
   ARCADE: 4,
   BOWLING: 4,
+  MOVIE: 4,
   SPORTS: 3,
   MALL: 3,
 };
@@ -1186,7 +1229,10 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
     { type: 'bowling_alley', cat: 'BOWLING' },
     { type: 'museum', cat: 'MUSEUM' },
     { type: 'shopping_mall', cat: 'MALL' },
-    { type: 'park', cat: 'PARK' }
+    { type: 'park', cat: 'PARK' },
+    { type: 'bakery', cat: 'DESSERT' },
+    { type: 'movie_theater', cat: 'MOVIE' },
+    { type: 'stadium', cat: 'SPORTS' },
   ];
 
   let discoveredCount = 0;
@@ -1245,41 +1291,47 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           continue;
         }
 
-        // Hangout Score Quality Gate: reject known-bad data, but keep unknown quality.
-        if (finalRating !== null && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 20)) {
+        // Reject only if Ola confirms the venue is bad (rated, has reviews, and scores poorly).
+        // Don't reject unrated venues — the name/type filters below are the real gatekeeper.
+        // Ola Maps has far fewer reviews than Google; many genuine venues have no rating yet.
+        if (finalRating !== null && finalRating > 0 && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 20)) {
           continue;
         }
 
-        // Filter delivery-only places and event service providers (e.g. hosts, emcees, wedding prep)
         const types = result.types || [];
         const nameLower = name.toLowerCase();
-        const exclusions = [
-          'anchor', 'emcee', 'dj ', ' dj', 'mc ', ' mc', 'show host',
-          'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
-          'photographer', 'videographer', 'academy', 'classes', 'consultant',
-          'office', 'service', 'hospital', 'doctor', 'cosmetologist', 'dentist',
-          'physiotherapist', 'clinic', 'health', 'dermatologist', 'skin', 'beauty parlour',
-          'salon', 'spa', 'gym', 'fitness'
+
+        // Bad Ola place types
+        const badTypes = [
+          'delivery', 'meal_delivery', 'hospital', 'health', 'doctor', 'dentist',
+          'physiotherapist', 'spa', 'gym', 'beauty_salon', 'hair_care',
+          'school', 'university', 'lodging', 'car_repair', 'car_wash',
+          'transit_station', 'bus_station', 'subway_station', 'parking',
         ];
-        if (
-          types.includes('delivery') ||
-          types.includes('meal_delivery') ||
-          types.includes('hospital') ||
-          types.includes('health') ||
-          types.includes('doctor') ||
-          types.includes('dentist') ||
-          types.includes('physiotherapist') ||
-          types.includes('spa') ||
-          types.includes('gym') ||
-          types.includes('beauty_salon') ||
-          types.includes('hair_care') ||
-          nameLower.includes('delivery only') ||
-          nameLower.includes('cloud kitchen') ||
-          nameLower.includes('takeaway only') ||
-          exclusions.some(exc => nameLower.includes(exc))
-        ) {
-          continue;
-        }
+        if (badTypes.some((t: string) => types.includes(t))) continue;
+
+        // Name patterns that are never a hangout venue
+        const badPatterns = [
+          'anchor', 'emcee', 'dj ', ' dj', 'show host',
+          'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
+          'photographer', 'videographer', 'consultant', 'pvt ltd', 'pvt. ltd',
+          'cosmetologist', 'physiotherapist', 'dermatologist',
+          'beauty parlour', 'salon', 'spa', 'gym', 'fitness center',
+          'metro station', 'railway station', 'bus stand', 'bus terminal', 'bus depot',
+          'airport lounge', 'airport terminal',
+          'corporate park', 'corporate tower', 'corporate hub',
+          'apartment', ' apts', 'housing society', 'co-op housing', 'chawl',
+          'gate no', ' gate 1', ' gate 2', 'garden gate', 'world garden gate',
+          'puppeteer', 'ventriloquist', 'puppet-maker',
+          'cable vision', 'cable tv', 'cable network', 'infotainment',
+          'wall painting', 'statue structure', 'maidan',
+          'kidzania', 'smaaash junior', 'kids play area',
+          'delivery only', 'cloud kitchen', 'takeaway only',
+        ];
+        if (badPatterns.some((p: string) => nameLower.includes(p))) continue;
+
+        // 'amusement_park' catches water parks, theme parks, corporate parks — tighter gate
+        if (type === 'amusement_park' && finalReviewCount < 50) continue;
 
         // Calculate costs
         let mandatoryCost = 0;
@@ -1314,6 +1366,18 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           mandatoryCost = 0;
           optionalCostMin = 0;
           optionalCostMax = 0;
+        } else if (cat === 'DESSERT') {
+          mandatoryCost = 0;
+          optionalCostMin = 150;
+          optionalCostMax = 450;
+        } else if (cat === 'MOVIE') {
+          mandatoryCost = 300;
+          optionalCostMin = 0;
+          optionalCostMax = 200;
+        } else if (cat === 'SPORTS') {
+          mandatoryCost = 300;
+          optionalCostMin = 100;
+          optionalCostMax = 500;
         }
 
         const now = new Date().toISOString();
@@ -1364,12 +1428,12 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const budgetFriendliness = Math.max(0.0, Math.min(1.0, 1.0 - (mandatoryCost / 1500)));
         const conversationScoreVal = (CONVERSATION_SCORES_WORKER[cat] || 5) / 10.0;
 
-        const groupSuitability = ['CAFE', 'RESTAURANT', 'BOWLING', 'ARCADE'].includes(cat) ? 0.8 : 0.5;
-        const dateSuitability = ['CAFE', 'PARK', 'RESTAURANT'].includes(cat) ? 0.9 : 0.5;
-        const friendsSuitability = ['BOWLING', 'ARCADE', 'CAFE'].includes(cat) ? 0.9 : 0.5;
-        const familySuitability = ['MUSEUM', 'PARK', 'RESTAURANT'].includes(cat) ? 0.9 : 0.5;
+        const groupSuitability = ['CAFE', 'RESTAURANT', 'BOWLING', 'ARCADE', 'MOVIE', 'SPORTS'].includes(cat) ? 0.8 : 0.5;
+        const dateSuitability = ['CAFE', 'PARK', 'RESTAURANT', 'DESSERT', 'MOVIE'].includes(cat) ? 0.9 : 0.5;
+        const friendsSuitability = ['BOWLING', 'ARCADE', 'CAFE', 'SPORTS', 'ESCAPE_ROOM'].includes(cat) ? 0.9 : 0.5;
+        const familySuitability = ['MUSEUM', 'PARK', 'RESTAURANT', 'MOVIE', 'MALL'].includes(cat) ? 0.9 : 0.5;
         const weatherSuitability = ['PARK'].includes(cat) ? 0.6 : 1.0;
-        const uniqueness = ['MUSEUM'].includes(cat) ? 0.8 : 0.5;
+        const uniqueness = ['MUSEUM', 'ESCAPE_ROOM'].includes(cat) ? 0.8 : 0.5;
         const experienceScore = 0.8;
         const overall = (popularity + conversationScoreVal + experienceScore) / 3.0;
 
@@ -2023,20 +2087,309 @@ export default {
       return;
     }
 
-    if (event.cron.includes('*/6') || event.cron.includes('place')) {
-      const hour = new Date().getHours();
-      const index = Math.floor(hour / 6) % 4; // 0, 1, 2, 3
-      const zonesToProcess = DISCOVERY_ZONES.slice(index * 4, (index + 1) * 4);
+    const cron = event.cron;
 
-      for (const zone of zonesToProcess) {
-        console.log(`Scheduled: Discovering places in zone ${zone.name}...`);
-        await discoverZonePlaces(env.DB, zone.name, zone.lat, zone.lng, zone.radius, apiKey);
-      }
+    // Hourly: consume discovery queue (demand-driven predictive discovery)
+    if (cron === '0 * * * *') {
+      await consumeDiscoveryQueue(env.DB, apiKey, 10);
     }
 
-    if (event.cron.includes('*/12') || event.cron.includes('experience')) {
-      console.log('Scheduled: Discovering experiences...');
+    // Every 3 hours: refresh stale places + recompute zone coverage
+    if (cron === '15 */3 * * *') {
+      await refreshStalePlaces(env.DB, apiKey, 25);
+      await computeZoneCoverage(env.DB);
+    }
+
+    // Nightly 2 AM: seed queue with deficit zones, recompute popularity, dedup pass
+    if (cron === '0 2 * * *') {
+      await seedDiscoveryQueue(env.DB);
+      await recomputePopularity(env.DB);
+      await runDedupePass(env.DB);
       await discoverExperiences(env.DB);
+      await resetDailyBudget(env.DB);
     }
   }
 };
+
+// ─── Worker background functions ─────────────────────────────────────────────
+
+async function getApiBudgetRemaining(db: D1Database, source: string): Promise<number> {
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const row = await db
+      .prepare(`SELECT calls_used, calls_limit FROM api_budget WHERE day_utc = ? AND source = ?`)
+      .bind(today, source)
+      .first<{ calls_used: number; calls_limit: number }>();
+    return row ? Math.max(0, row.calls_limit - row.calls_used) : (source === 'predictive' ? 500 : source === 'maintenance' ? 200 : 300);
+  } catch {
+    return 500;
+  }
+}
+
+async function incrementApiBudget(db: D1Database, source: string): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date().toISOString();
+  const defaultLimit = source === 'predictive' ? 500 : source === 'maintenance' ? 200 : 300;
+  try {
+    await db.prepare(
+      `INSERT INTO api_budget (id, day_utc, source, calls_used, calls_limit, updated_at)
+       VALUES (?, ?, ?, 1, ?, ?)
+       ON CONFLICT(day_utc, source) DO UPDATE SET calls_used = calls_used + 1, updated_at = ?`
+    ).bind(crypto.randomUUID(), today, source, defaultLimit, now, now).run();
+  } catch {
+    // Non-critical
+  }
+}
+
+async function resetDailyBudget(db: D1Database): Promise<void> {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  try {
+    await db.prepare(`DELETE FROM api_budget WHERE day_utc < ?`).bind(yesterday).run();
+    console.log('[WORKER] Daily budget reset complete');
+  } catch (e) {
+    console.error('[WORKER] Budget reset failed:', e);
+  }
+}
+
+async function computeZoneCoverage(db: D1Database): Promise<void> {
+  // Only track categories we can actively discover via nearbysearch (ESCAPE_ROOM excluded — no suitable Ola type)
+  const categories = ['CAFE', 'RESTAURANT', 'ARCADE', 'BOWLING', 'MUSEUM', 'MALL', 'PARK', 'DESSERT', 'SPORTS', 'MOVIE'];
+  const now = new Date().toISOString();
+
+  for (const zone of DISCOVERY_ZONES) {
+    for (const cat of categories) {
+      try {
+        const radiusKm = zone.radius / 1000;
+        const latDiff = radiusKm / 111.0;
+        const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
+
+        const total = await db.prepare(
+          `SELECT COUNT(*) as cnt FROM places p
+           JOIN place_categories pc ON pc.place_id = p.id
+           WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
+             AND pc.category = ? AND p.is_hidden = 0`
+        ).bind(
+          zone.lat - latDiff, zone.lat + latDiff,
+          zone.lng - lngDiff, zone.lng + lngDiff,
+          cat
+        ).first<{ cnt: number }>();
+
+        const viable = await db.prepare(
+          `SELECT COUNT(*) as cnt FROM places p
+           JOIN place_categories pc ON pc.place_id = p.id
+           JOIN place_scores ps ON ps.place_id = p.id
+           WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
+             AND pc.category = ? AND p.is_hidden = 0
+             AND p.business_status = 'OPERATIONAL'
+             AND ps.overall >= 0.3`
+        ).bind(
+          zone.lat - latDiff, zone.lat + latDiff,
+          zone.lng - lngDiff, zone.lng + lngDiff,
+          cat
+        ).first<{ cnt: number }>();
+
+        const countTotal = total?.cnt ?? 0;
+        const countViable = viable?.cnt ?? 0;
+        const targetCount = 8;
+        const deficitScore = countViable < targetCount ? (targetCount - countViable) / targetCount : 0;
+
+        await db.prepare(
+          `INSERT INTO zone_coverage (id, zone_name, category, count_viable, count_total, deficit_score, last_recomputed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(zone_name, category) DO UPDATE SET
+             count_viable = ?, count_total = ?, deficit_score = ?, last_recomputed_at = ?`
+        ).bind(
+          crypto.randomUUID(), zone.name, cat, countViable, countTotal, deficitScore, now,
+          countViable, countTotal, deficitScore, now
+        ).run();
+      } catch (e) {
+        console.error(`[WORKER] Zone coverage failed for ${zone.name}/${cat}:`, e);
+      }
+    }
+  }
+  console.log('[WORKER] Zone coverage recomputed for all zones');
+}
+
+async function seedDiscoveryQueue(db: D1Database): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    const deficits = await db.prepare(
+      `SELECT zone_name, category, deficit_score FROM zone_coverage
+       WHERE deficit_score > 0 ORDER BY deficit_score DESC LIMIT 100`
+    ).all<{ zone_name: string; category: string; deficit_score: number }>();
+
+    let seeded = 0;
+    for (const row of deficits.results ?? []) {
+      // Skip if already pending
+      const existing = await db.prepare(
+        `SELECT id FROM discovery_queue WHERE zone_name = ? AND category = ? AND status = 'PENDING' LIMIT 1`
+      ).bind(row.zone_name, row.category).first();
+      if (existing) continue;
+
+      const zone = DISCOVERY_ZONES.find(z => z.name === row.zone_name);
+      if (!zone) continue;
+
+      const priority = Math.min(1.0, row.deficit_score * 1.2);
+      await db.prepare(
+        `INSERT INTO discovery_queue (id, zone_name, zone_lat, zone_lng, zone_radius, category, priority_score, reason, status, attempt_count, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled_refresh', 'PENDING', 0, ?, ?)`
+      ).bind(crypto.randomUUID(), zone.name, zone.lat, zone.lng, zone.radius, row.category, priority, now, now).run();
+      seeded++;
+    }
+    console.log(`[WORKER] Seeded ${seeded} items into discovery queue`);
+  } catch (e) {
+    console.error('[WORKER] seedDiscoveryQueue failed:', e);
+  }
+}
+
+async function consumeDiscoveryQueue(db: D1Database, apiKey: string, maxItems: number): Promise<void> {
+  const remaining = await getApiBudgetRemaining(db, 'predictive');
+  if (remaining <= 0) {
+    console.log('[WORKER] Predictive API budget exhausted, skipping discovery tick');
+    return;
+  }
+
+  const toProcess = Math.min(maxItems, remaining);
+
+  try {
+    const rows = await db.prepare(
+      `SELECT * FROM discovery_queue WHERE status = 'PENDING' ORDER BY priority_score DESC LIMIT ?`
+    ).bind(toProcess).all<any>();
+
+    for (const item of rows.results ?? []) {
+      const now = new Date().toISOString();
+      try {
+        // Mark in-progress
+        await db.prepare(
+          `UPDATE discovery_queue SET status = 'IN_PROGRESS', last_attempted_at = ?, attempt_count = attempt_count + 1, updated_at = ? WHERE id = ?`
+        ).bind(now, now, item.id).run();
+
+        const count = await discoverZonePlaces(db, item.zone_name, item.zone_lat, item.zone_lng, item.zone_radius, apiKey);
+        await incrementApiBudget(db, 'predictive');
+
+        await db.prepare(
+          `UPDATE discovery_queue SET status = 'COMPLETED', last_error = NULL, updated_at = ? WHERE id = ?`
+        ).bind(now, item.id).run();
+
+        console.log(`[WORKER] Queue item completed: ${item.zone_name}/${item.category} → ${count} places`);
+      } catch (itemErr) {
+        const errMsg = itemErr instanceof Error ? itemErr.message : String(itemErr);
+        await db.prepare(
+          `UPDATE discovery_queue SET status = 'FAILED', last_error = ?, updated_at = ? WHERE id = ?`
+        ).bind(errMsg.slice(0, 500), new Date().toISOString(), item.id).run();
+        console.error(`[WORKER] Queue item failed: ${item.zone_name}/${item.category}:`, itemErr);
+      }
+    }
+  } catch (e) {
+    console.error('[WORKER] consumeDiscoveryQueue failed:', e);
+  }
+}
+
+async function refreshStalePlaces(db: D1Database, apiKey: string, count: number): Promise<void> {
+  const remaining = await getApiBudgetRemaining(db, 'maintenance');
+  if (remaining <= 0) return;
+
+  const staleCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const rows = await db.prepare(
+      `SELECT id, source_place_id FROM places
+       WHERE is_hidden = 0 AND business_status = 'OPERATIONAL' AND last_verified < ?
+       ORDER BY last_verified ASC LIMIT ?`
+    ).bind(staleCutoff, Math.min(count, remaining)).all<{ id: string; source_place_id: string }>();
+
+    const now = new Date().toISOString();
+    for (const place of rows.results ?? []) {
+      try {
+        const detailsUrl = `https://api.olamaps.io/places/v1/details?place_id=${encodeURIComponent(place.source_place_id)}&api_key=${apiKey}`;
+        const res = await fetch(detailsUrl, {
+          headers: { 'X-Request-Id': `hangoutt-refresh-${Date.now()}`, 'Referer': 'http://localhost:3000', 'Origin': 'http://localhost:3000' },
+          signal: AbortSignal.timeout(5000),
+        });
+        await incrementApiBudget(db, 'maintenance');
+
+        if (!res.ok) {
+          // If 404, increment miss counter; hide after 3 misses
+          if (res.status === 404) {
+            await db.prepare(
+              `UPDATE places SET times_returned_zero_results = COALESCE(times_returned_zero_results, 0) + 1, updated_at = ? WHERE id = ?`
+            ).bind(now, place.id).run().catch(() => {});
+            const row = await db.prepare(`SELECT COALESCE(times_returned_zero_results, 0) as c FROM places WHERE id = ?`).bind(place.id).first<{ c: number }>();
+            if (row && row.c >= 3) {
+              await db.prepare(`UPDATE places SET is_hidden = 1, updated_at = ? WHERE id = ?`).bind(now, place.id).run();
+              console.log(`[WORKER] Hidden place ${place.id} after 3 consecutive 404s`);
+            }
+          }
+          continue;
+        }
+
+        const data = await res.json() as any;
+        const result = data?.result;
+        if (!result) continue;
+
+        const businessStatus = (result.business_status || 'OPERATIONAL').toUpperCase();
+        const isPermanentlyClosed = businessStatus.includes('PERMANENTLY') || businessStatus.includes('CLOSED_PERMANENTLY');
+        const rating = result.rating ? Number(result.rating) : null;
+        const reviewCount = result.user_ratings_total || 0;
+        const phone = result.formatted_phone_number || null;
+        const openingHoursJson = result.opening_hours ? JSON.stringify(result.opening_hours) : null;
+
+        await db.prepare(
+          `UPDATE places SET rating = ?, review_count = ?, business_status = ?, phone = ?,
+           opening_hours_json = ?, last_verified = ?, is_hidden = ?, updated_at = ? WHERE id = ?`
+        ).bind(rating, reviewCount, isPermanentlyClosed ? 'CLOSED_PERMANENTLY' : 'OPERATIONAL', phone,
+          openingHoursJson, now, isPermanentlyClosed ? 1 : 0, now, place.id).run();
+
+        if (isPermanentlyClosed) {
+          console.log(`[WORKER] Marked ${place.id} as permanently closed`);
+        }
+      } catch (e) {
+        console.error(`[WORKER] Refresh failed for place ${place.id}:`, e);
+      }
+    }
+    console.log(`[WORKER] Refreshed up to ${count} stale places`);
+  } catch (e) {
+    console.error('[WORKER] refreshStalePlaces failed:', e);
+  }
+}
+
+async function recomputePopularity(db: D1Database): Promise<void> {
+  try {
+    // Update popularity score from ranking_metrics using log-scaled formula
+    await db.prepare(
+      `UPDATE place_scores SET popularity = (
+         SELECT MIN(1.0, (
+           LOG(1 + rm.times_viewed) * 0.4 +
+           LOG(1 + rm.times_voted) * 0.3 +
+           LOG(1 + rm.times_won) * 0.3
+         ) / 3.0)
+         FROM ranking_metrics rm WHERE rm.place_id = place_scores.place_id
+       )
+       WHERE place_id IN (SELECT place_id FROM ranking_metrics WHERE times_generated > 0)`
+    ).run();
+
+    // Recompute overall as average of popularity + conversation + experience_score
+    await db.prepare(
+      `UPDATE place_scores SET overall = (popularity + conversation + experience_score) / 3.0`
+    ).run();
+
+    console.log('[WORKER] Popularity recomputed from ranking_metrics');
+  } catch (e) {
+    console.error('[WORKER] recomputePopularity failed:', e);
+  }
+}
+
+async function runDedupePass(db: D1Database): Promise<void> {
+  // Hide places that have the same source_place_id as a higher-rated version
+  try {
+    await db.prepare(
+      `UPDATE places SET is_hidden = 1 WHERE id IN (
+         SELECT p2.id FROM places p1
+         JOIN places p2 ON p1.source_place_id = p2.source_place_id AND p1.id != p2.id
+         WHERE p1.rating >= COALESCE(p2.rating, 0) AND p1.id < p2.id AND p2.is_hidden = 0
+       )`
+    ).run();
+    console.log('[WORKER] Dedupe pass complete');
+  } catch (e) {
+    console.error('[WORKER] runDedupePass failed:', e);
+  }
+}

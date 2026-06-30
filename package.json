@@ -15,7 +15,10 @@
     "db:d1:remote": "wrangler d1 migrations apply hangout-dev --remote",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
-    "worker:dry-run": "wrangler deploy --dry-run"
+    "worker:dry-run": "wrangler deploy --dry-run",
+    "eval": "tsx --tsconfig eval/tsconfig.json eval/run.ts",
+    "eval:quick": "tsx --tsconfig eval/tsconfig.json eval/run.ts --sample 50",
+    "eval:regression": "tsx --tsconfig eval/tsconfig.json eval/run.ts --regression"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
