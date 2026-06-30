@@ -23,7 +23,6 @@ function isJunk(name, address) {
   
   if (JUNK_KEYWORDS.some(k => n.includes(k) || a.includes(k))) return true;
   
-  // Plazas / markets whitelist
   if (n.includes('plaza') || n.includes('market')) {
     const whitelist = ['cinema', 'theatre', 'multiplex', 'phoenix marketcity', 'jio world plaza', 'palladium', 'mall', 'dosa plaza'];
     if (!whitelist.some(w => n.includes(w))) {
@@ -31,7 +30,6 @@ function isJunk(name, address) {
     }
   }
   
-  // Roads / Streets filter: if name is just a street/road name
   if ((n.endsWith(' road') || n.endsWith(' rd') || n.endsWith(' marg') || n.endsWith(' lane') || n.endsWith(' path')) && 
       !n.includes('cafe') && !n.includes('restaurant') && !n.includes('hotel') && !n.includes('diner') && !n.includes('bar') && !n.includes('eats')) {
     return true;
@@ -45,43 +43,38 @@ function run() {
   console.log(`Cleaning local database: ${dbPath}`);
   const localDb = new Database(dbPath);
   
-  const places = localDb.prepare("SELECT id, name, address, source_name FROM places WHERE source_name = 'OLA'").all();
+  // Enable foreign keys locally for cascading deletes
+  localDb.pragma('foreign_keys = ON');
   
-  let hiddenCount = 0;
-  let restoredCount = 0;
+  const places = localDb.prepare("SELECT id, name, address FROM places").all();
   
-  const hideStmt = localDb.prepare("UPDATE places SET is_hidden = 1 WHERE id = ?");
-  const restoreStmt = localDb.prepare("UPDATE places SET is_hidden = 0 WHERE id = ?");
-  
+  let deletedCount = 0;
+  const deleteStmt = localDb.prepare("DELETE FROM places WHERE id = ?");
   const remoteSqlLines = [];
   
   localDb.transaction(() => {
     for (const p of places) {
       if (isJunk(p.name, p.address)) {
-        hideStmt.run(p.id);
-        remoteSqlLines.push(`UPDATE places SET is_hidden = 1 WHERE id = '${p.id}';`);
-        hiddenCount++;
-      } else {
-        restoreStmt.run(p.id);
-        remoteSqlLines.push(`UPDATE places SET is_hidden = 0 WHERE id = '${p.id}';`);
-        restoredCount++;
+        deleteStmt.run(p.id);
+        remoteSqlLines.push(`DELETE FROM places WHERE id = '${p.id}';`);
+        deletedCount++;
       }
     }
   })();
   
-  console.log(`Local DB: Hidden ${hiddenCount} junk places, Unhidden/Restored ${restoredCount} clean places.`);
+  console.log(`Local DB: Deleted ${deletedCount} junk places.`);
   localDb.close();
   
   if (remoteSqlLines.length > 0) {
-    console.log(`Uploading cleanup updates to remote D1...`);
-    const tempSqlFile = path.resolve(__dirname, 'ola_cleanup.sql');
+    console.log(`Uploading deletion updates to remote D1...`);
+    const tempSqlFile = path.resolve(__dirname, 'ola_delete.sql');
     fs.writeFileSync(tempSqlFile, remoteSqlLines.join('\n'));
     
     try {
-      const res = execSync(`npx wrangler d1 execute hangout-dev --remote --file="${tempSqlFile}"`, { encoding: 'utf8' });
-      console.log('Remote D1 update success!');
+      execSync(`npx wrangler d1 execute hangout-dev --remote --file="${tempSqlFile}"`, { stdio: 'inherit' });
+      console.log('Remote D1 delete success!');
     } catch (err) {
-      console.error('Remote D1 update failed:', err.message);
+      console.error('Remote D1 delete failed:', err.message);
     } finally {
       try { fs.unlinkSync(tempSqlFile); } catch (_) {}
     }
