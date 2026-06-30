@@ -120,6 +120,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-30T20:05:42.226Z"
+    },
+    {
+      "id": "414a7473-a9c1-40a7-92b9-9f17d1e184d1",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "haha",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scripts/test_gemini.ts\",\"scripts/test_groq.js\",\"scripts/test_groq.ts\",\"scripts/test_worker_save.js\",\"src/app/(app)/planner/[groupId]/page.tsx\",\"src/lib/services/planner.service.ts\",\"workers/api.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T20:47:17.454Z"
     }
   ]
 }

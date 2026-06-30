@@ -185,6 +185,9 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_cafe_grandmamas', name: "Grandmama's Cafe",          category: 'CAFE',        rating: 4.3, lat: 19.0178, lng: 72.8478, estimatedCostPerHead: 500,  address: 'Dadar East, Mumbai',      openNow: true, isFallback: true },
   { id: 'fb_cafe_leopold',    name: 'Cafe Leopold',              category: 'CAFE',        rating: 4.3, lat: 18.9219, lng: 72.8319, estimatedCostPerHead: 450,  address: 'Colaba, Mumbai',          openNow: true, isFallback: true },
   { id: 'fb_cafe_tea_trail',  name: 'Tea Trails',                category: 'CAFE',        rating: 4.2, lat: 19.0734, lng: 72.9989, estimatedCostPerHead: 200,  address: 'Inorbit Mall, Vashi',     openNow: true, isFallback: true },
+  { id: 'fb_cafe_bkc_social', name: 'Social BKC',                category: 'CAFE',        rating: 4.4, lat: 19.0645, lng: 72.8675, estimatedCostPerHead: 400,  address: 'Capital Building, BKC, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_cafe_powai_social', name: 'Social Powai',            category: 'CAFE',        rating: 4.4, lat: 19.1170, lng: 72.9080, estimatedCostPerHead: 400,  address: 'Delphi Building, Powai, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_cafe_kurla_starbucks', name: 'Starbucks Marketcity', category: 'CAFE',        rating: 4.3, lat: 19.0880, lng: 72.8890, estimatedCostPerHead: 350,  address: 'Phoenix Marketcity, Kurla, Mumbai', openNow: true, isFallback: true },
 
   // ── RESTAURANT ────────────────────────────────────────────────────────────
   { id: 'fb_rest_joeys_a',    name: "Joey's Pizza Andheri",      category: 'RESTAURANT',  rating: 4.5, lat: 19.1136, lng: 72.8697, estimatedCostPerHead: 500,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
@@ -196,6 +199,9 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_rest_thane',      name: 'Hotel Geetanjali',          category: 'RESTAURANT',  rating: 4.2, lat: 19.2183, lng: 72.9781, estimatedCostPerHead: 300,  address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
   { id: 'fb_rest_borivali',   name: 'Rajdhani Thali Borivali',   category: 'RESTAURANT',  rating: 4.4, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 400,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
   { id: 'fb_rest_powai',      name: 'Meal of Fortune Powai',     category: 'RESTAURANT',  rating: 4.2, lat: 19.1176, lng: 72.9060, estimatedCostPerHead: 450,  address: 'Powai, Mumbai',           openNow: true, isFallback: true },
+  { id: 'fb_rest_bkc_dishoom', name: 'O Pedro BKC',              category: 'RESTAURANT',  rating: 4.6, lat: 19.0638, lng: 72.8682, estimatedCostPerHead: 800,  address: 'Jet Airways Building, BKC, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_rest_powai_chilis', name: 'Chili\'s Powai',          category: 'RESTAURANT',  rating: 4.5, lat: 19.1165, lng: 72.9090, estimatedCostPerHead: 600,  address: 'Ventura Building, Powai, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_rest_kurla_barbeque', name: 'Barbeque Nation Kurla', category: 'RESTAURANT',  rating: 4.4, lat: 19.0885, lng: 72.8895, estimatedCostPerHead: 800,  address: 'Phoenix Marketcity, Kurla, Mumbai', openNow: true, isFallback: true },
 
   // ── DESSERT ───────────────────────────────────────────────────────────────
   { id: 'fb_dessert_le15',    name: 'Le15 Patisserie',           category: 'DESSERT',     rating: 4.4, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 300,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
@@ -216,6 +222,8 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_park_sion_fort',  name: 'Sion Fort',                 category: 'PARK',        rating: 4.2, lat: 19.0373, lng: 72.8630, estimatedCostPerHead: 0,    address: 'Sion, Mumbai',            openNow: true, isFallback: true },
   { id: 'fb_park_natl',       name: 'Sanjay Gandhi National Park',category: 'PARK',       rating: 4.7, lat: 19.2280, lng: 72.8741, estimatedCostPerHead: 50,   address: 'Borivali East, Mumbai',   openNow: true, isFallback: true },
   { id: 'fb_park_kharghar',   name: 'Central Park Kharghar',     category: 'PARK',        rating: 4.5, lat: 19.0460, lng: 73.0680, estimatedCostPerHead: 0,    address: 'Kharghar, Navi Mumbai',   openNow: true, isFallback: true },
+  { id: 'fb_park_bkc_garden', name: 'Jio World Garden',          category: 'PARK',        rating: 4.5, lat: 19.0620, lng: 72.8690, estimatedCostPerHead: 50,   address: 'Jio World Centre, BKC, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_park_powai_lake', name: 'Powai Lake Promenade',      category: 'PARK',        rating: 4.2, lat: 19.1220, lng: 72.9050, estimatedCostPerHead: 0,    address: 'Powai Lake Road, Powai, Mumbai', openNow: true, isFallback: true },
 
   // ── ARCADE ────────────────────────────────────────────────────────────────
   { id: 'fb_arcade_smaaash',  name: 'Smaaash Lower Parel',       category: 'ARCADE',      rating: 4.4, lat: 19.0034, lng: 72.8276, estimatedCostPerHead: 600,  address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
@@ -223,6 +231,9 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_arcade_xero',     name: 'Xero Degrees Andheri',      category: 'ARCADE',      rating: 4.1, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 350,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
   { id: 'fb_arcade_rcity',    name: 'Timezone R City Ghatkopar', category: 'ARCADE',      rating: 4.2, lat: 19.0860, lng: 72.9082, estimatedCostPerHead: 400,  address: 'R City Mall, Ghatkopar',  openNow: true, isFallback: true },
   { id: 'fb_arcade_viviana',  name: 'Funky Monkey Viviana Thane',category: 'ARCADE',      rating: 4.0, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 400,  address: 'Viviana Mall, Thane',     openNow: true, isFallback: true },
+  { id: 'fb_arcade_bkc_timezone', name: 'Timezone Jio World Drive', category: 'ARCADE',   rating: 4.3, lat: 19.0605, lng: 72.8595, estimatedCostPerHead: 500,  address: 'Jio World Drive, BKC, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_arcade_powai_game', name: 'The Game Powai',          category: 'ARCADE',      rating: 4.3, lat: 19.1176, lng: 72.9060, estimatedCostPerHead: 500,  address: 'Central Avenue, Powai, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_arcade_kurla_timezone', name: 'Timezone Phoenix Marketcity', category: 'ARCADE', rating: 4.2, lat: 19.0880, lng: 72.8890, estimatedCostPerHead: 500, address: 'Phoenix Marketcity, Kurla, Mumbai', openNow: true, isFallback: true },
 
   // ── BOWLING ───────────────────────────────────────────────────────────────
   { id: 'fb_bowl_palacio_b',  name: 'The Game Palacio Bandra',   category: 'BOWLING',     rating: 4.6, lat: 19.0596, lng: 72.8295, estimatedCostPerHead: 900,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
@@ -249,6 +260,8 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_mall_viviana',    name: 'Viviana Mall Thane',         category: 'MALL',        rating: 4.4, lat: 19.2087, lng: 73.0083, estimatedCostPerHead: 0,    address: 'Thane West, Mumbai',      openNow: true, isFallback: true },
   { id: 'fb_mall_oberoi',     name: 'Oberoi Mall Goregaon',       category: 'MALL',        rating: 4.2, lat: 19.1610, lng: 72.8520, estimatedCostPerHead: 0,    address: 'Goregaon East, Mumbai',   openNow: true, isFallback: true },
   { id: 'fb_mall_palladium',  name: 'Palladium Mall Lower Parel', category: 'MALL',        rating: 4.3, lat: 19.0020, lng: 72.8270, estimatedCostPerHead: 0,    address: 'Lower Parel, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_mall_bkc_drive',  name: 'Jio World Drive',            category: 'MALL',        rating: 4.4, lat: 19.0605, lng: 72.8595, estimatedCostPerHead: 0,    address: 'Jio World Drive, BKC, Mumbai', openNow: true, isFallback: true },
+  { id: 'fb_mall_kurla_phoenix', name: 'Phoenix Marketcity Kurla', category: 'MALL',       rating: 4.5, lat: 19.0880, lng: 72.8890, estimatedCostPerHead: 0,    address: 'LBS Marg, Kurla, Mumbai', openNow: true, isFallback: true },
 
   // ── SPORTS ────────────────────────────────────────────────────────────────
   { id: 'fb_sports_snow',     name: 'Snow World Mumbai',          category: 'SPORTS',      rating: 4.2, lat: 19.0607, lng: 72.8826, estimatedCostPerHead: 600,  address: 'Kurla West, Mumbai',      openNow: true, isFallback: true },
@@ -266,6 +279,48 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_pottery_andheri', name: 'The Pottery Studio Andheri', category: 'POTTERY',     rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 1000, address: 'Andheri West, Mumbai',    openNow: true, isExperience: true, isFallback: true },
 ];
 
+const VENUE_DESCRIPTIONS: Record<string, string> = {
+  'fb_cafe_prithvi': 'Legendary open-air garden café next to Prithvi Theatre. Renowned for its Irish coffee, cutting chai, samosas, and artistic crowd.',
+  'fb_cafe_candies': 'An iconic, multi-level villa café in Bandra with quirky Mediterranean decor, cold coffee, chicken sliders, and outdoor seating.',
+  'fb_cafe_doolally_k': 'Mumbai\'s favorite craft microbrewery taproom. Great collection of craft beers, house fries, board games, and dog-friendly vibes.',
+  'fb_cafe_doolally_a': 'Mumbai\'s favorite craft microbrewery taproom. Great collection of craft beers, house fries, board games, and dog-friendly vibes.',
+  'fb_cafe_bkc_social': 'Vibrant workspace by day and high-energy bar by night. Quirky industrial decor, signature cocktails, and modern fusion snacks.',
+  'fb_cafe_powai_social': 'Vibrant workspace by day and high-energy bar by night. Quirky industrial decor, signature cocktails, and modern fusion snacks.',
+  'fb_cafe_kurla_starbucks': 'Cozy coffee house inside Phoenix Marketcity. Perfect for warm conversations and relaxing over premium craft coffee.',
+  'fb_rest_joeys_a': 'Famous local deep-dish pizza spot known for incredibly generous toppings and loaded cheese. A legendary cult favorite in Mumbai.',
+  'fb_rest_cafe_madras': 'Famous heritage South Indian joint in Matunga. Renowned for butter idlis, ragi dosa, and authentic filter coffee.',
+  'fb_rest_swati': 'Premium traditional Gujarati/Maharashtrian street food spot. Hygienic, highly rated, and perfect for light, delicious bites.',
+  'fb_rest_pav_bhaji': 'Legendary butter-loaded Mumbai pav bhaji spot. A historic culinary landmark in Mumbai.',
+  'fb_rest_pizza_bay': 'Beautiful seaside restaurant at Marine Drive. Enjoy premium pizzas and mocktails with a breathtaking view of the Queen\'s Necklace.',
+  'fb_rest_bkc_dishoom': 'Premium coastal Portuguese-Goan dining spot in BKC. Known for craft cocktails, seafood, and beautiful high-ceiling vintage decor.',
+  'fb_rest_powai_chilis': 'Great American-Mexican grill restaurant with amazing burgers, sizzlers, and margaritas overlooking the Powai streets.',
+  'fb_rest_kurla_barbeque': 'Popular live-grill buffet dining. Features unlimited skewers of barbecue starters, main course, and extensive desserts.',
+  'fb_park_sion_fort': 'Historical watchtower fort built in 1670. Climb to the top for a green, peaceful panoramic view of central Mumbai (45-60 min).',
+  'fb_park_marine': 'Seaside promenade with a stunning view of the Arabian Sea. Unwind, catch the breeze, and watch the sunset (45-60 min).',
+  'fb_park_carter': 'Scenic 1.2km Bandra seaside walk. Features food stalls, dog parks, and sunset viewing decks (45-60 min).',
+  'fb_park_versova': 'Relaxed sandy beach in Andheri West. Ideal for evening walks, catching the sunset, and chatting with friends.',
+  'fb_park_bkc_garden': 'Lush, manicured 13-acre rooftop garden in BKC. Hosts events and has peaceful green trails (45-60 min).',
+  'fb_park_powai_lake': 'Peaceful lakeside walking path. Watch local fishermen, enjoy the greenery, and catch the sunset.',
+  'fb_arcade_smaaash': 'Sprawling gaming hub in Lower Parel. Features 50+ arcade titles, virtual reality rides, laser tag, and active sports.',
+  'fb_arcade_xero': 'Trendy student-vibe arcade café in Andheri. Indulge in crazy freakshakes, loaded fries, and classic video game cabinets.',
+  'fb_arcade_rcity': 'Timezone Ghatkopar. Massive indoor arcade with ticket games, bowling lanes, bumper cars, and virtual reality simulators.',
+  'fb_arcade_bkc_timezone': 'Premium Timezone arcade. Features 40+ high-end arcade game cabinets, active VR gaming, and group racing setups.',
+  'fb_arcade_powai_game': 'Boutique gaming lounge in Powai. Features boutique bowling lanes, arcade game consoles, and virtual reality setups.',
+  'fb_arcade_kurla_timezone': 'Timezone Marketcity. Huge indoor arcade with ticket games, simulator rides, bowling lanes, and laser setups.',
+  'fb_bowl_palacio_b': 'Premium boutique bowling alley in Bandra. Features luxury wooden lanes, dining lounge, and arcade games.',
+  'fb_bowl_palacio_a': 'Premium boutique bowling alley in Andheri. Features luxury wooden lanes, dining lounge, and arcade games.',
+  'fb_bowl_clubhouse': 'Smaaash Bowling Lower Parel. Classic multi-lane bowling center with lively music and group dining tables.',
+  'fb_bowl_viviana': 'Large bowling alley inside Viviana Mall. Great for casual group challenges and weekend fun.',
+  'fb_escape_mystery_a': 'Interactive real-life escape room. Work together in teams of 2-8 to solve puzzles and escape within 60 minutes.',
+  'fb_escape_clue_b': 'Mumbai\'s original escape game in Bandra. Crack codes, find clues, and escape the room before the timer run out.',
+  'fb_museum_nehru': 'Interactive science museum with 500+ hands-on science exhibits, 3D science shows, and a space dome.',
+  'fb_mall_phoenix': 'High-end luxury shopping district and mall. Sprawling food options, cafes, and open courtyards.',
+  'fb_mall_rcity': 'Massive shopping mall in Ghatkopar. Features 500+ stores, dynamic snow park, and multi-screen cinemas.',
+  'fb_mall_kurla_phoenix': 'One of India\'s largest malls. Features snow park, 100+ dining options, movie theaters, and shopping brands.',
+  'fb_mall_bkc_drive': 'Boutique luxury shopping center in BKC. Features high-end brands, fine cafes, and open walk paths.',
+};
+
+
 export function buildFallbackItineraryDataForEval(
   planIndex: number,
   groupData: any,
@@ -277,39 +332,39 @@ export function buildFallbackItineraryDataForEval(
   return buildFallbackItineraryData(planIndex, groupData, presentMembers, presentLocations, memberLocations, groupBudget);
 }
 
-function getFallbackSlotDescription(slotName: string, category: string, order: number, groupType: string, zoneName: string): string {
-  const gType = (groupType || 'friends').toLowerCase();
-  if (order === 1) {
-    if (category === 'CAFE') {
-      return `Gather the group at ${slotName} in ${zoneName}. Grab some coffee, check out the menu, and chat while everyone arrives.`;
-    }
-    if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(category)) {
-      return `Kick off the day with some fun and games at ${slotName}. Perfect for breaking the ice and getting the energy high!`;
-    }
-    if (['PARK', 'MUSEUM'].includes(category)) {
-      return `Start the meetup with a pleasant stroll around ${slotName}, enjoying the sights and early morning breeze together.`;
-    }
-    return `Meet up at ${slotName} in ${zoneName} to kick off the day's outing with the ${gType}.`;
-  } else if (order === 2) {
-    if (['CAFE', 'RESTAURANT'].includes(category)) {
-      return `Head over to ${slotName} for a sit-down meal. It's the perfect spot to recharge, relax, and share stories over great food.`;
-    }
-    if (['PARK', 'MALL'].includes(category)) {
-      return `Take a break at ${slotName} to walk around, window shop, or enjoy the lively local atmosphere.`;
-    }
-    return `Move to ${slotName} for the next stop of the outing to keep the conversation going.`;
-  } else { // order === 3
-    if (category === 'DESSERT') {
-      return `End the outing on a sweet note at ${slotName} with some milkshakes, ice cream, or waffles for a final chat.`;
-    }
-    if (category === 'PARK') {
-      return `Unwind at ${slotName} for a beautiful sunset view. Catch the evening breeze and take some group photos.`;
-    }
-    if (['CAFE', 'RESTAURANT'].includes(category)) {
-      return `Wind down at ${slotName} with some evening snacks and drinks as the day's outing comes to a close.`;
-    }
-    return `Finish the day at ${slotName} for a memorable final stop before everyone heads back home.`;
+function getDurationForCategory(category: string): number {
+  const cat = category.toUpperCase();
+  if (cat === 'PARK') return 60;
+  if (cat === 'DESSERT') return 45;
+  if (cat === 'CAFE') return 90;
+  if (cat === 'RESTAURANT') return 90;
+  if (cat === 'MALL') return 120;
+  if (cat === 'ARCADE' || cat === 'BOWLING') return 120;
+  if (cat === 'ESCAPE_ROOM') return 90;
+  if (cat === 'MUSEUM') return 120;
+  if (cat === 'SPORTS' || cat === 'POTTERY' || cat === 'WORKSHOP') return 120;
+  return 90;
+}
+
+function getFallbackSlotDescription(slotId: string, slotName: string, category: string, order: number, groupType: string, zoneName: string): string {
+  if (VENUE_DESCRIPTIONS[slotId]) {
+    return VENUE_DESCRIPTIONS[slotId];
   }
+  
+  const gType = (groupType || 'friends').toLowerCase();
+  const names: Record<string, string> = {
+    'CAFE': `Chill local café in ${zoneName}. Grab some coffee, check out the menu, and chat while everyone gathers.`,
+    'RESTAURANT': `Top-rated dining spot in ${zoneName}. Recharge and share stories over delicious dishes together.`,
+    'PARK': `Scenic local spot in ${zoneName}. Catch the evening breeze, walk around, and take group photos (45-60 min).`,
+    'MALL': `Sprawling shopping space in ${zoneName}. Window shop, cool off in the AC, and explore group hangouts.`,
+    'DESSERT': `Sweet ending spot in ${zoneName}. Grab milkshakes, ice cream, or waffles for a great final chat.`,
+    'ARCADE': `High-energy gaming arcade in ${zoneName}. Unleash your competitive streak with simulator games and group challenges.`,
+    'BOWLING': `Luxury bowling center in ${zoneName}. Lace up your bowling shoes and challenge the group to a match.`,
+    'ESCAPE_ROOM': `Interactive escape game in ${zoneName}. Put your heads together, crack the clues, and escape.`,
+    'MUSEUM': `Interactive local museum in ${zoneName}. Explore exhibits and interactive displays together.`,
+    'SPORTS': `Active sports arena in ${zoneName}. Fun and games for the group to get the blood pumping.`,
+  };
+  return names[category.toUpperCase()] || `Meet up at ${slotName} in ${zoneName} to hang out with the ${gType}.`;
 }
 
 function buildFallbackItineraryData(
@@ -318,7 +373,8 @@ function buildFallbackItineraryData(
   presentMembers: any[],
   presentLocations: any[],
   memberLocations?: LatLng[],
-  groupBudget?: number
+  groupBudget?: number,
+  globalUsedPlaceIds?: Set<string>
 ) {
   const budgetTiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
@@ -358,55 +414,77 @@ function buildFallbackItineraryData(
     .sort((a, b) => a._d - b._d)
     .map(({ _d: _, ...c }) => c as PlaceCandidate);
 
-  const pickCat = (cat: string, exclude: Set<string>, maxCost = Infinity): PlaceCandidate | undefined =>
-    rankedPool.find(c => c.category.toUpperCase() === cat && !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
-  const pickBestAffordable = (exclude: Set<string>, maxCost: number): PlaceCandidate | undefined =>
-    rankedPool.find(c => !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
-  const pickFree = (exclude: Set<string>): PlaceCandidate | undefined =>
-    rankedPool.find(c => c.estimatedCostPerHead === 0 && !exclude.has(c.id) && isVenueOpenAtTime(c.category, groupData.outingTime));
+  const globalUsed = globalUsedPlaceIds || new Set<string>();
 
   function pickAffordableSlots(): PlaceCandidate[] {
     const used = new Set<string>();
     const picks: PlaceCandidate[] = [];
 
+    let requiredCats: string[] = [];
+    let maxCosts: number[] = [Infinity, Infinity, Infinity];
+
     if (budgetTier === 'BUDGET_FRIENDLY') {
-      const free1 = pickFree(used) ?? pickBestAffordable(used, 100);
-      if (free1) { picks.push(free1); used.add(free1.id); }
-      const free2 = pickFree(used) ?? pickBestAffordable(used, 150);
-      if (free2) { picks.push(free2); used.add(free2.id); }
-      const food = pickBestAffordable(used, 250) ?? pickCat('CAFE', used, 250);
-      if (food) { picks.push(food); used.add(food.id); }
+      requiredCats = ['MALL', 'CAFE', 'PARK'];
+      maxCosts = [0, 250, 0];
     } else if (budgetTier === 'TRAVEL_FRIENDLY') {
-      const s0 = pickCat('CAFE', used, 300) ?? pickBestAffordable(used, 300);
-      if (s0) { picks.push(s0); used.add(s0.id); }
-      const s1 = pickFree(used) ?? pickBestAffordable(used, 100);
-      if (s1) { picks.push(s1); used.add(s1.id); }
-      const s2 = pickCat('RESTAURANT', used, 400) ?? pickBestAffordable(used, 400);
-      if (s2) { picks.push(s2); used.add(s2.id); }
+      requiredCats = ['PARK', 'CAFE', 'DESSERT'];
+      maxCosts = [0, 300, 250];
     } else if (budgetTier === 'EXPERIENCE_FIRST') {
-      const act = pickCat('ARCADE', used) ?? pickCat('BOWLING', used) ?? pickCat('ESCAPE_ROOM', used) ?? pickBestAffordable(used, 800);
-      if (act) { picks.push(act); used.add(act.id); }
-      const food = pickCat('RESTAURANT', used, 600) ?? pickCat('CAFE', used, 400);
-      if (food) { picks.push(food); used.add(food.id); }
-      const dessert = pickCat('DESSERT', used) ?? pickBestAffordable(used, 250);
-      if (dessert) { picks.push(dessert); used.add(dessert.id); }
-    } else {
-      // BALANCED
-      const food1 = pickCat('CAFE', used, 350) ?? pickBestAffordable(used, 350);
-      if (food1) { picks.push(food1); used.add(food1.id); }
-      const act = pickCat('PARK', used) ?? pickCat('MUSEUM', used) ?? pickBestAffordable(used, 200);
-      if (act) { picks.push(act); used.add(act.id); }
-      const food2 = pickCat('RESTAURANT', used, 500) ?? pickBestAffordable(used, 500);
-      if (food2) { picks.push(food2); used.add(food2.id); }
+      requiredCats = [
+        (rankedPool.some(c => c.category === 'BOWLING') ? 'BOWLING' : 'ARCADE'),
+        'RESTAURANT',
+        'DESSERT'
+      ];
+      maxCosts = [Infinity, Infinity, Infinity];
+    } else { // BALANCED
+      requiredCats = ['ARCADE', 'RESTAURANT', 'PARK'];
+      maxCosts = [600, 500, 0];
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const cat = requiredCats[i];
+      const maxC = maxCosts[i];
+
+      let candidate = rankedPool.find(c =>
+        c.category.toUpperCase() === cat &&
+        !used.has(c.id) &&
+        !globalUsed.has(c.id) &&
+        c.estimatedCostPerHead <= maxC &&
+        isVenueOpenAtTime(c.category, groupData.outingTime)
+      );
+
+      if (!candidate) {
+        candidate = rankedPool.find(c =>
+          c.category.toUpperCase() === cat &&
+          !used.has(c.id) &&
+          !globalUsed.has(c.id) &&
+          isVenueOpenAtTime(c.category, groupData.outingTime)
+        );
+      }
+
+      if (!candidate) {
+        candidate = rankedPool.find(c =>
+          !used.has(c.id) &&
+          !globalUsed.has(c.id) &&
+          c.estimatedCostPerHead <= maxC &&
+          isVenueOpenAtTime(c.category, groupData.outingTime)
+        );
+      }
+
+      if (candidate) {
+        picks.push(candidate);
+        used.add(candidate.id);
+        globalUsed.add(candidate.id);
+      }
     }
 
     while (picks.length < 3) {
-      const pad = rankedPool.find(c => !used.has(c.id));
+      const pad = rankedPool.find(c => !used.has(c.id) && !globalUsed.has(c.id));
       if (pad) {
         picks.push(pad);
         used.add(pad.id);
+        globalUsed.add(pad.id);
       } else {
-        // If no fallback candidates are close enough, generate a high-quality local mock spot matching the zone!
         const categories = ['CAFE', 'RESTAURANT', 'PARK', 'MALL'];
         const cat = categories[picks.length % categories.length];
         const names: Record<string, string> = {
@@ -430,6 +508,7 @@ function buildFallbackItineraryData(
         };
         picks.push(mockCand);
         used.add(mockId);
+        globalUsed.add(mockId);
       }
     }
     return picks.slice(0, 3);
@@ -438,17 +517,17 @@ function buildFallbackItineraryData(
   const selectedPlaces = pickAffordableSlots();
 
   const slots = selectedPlaces.map((place, slotIdx) => {
-    let arrivalTime = '11:00 AM';
-    let duration = 90;
-    if (slotIdx === 0) {
-      arrivalTime = groupData.outingTime || '11:00 AM';
-      duration = 120;
-    } else if (slotIdx === 1) {
-      arrivalTime = addMinutesToTimeString(groupData.outingTime || '11:00 AM', 120 + 15);
-      duration = 90;
-    } else {
-      arrivalTime = addMinutesToTimeString(groupData.outingTime || '11:00 AM', 120 + 15 + 90 + 15);
-      duration = 60;
+    const duration = getDurationForCategory(place.category);
+    let arrivalTime = groupData.outingTime || '11:00 AM';
+    if (slotIdx > 0) {
+      let prevTime = groupData.outingTime || '11:00 AM';
+      for (let i = 0; i < slotIdx; i++) {
+        const prevPlace = selectedPlaces[i];
+        const prevDuration = getDurationForCategory(prevPlace.category);
+        const prevTransit = 15;
+        prevTime = addMinutesToTimeString(prevTime, prevDuration + prevTransit);
+      }
+      arrivalTime = prevTime;
     }
 
     let mandatoryCost = place.estimatedCostPerHead;
@@ -486,7 +565,7 @@ function buildFallbackItineraryData(
       optionalCostMax,
       imageUrl: place.imageUrl || null,
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
-      note: getFallbackSlotDescription(place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
+      note: getFallbackSlotDescription(place.id, place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
       lat: place.lat,
       lng: place.lng,
       address: place.address || ''
@@ -1396,7 +1475,7 @@ async function executePlanningEngine(
         .catch(() => [] as any[]);
       const metricsRecord = (metricsResults && metricsResults.length > 0) ? metricsResults[0] : null;
 
-      const score = scorePlaceCandidateRefactored(
+      const baseScore = scorePlaceCandidateRefactored(
         c,
         groupData.groupType,
         zoneLowestBudget,
@@ -1404,6 +1483,8 @@ async function executePlanningEngine(
         metricsRecord,
         (c as any).lastVerified
       );
+      const randomOffset = (Math.random() - 0.5) * 0.15;
+      const score = baseScore + randomOffset;
 
       return {
         ...c,
@@ -1651,17 +1732,17 @@ async function executePlanningEngine(
           finalLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
         }
 
-        let arrivalTime = '11:00 AM';
-        let duration = 90;
-        if (slotIdx === 0) {
-          arrivalTime = groupData.outingTime || '11:00 AM';
-          duration = 120;
-        } else if (slotIdx === 1) {
-          arrivalTime = addMinutesToTimeString(groupData.outingTime || '11:00 AM', 120 + 15);
-          duration = 90;
-        } else {
-          arrivalTime = addMinutesToTimeString(groupData.outingTime || '11:00 AM', 120 + 15 + 90 + 15);
-          duration = 60;
+        const duration = getDurationForCategory(place.category);
+        let arrivalTime = groupData.outingTime || '11:00 AM';
+        if (slotIdx > 0) {
+          let prevTime = groupData.outingTime || '11:00 AM';
+          for (let i = 0; i < slotIdx; i++) {
+            const prevPlace = selectedPlaces[i];
+            const prevDuration = getDurationForCategory(prevPlace.category);
+            const prevTransit = 15;
+            prevTime = addMinutesToTimeString(prevTime, prevDuration + prevTransit);
+          }
+          arrivalTime = prevTime;
         }
 
         return {
@@ -1680,7 +1761,7 @@ async function executePlanningEngine(
           optionalCostMax: getOptionalCostMax(place),
           imageUrl: finalImg,
           link: finalLink,
-          note: `Enjoy a wonderful outing at ${place.name} matching the ${groupData.groupType.toLowerCase()} vibe.`,
+          note: getFallbackSlotDescription(place.id, place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
           lat: place.lat,
           lng: place.lng,
           address: place.address || ''
@@ -1994,9 +2075,18 @@ export const plannerService = {
         const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
         const budget = lowestBudget || budgetSummary?.min || 1000;
         const existingIndexes = new Set(draftPlans.map(d => d.planIndex));
+
+        const usedPlaceIds = new Set<string>();
+        draftPlans.forEach(plan => {
+          plan.slots?.forEach((slot: any) => {
+            if (slot.venueId) usedPlaceIds.add(slot.venueId);
+            if (slot.experienceId) usedPlaceIds.add(slot.experienceId);
+          });
+        });
+
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
-            const fallbackPlan = buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget);
+            const fallbackPlan = buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
           }
@@ -2338,9 +2428,18 @@ export const plannerService = {
         const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
         const budget = lowestBudget || presentBudgetSummary?.min || 1000;
         const existingIndexes = new Set(draftPlans.map(d => d.planIndex));
+
+        const usedPlaceIds = new Set<string>();
+        draftPlans.forEach(plan => {
+          plan.slots?.forEach((slot: any) => {
+            if (slot.venueId) usedPlaceIds.add(slot.venueId);
+            if (slot.experienceId) usedPlaceIds.add(slot.experienceId);
+          });
+        });
+
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
-            const fallbackPlan = buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget);
+            const fallbackPlan = buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
           }
