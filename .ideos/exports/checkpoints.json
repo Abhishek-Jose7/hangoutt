@@ -72,6 +72,54 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-30T18:39:44.725Z"
+    },
+    {
+      "id": "65bdf369-8475-46da-8c05-ad1b2e898c7c",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "Secure API keys by untracking local.db, .wrangler, and removing hardcoded credentials",
+      "progress": 0,
+      "files_touched": "[\".gitignore\",\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite\",\".wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite-shm\",\".wrangler/state/v3/cache/miniflare-CacheObject/metadata.sqlite-wal\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-shm\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-wal\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/metadata.sqlite\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T18:51:55.139Z"
+    },
+    {
+      "id": "cd8c58b8-5e6c-4516-878f-a3c7d8afc9ab",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "Secure all photo URLs via proxy, fix reactive fetch labeling to GOOGLE, rotate API key",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/lib/maps/places.ts\",\"src/lib/services/planner.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T19:15:13.228Z"
+    },
+    {
+      "id": "7f68dc6a-3d97-43bf-b7e3-1c317855c960",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "Add image caching in DB, fix photo route 404, make photo endpoint public",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/app/api/places/photo/route.ts\",\"src/lib/db/schema.ts\",\"src/middleware.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T19:53:50.610Z"
+    },
+    {
+      "id": "8ce9413f-5232-4223-bdbb-7fe5b4e3dc9a",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "Fix signed-out invite redirects by using fallback redirects, optimize photo default width to 300px for DB cache stability",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scripts/cache_remote_images.js\",\"src/app/(auth)/sign-in/page.tsx\",\"src/app/(auth)/sign-up/page.tsx\",\"src/app/api/places/photo/route.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T20:05:42.226Z"
     }
   ]
 }

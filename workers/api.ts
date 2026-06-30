@@ -756,6 +756,7 @@ async function savePlans(request: Request, env: Env, groupId: string) {
     plans: any[];
     slots: any[];
     memberTravels: any[];
+    venues?: any[];
     generationOptions?: string[];
   }>(request);
 
@@ -778,6 +779,49 @@ async function savePlans(request: Request, env: Env, groupId: string) {
     }
   }
   statements.push(env.DB.prepare(`DELETE FROM plans WHERE group_id = ?`).bind(groupId));
+
+  // Sync any new venues passed in the body first to prevent foreign key errors on D1
+  if (body.venues && Array.isArray(body.venues)) {
+    const now = new Date().toISOString();
+    for (const v of body.venues) {
+      if (!v.id || v.id.startsWith('fb_') || v.id.startsWith('fallback_')) continue;
+
+      let sourceName = 'GOOGLE';
+      let sourcePlaceId = v.id;
+      if (v.id.startsWith('GOOGLE_')) {
+        sourcePlaceId = v.id.substring(7);
+      } else if (v.id.startsWith('OLA_')) {
+        sourceName = 'OLA';
+        sourcePlaceId = v.id.substring(4);
+      }
+
+      // 1. Insert into places table
+      statements.push(env.DB.prepare(
+        `INSERT OR IGNORE INTO places (
+          id, name, address, lat, lng, rating, review_count, 
+          source_name, source_place_id, last_verified, verified_at, 
+          is_featured, is_hidden, boost_factor, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1.0, ?, ?)`
+      ).bind(
+        v.id, v.name, v.address || '', v.lat, v.lng, v.rating || null, v.reviewCount || 0,
+        sourceName, sourcePlaceId, now, now, now, now
+      ));
+
+      // 2. Insert into place_categories table
+      if (v.category) {
+        statements.push(env.DB.prepare(
+          `INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)`
+        ).bind(crypto.randomUUID(), v.id, v.category));
+      }
+
+      // 3. Insert into place_costs table
+      statements.push(env.DB.prepare(
+        `INSERT OR IGNORE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max) VALUES (?, ?, ?, ?)`
+      ).bind(
+        v.id, v.mandatoryCost || 0, v.optionalCostMin || 0, v.optionalCostMax || 0
+      ));
+    }
+  }
 
   // Insert new plans
   for (const plan of body.plans) {
@@ -808,6 +852,7 @@ async function savePlans(request: Request, env: Env, groupId: string) {
 
   // Insert new slots
   for (const slot of body.slots) {
+    const finalVenueId = (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) ? slot.venueId : null;
     statements.push(env.DB.prepare(
       `INSERT INTO plan_slots (
         id, plan_id, slot_order, venue_id, experience_id, venue_name, name, category, 
@@ -815,7 +860,7 @@ async function savePlans(request: Request, env: Env, groupId: string) {
         travel_to_next_cost, image_url, link
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      slot.id, slot.planId, slot.slotOrder, slot.venueId || null, slot.experienceId || null, slot.venueName || null, slot.name, slot.category,
+      slot.id, slot.planId, slot.slotOrder, finalVenueId, slot.experienceId || null, slot.venueName || null, slot.name, slot.category,
       slot.arrivalTime, slot.durationMinutes, slot.travelToNextMinutes || null, slot.estimatedCostPerHead, slot.note,
       slot.travelToNextCost || null, slot.imageUrl || null, slot.link || null
     ));
@@ -836,13 +881,14 @@ async function savePlans(request: Request, env: Env, groupId: string) {
 
   // Increment times_generated for each place in the plan slots
   for (const slot of body.slots) {
-    if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+    const finalVenueId = (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) ? slot.venueId : null;
+    if (finalVenueId) {
       statements.push(env.DB.prepare(
         `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
          VALUES (?, 1, 0, 0, 0)
          ON CONFLICT(place_id)
          DO UPDATE SET times_generated = times_generated + 1`
-      ).bind(slot.venueId));
+      ).bind(finalVenueId));
     }
   }
 

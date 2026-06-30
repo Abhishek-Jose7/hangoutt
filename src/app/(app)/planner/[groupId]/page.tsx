@@ -32,6 +32,53 @@ export default function PlannerPage() {
   const [selectedRegenOpts, setSelectedRegenOpts] = useState<string[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
+  const [scrollIndex, setScrollIndex] = useState(0);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [expandedPlanTravel, setExpandedPlanTravel] = useState<Record<string, boolean>>({});
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const width = target.offsetWidth;
+    const left = target.scrollLeft;
+    const newIndex = Math.round(left / (width || 1));
+    if (newIndex !== scrollIndex && newIndex >= 0 && newIndex < plans.length) {
+      setScrollIndex(newIndex);
+    }
+  };
+
+  const budgetTierLabels: Record<string, string> = {
+    'TRAVEL_FRIENDLY': 'LOWEST COMMUTE',
+    'BUDGET_FRIENDLY': 'BUDGET FRIENDLY',
+    'BALANCED': 'BEST OVERALL',
+    'EXPERIENCE_FIRST': 'EXPERIENCE FIRST',
+    'PREMIUM': 'EXPERIENCE FIRST',
+  };
+
+  function getEndTime(startTimeStr: string, durationMinutes: number): string {
+    try {
+      const match = startTimeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (!match) return startTimeStr;
+      let hour = parseInt(match[1]);
+      const min = parseInt(match[2]);
+      const ampm = match[3].toUpperCase();
+      if (ampm === 'PM' && hour !== 12) hour += 12;
+      if (ampm === 'AM' && hour === 12) hour = 0;
+      
+      const date = new Date();
+      date.setHours(hour, min, 0, 0);
+      date.setMinutes(date.getMinutes() + durationMinutes);
+      
+      let endHour = date.getHours();
+      const endMin = date.getMinutes();
+      const endAmpm = endHour >= 12 ? 'PM' : 'AM';
+      endHour = endHour % 12;
+      if (endHour === 0) endHour = 12;
+      return `${endHour}:${endMin.toString().padStart(2, '0')} ${endAmpm}`;
+    } catch {
+      return startTimeStr;
+    }
+  }
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -245,13 +292,17 @@ export default function PlannerPage() {
         </div>
       }
     >
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 font-mono text-xs w-full">
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none gap-6 pb-6 w-full -mx-4 px-4 xl:mx-0 xl:px-0 xl:grid xl:grid-cols-2 xl:gap-8 xl:overflow-x-visible xl:pb-0"
+      >
         {plans.map((plan) => {
           const isWinningPlan = group.winningPlanId === plan.id;
           const voteCount = votes[plan.id] || 0;
 
           return (
-            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full">
+            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-auto flex-shrink-0 xl:flex-shrink">
               <CardHeader className="pb-3 border-b border-stone-900/60">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-1">
@@ -301,6 +352,9 @@ export default function PlannerPage() {
                   <div>
                     <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
                     <p className="text-sm font-bold text-white mt-1">₹{plan.totalEstimatedCostPerHead} <span className="text-[8px] text-neutral-500 font-normal">/ HEAD</span></p>
+                    <p className="text-[7.5px] text-neutral-400 mt-0.5 leading-none">
+                      Act: ₹{plan.totalEstimatedCostPerHead - plan.avgTotalCost} | Trv: ₹{plan.avgTotalCost}
+                    </p>
                   </div>
                   <div>
                     <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
@@ -311,7 +365,7 @@ export default function PlannerPage() {
                   <div>
                     <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
                     <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
-                      {plan.budgetTier.replace('_', ' ')}
+                      {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
                     </Badge>
                   </div>
                 </div>
@@ -321,7 +375,7 @@ export default function PlannerPage() {
                   <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
                     <div className="grid grid-cols-1 gap-2 mt-1">
-                      {plan.whyRecommended.slice(0, 3).map((reason: string, rIdx: number) => (
+                      {plan.whyRecommended.slice(0, 4).map((reason: string, rIdx: number) => (
                         <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
                           <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
                           <span>{reason}</span>
@@ -330,6 +384,54 @@ export default function PlannerPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Confidence Metrics & Trade-offs */}
+                <div className="grid grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] font-mono text-[10px]">
+                  <div className="space-y-1.5 border-r border-stone-900/60 pr-2">
+                    <h5 className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-400">Overall Match:</span>
+                      <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-400">Commute Score:</span>
+                      <span className="font-semibold text-white">{(plan.travelScore * 10).toFixed(1)}/10</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-neutral-400">Budget Fit:</span>
+                      <span className="font-semibold text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pl-2 flex flex-col justify-between">
+                    <h5 className="text-[8.5px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
+                    <ul className="space-y-1 text-[8.5px] leading-tight text-neutral-300">
+                      {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Lowest travel time</li>
+                          <li className="text-neutral-400">− Fewer arcade choices</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'BUDGET_FRIENDLY' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
+                          <li className="text-neutral-400">− Longer commutes for some</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'BALANCED' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Great rating/commute split</li>
+                          <li className="text-neutral-400">− Popular spots get crowded</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'EXPERIENCE_FIRST' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Premium gaming & food</li>
+                          <li className="text-neutral-400">− Higher budget required</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                </div>
 
                 {/* Timeline slots */}
                 <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
@@ -391,7 +493,7 @@ export default function PlannerPage() {
                                 </span>
                               </div>
                               <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
-                                {slot.arrivalTime} ({slot.durationMinutes}M)
+                                {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
                               </span>
                             </div>
                             <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
@@ -402,23 +504,19 @@ export default function PlannerPage() {
                                 <DollarSign className="h-3 w-3 text-[#DC143C]" />
                                 ESTIMATED: ₹{slot.estimatedCostPerHead}
                               </span>
-                              {slot.travelToNextMinutes !== null && (
-                                <span className="text-[#DC143C] font-bold flex items-center gap-1.5 uppercase text-[9px]">
-                                  <span className="flex items-center gap-0.5">
-                                    <svg className="h-3 w-3 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 1.1.9 2 2 2h2" />
-                                      <circle cx="7" cy="17" r="2" />
-                                      <circle cx="17" cy="17" r="2" />
-                                    </svg>
-                                    AUTO: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}
-                                  </span>
-                                  <span className="text-neutral-600">//</span>
-                                  <span>TRANSIT: {slot.travelToNextMinutes} MINS</span>
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
+
+                        {/* Transit transition connector */}
+                        {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
+                          <div className="my-6 relative pl-4 border-l border-dashed border-stone-700/80 text-[10px] text-neutral-400 font-mono flex items-center gap-1.5 h-12 -ml-6">
+                            <span className="absolute -left-[4px] h-2 w-2 rounded-full bg-stone-700 border border-stone-600" />
+                            <span>⏱️ <strong>{slot.travelToNextMinutes} min</strong> transit to next stop</span>
+                            <span className="text-neutral-600">//</span>
+                            <span>Auto/Cab: <strong>₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}</strong> per head</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -427,62 +525,90 @@ export default function PlannerPage() {
                 {/* Transit Grid */}
                 {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
                   <div className="border-t border-stone-900/60 pt-6 mt-6">
-                    <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5 mb-2.5">
-                      <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                        <path d="M2 12h20" />
-                      </svg>
-                      YOUR TRAVEL BREAKDOWN (TRANSIT GRID)
-                    </h4>
-                    <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
-                      <table className="w-full text-left border-collapse font-mono text-[10px]">
-                        <thead>
-                          <tr className="border-b border-stone-850 text-neutral-400 font-bold">
-                            <th className="py-2 px-3">Member</th>
-                            <th className="py-2 px-3">Train</th>
-                            <th className="py-2 px-3">Cab / Auto</th>
-                            <th className="py-2 px-3">Walk</th>
-                            <th className="py-2 px-3 text-right">Total Commute</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {plan.memberTravelMetrics.map((mt: any) => {
-                            const memberObj = members.find((m: any) => m.userId === mt.userId);
-                            const name = memberObj ? memberObj.name : 'Participant';
-                            return (
-                              <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
-                                <td className="py-2 px-3 font-semibold text-white">{name}</td>
-                                <td className="py-2 px-3">
-                                  {mt.trainTime > 0 ? (
-                                    <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
-                                  ) : (
-                                    <span className="text-neutral-600">N/A</span>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3">
-                                  {mt.cabTime > 0 || mt.autoTime > 0 ? (
-                                    <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
-                                  ) : (
-                                    <span className="text-neutral-600">N/A</span>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3">
-                                  {mt.walkTime > 0 ? (
-                                    <span>{mt.walkTime}m</span>
-                                  ) : (
-                                    <span className="text-neutral-600">0m</span>
-                                  )}
-                                </td>
-                                <td className="py-2 px-3 text-right font-bold text-white">
-                                  {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5">
+                        <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                          <path d="M2 12h20" />
+                        </svg>
+                        YOUR TRAVEL BREAKDOWN
+                      </h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setExpandedPlanTravel(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                        className="text-[9px] font-mono text-[#DC143C] hover:bg-stone-900 hover:text-white rounded-[6px] h-7 px-3 cursor-pointer"
+                      >
+                        {expandedPlanTravel[plan.id] ? 'HIDE MEMBERS' : 'SHOW MEMBERS'}
+                      </Button>
                     </div>
+
+                    {!expandedPlanTravel[plan.id] ? (
+                      <div className="bg-stone-950/50 border border-stone-900/80 rounded-[8px] p-3 text-[10px] font-mono text-neutral-400 space-y-1.5">
+                        <div className="flex justify-between">
+                          <span>Average Commute Time:</span>
+                          <span className="text-white font-bold">{plan.avgTotalTime} mins</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Commute Time Range:</span>
+                          <span className="text-white">{plan.shortestTravelTime}m – {plan.longestTravelTime}m</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Average Commute Cost:</span>
+                          <span className="text-[#DC143C] font-bold">₹{plan.avgTotalCost}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
+                        <table className="w-full text-left border-collapse font-mono text-[10px]">
+                          <thead>
+                            <tr className="border-b border-stone-850 text-neutral-400 font-bold">
+                              <th className="py-2 px-3">Member</th>
+                              <th className="py-2 px-3">Train</th>
+                              <th className="py-2 px-3">Cab / Auto</th>
+                              <th className="py-2 px-3">Walk</th>
+                              <th className="py-2 px-3 text-right">Total Commute</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {plan.memberTravelMetrics.map((mt: any) => {
+                              const memberObj = members.find((m: any) => m.userId === mt.userId);
+                              const name = memberObj ? memberObj.name : 'Participant';
+                              return (
+                                <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
+                                  <td className="py-2 px-3 font-semibold text-white">{name}</td>
+                                  <td className="py-2 px-3">
+                                    {mt.trainTime > 0 ? (
+                                      <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
+                                    ) : (
+                                      <span className="text-neutral-600">N/A</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    {mt.cabTime > 0 || mt.autoTime > 0 ? (
+                                      <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
+                                    ) : (
+                                      <span className="text-neutral-600">N/A</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    {mt.walkTime > 0 ? (
+                                      <span>{mt.walkTime}m</span>
+                                    ) : (
+                                      <span className="text-neutral-600">0m</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-bold text-white">
+                                    {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -514,6 +640,30 @@ export default function PlannerPage() {
             </Card>
           );
         })}
+      </div>
+
+      {/* Swipe Dots Indicator for Mobile */}
+      <div className="flex xl:hidden justify-center items-center gap-2 mt-4">
+        {plans.map((_, idx) => (
+          <button
+            key={idx}
+            onClick={() => {
+              if (scrollRef.current) {
+                const cardWidth = scrollRef.current.children[idx]?.getBoundingClientRect().width || 0;
+                const gap = 24; // matches gap-6
+                scrollRef.current.scrollTo({
+                  left: idx * (cardWidth + gap),
+                  behavior: 'smooth'
+                });
+                setScrollIndex(idx);
+              }
+            }}
+            className={`h-2 w-2 rounded-full transition-all duration-300 ${
+              scrollIndex === idx ? 'bg-[#DC143C] w-4' : 'bg-neutral-700 hover:bg-neutral-500'
+            }`}
+            aria-label={`Go to slide ${idx + 1}`}
+          />
+        ))}
       </div>
 
       {/* Regeneration Modal */}

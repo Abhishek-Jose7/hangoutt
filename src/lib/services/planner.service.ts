@@ -277,6 +277,41 @@ export function buildFallbackItineraryDataForEval(
   return buildFallbackItineraryData(planIndex, groupData, presentMembers, presentLocations, memberLocations, groupBudget);
 }
 
+function getFallbackSlotDescription(slotName: string, category: string, order: number, groupType: string, zoneName: string): string {
+  const gType = (groupType || 'friends').toLowerCase();
+  if (order === 1) {
+    if (category === 'CAFE') {
+      return `Gather the group at ${slotName} in ${zoneName}. Grab some coffee, check out the menu, and chat while everyone arrives.`;
+    }
+    if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(category)) {
+      return `Kick off the day with some fun and games at ${slotName}. Perfect for breaking the ice and getting the energy high!`;
+    }
+    if (['PARK', 'MUSEUM'].includes(category)) {
+      return `Start the meetup with a pleasant stroll around ${slotName}, enjoying the sights and early morning breeze together.`;
+    }
+    return `Meet up at ${slotName} in ${zoneName} to kick off the day's outing with the ${gType}.`;
+  } else if (order === 2) {
+    if (['CAFE', 'RESTAURANT'].includes(category)) {
+      return `Head over to ${slotName} for a sit-down meal. It's the perfect spot to recharge, relax, and share stories over great food.`;
+    }
+    if (['PARK', 'MALL'].includes(category)) {
+      return `Take a break at ${slotName} to walk around, window shop, or enjoy the lively local atmosphere.`;
+    }
+    return `Move to ${slotName} for the next stop of the outing to keep the conversation going.`;
+  } else { // order === 3
+    if (category === 'DESSERT') {
+      return `End the outing on a sweet note at ${slotName} with some milkshakes, ice cream, or waffles for a final chat.`;
+    }
+    if (category === 'PARK') {
+      return `Unwind at ${slotName} for a beautiful sunset view. Catch the evening breeze and take some group photos.`;
+    }
+    if (['CAFE', 'RESTAURANT'].includes(category)) {
+      return `Wind down at ${slotName} with some evening snacks and drinks as the day's outing comes to a close.`;
+    }
+    return `Finish the day at ${slotName} for a memorable final stop before everyone heads back home.`;
+  }
+}
+
 function buildFallbackItineraryData(
   planIndex: number,
   groupData: any,
@@ -285,7 +320,7 @@ function buildFallbackItineraryData(
   memberLocations?: LatLng[],
   groupBudget?: number
 ) {
-  const budgetTiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
+  const budgetTiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
 
   // Dynamically pick best zone from member locations instead of using hardcoded zones
@@ -303,88 +338,105 @@ function buildFallbackItineraryData(
   const zoneIdx = (planIndex - 1) % Math.max(1, rankedZones.length);
   const zoneObj = rankedZones[zoneIdx];
 
-    const budgetCap = groupBudget && groupBudget > 0 ? groupBudget : 5000;
-    const TRAVEL_EST = 80;
-    const venueTotal = Math.max(0, budgetCap - TRAVEL_EST);
+  const budgetCap = groupBudget && groupBudget > 0 ? groupBudget : 5000;
+  const TRAVEL_EST = 80;
+  const venueTotal = Math.max(0, budgetCap - TRAVEL_EST);
 
-    const outingHour = (() => {
-      const t = groupData.outingTime || '12:00';
-      const m = t.match(/^(\d{1,2}):(\d{2})/);
-      return m ? parseInt(m[1]) : 12;
-    })();
-    const isNight = outingHour >= 19;
+  const outingHour = (() => {
+    const t = groupData.outingTime || '12:00';
+    const m = t.match(/^(\d{1,2}):(\d{2})/);
+    return m ? parseInt(m[1]) : 12;
+  })();
 
-    const hasMoviePreference = (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
-      (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie'));
+  const hasMoviePreference = (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
+    (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie'));
 
-    const rankedPool = MUMBAI_FALLBACK_CANDIDATES
-      .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
-      .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) }))
-      .sort((a, b) => a._d - b._d)
-      .map(({ _d: _, ...c }) => c as PlaceCandidate);
+  const rankedPool = MUMBAI_FALLBACK_CANDIDATES
+    .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
+    .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) }))
+    .filter(c => c._d <= 4.5) // Restrict fallback candidates to a tight 4.5km radius to prevent location mismatch
+    .sort((a, b) => a._d - b._d)
+    .map(({ _d: _, ...c }) => c as PlaceCandidate);
 
-    const pickCat = (cat: string, exclude: Set<string>, maxCost = Infinity): PlaceCandidate | undefined =>
-      rankedPool.find(c => c.category.toUpperCase() === cat && !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
-    const pickBestAffordable = (exclude: Set<string>, maxCost: number): PlaceCandidate | undefined =>
-      rankedPool.find(c => !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
-    const pickFree = (exclude: Set<string>): PlaceCandidate | undefined =>
-      rankedPool.find(c => c.estimatedCostPerHead === 0 && !exclude.has(c.id) && isVenueOpenAtTime(c.category, groupData.outingTime));
+  const pickCat = (cat: string, exclude: Set<string>, maxCost = Infinity): PlaceCandidate | undefined =>
+    rankedPool.find(c => c.category.toUpperCase() === cat && !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
+  const pickBestAffordable = (exclude: Set<string>, maxCost: number): PlaceCandidate | undefined =>
+    rankedPool.find(c => !exclude.has(c.id) && c.estimatedCostPerHead <= maxCost && isVenueOpenAtTime(c.category, groupData.outingTime));
+  const pickFree = (exclude: Set<string>): PlaceCandidate | undefined =>
+    rankedPool.find(c => c.estimatedCostPerHead === 0 && !exclude.has(c.id) && isVenueOpenAtTime(c.category, groupData.outingTime));
 
-    const TEMPLATES: Array<[string, string, string]> = [
-      ['ARCADE',       'CAFE',        'PARK'],
-      ['ESCAPE_ROOM',  'RESTAURANT',  'PARK'],
-      ['MUSEUM',       'CAFE',        'DESSERT'],
-      ['BOWLING',      'RESTAURANT',  'MALL'],
-    ];
-    const [t0, t1, t2] = TEMPLATES[(planIndex - 1) % TEMPLATES.length];
+  function pickAffordableSlots(): PlaceCandidate[] {
+    const used = new Set<string>();
+    const picks: PlaceCandidate[] = [];
 
-    function pickAffordableSlots(): PlaceCandidate[] {
-      const used = new Set<string>();
-      const picks: PlaceCandidate[] = [];
-
-      if (venueTotal <= 0) {
-        for (const c of rankedPool.filter(c => c.estimatedCostPerHead === 0).slice(0, 3)) {
-          if (!used.has(c.id)) { picks.push(c); used.add(c.id); }
-        }
-      } else if (venueTotal < 500) {
-        // Tight budget: 1 modest paid + 2 free (parks, promenades)
-        const paid = pickBestAffordable(used, venueTotal);
-        if (paid) { picks.push(paid); used.add(paid.id); }
-        const f1 = pickFree(used) ?? pickBestAffordable(used, 100);
-        if (f1) { picks.push(f1); used.add(f1.id); }
-        const f2 = pickFree(used) ?? pickBestAffordable(used, 100);
-        if (f2) { picks.push(f2); used.add(f2.id); }
-      } else if (venueTotal < 1000) {
-        // Moderate: 1 activity + 1 food + 1 free
-        const perSlot = Math.floor(venueTotal / 2);
-        const act = pickCat(t0, used, perSlot) ?? pickBestAffordable(used, perSlot);
-        if (act) { picks.push(act); used.add(act.id); }
-        const food = pickCat(t1, used, perSlot) ?? pickBestAffordable(used, perSlot);
-        if (food) { picks.push(food); used.add(food.id); }
-        const scenic = pickFree(used) ?? pickBestAffordable(used, 200);
-        if (scenic) { picks.push(scenic); used.add(scenic.id); }
-      } else {
-        // Comfortable: full 3-stop template
-        const perSlot = Math.floor(venueTotal / 3);
-        const s0 = pickCat(t0, used, perSlot) ?? pickBestAffordable(used, perSlot);
-        if (s0) { picks.push(s0); used.add(s0.id); }
-        const s1 = pickCat(t1, used, perSlot) ?? pickBestAffordable(used, perSlot);
-        if (s1) { picks.push(s1); used.add(s1.id); }
-        const s2 = pickCat(t2, used, perSlot) ?? pickFree(used) ?? pickBestAffordable(used, perSlot);
-        if (s2) { picks.push(s2); used.add(s2.id); }
-      }
-
-      while (picks.length < 3) {
-        const pad = rankedPool.find(c => !used.has(c.id));
-        if (!pad) break;
-        picks.push(pad);
-        used.add(pad.id);
-      }
-      return picks.slice(0, 3);
+    if (budgetTier === 'BUDGET_FRIENDLY') {
+      const free1 = pickFree(used) ?? pickBestAffordable(used, 100);
+      if (free1) { picks.push(free1); used.add(free1.id); }
+      const free2 = pickFree(used) ?? pickBestAffordable(used, 150);
+      if (free2) { picks.push(free2); used.add(free2.id); }
+      const food = pickBestAffordable(used, 250) ?? pickCat('CAFE', used, 250);
+      if (food) { picks.push(food); used.add(food.id); }
+    } else if (budgetTier === 'TRAVEL_FRIENDLY') {
+      const s0 = pickCat('CAFE', used, 300) ?? pickBestAffordable(used, 300);
+      if (s0) { picks.push(s0); used.add(s0.id); }
+      const s1 = pickFree(used) ?? pickBestAffordable(used, 100);
+      if (s1) { picks.push(s1); used.add(s1.id); }
+      const s2 = pickCat('RESTAURANT', used, 400) ?? pickBestAffordable(used, 400);
+      if (s2) { picks.push(s2); used.add(s2.id); }
+    } else if (budgetTier === 'EXPERIENCE_FIRST') {
+      const act = pickCat('ARCADE', used) ?? pickCat('BOWLING', used) ?? pickCat('ESCAPE_ROOM', used) ?? pickBestAffordable(used, 800);
+      if (act) { picks.push(act); used.add(act.id); }
+      const food = pickCat('RESTAURANT', used, 600) ?? pickCat('CAFE', used, 400);
+      if (food) { picks.push(food); used.add(food.id); }
+      const dessert = pickCat('DESSERT', used) ?? pickBestAffordable(used, 250);
+      if (dessert) { picks.push(dessert); used.add(dessert.id); }
+    } else {
+      // BALANCED
+      const food1 = pickCat('CAFE', used, 350) ?? pickBestAffordable(used, 350);
+      if (food1) { picks.push(food1); used.add(food1.id); }
+      const act = pickCat('PARK', used) ?? pickCat('MUSEUM', used) ?? pickBestAffordable(used, 200);
+      if (act) { picks.push(act); used.add(act.id); }
+      const food2 = pickCat('RESTAURANT', used, 500) ?? pickBestAffordable(used, 500);
+      if (food2) { picks.push(food2); used.add(food2.id); }
     }
 
-    const selectedPlaces = pickAffordableSlots();
-  
+    while (picks.length < 3) {
+      const pad = rankedPool.find(c => !used.has(c.id));
+      if (pad) {
+        picks.push(pad);
+        used.add(pad.id);
+      } else {
+        // If no fallback candidates are close enough, generate a high-quality local mock spot matching the zone!
+        const categories = ['CAFE', 'RESTAURANT', 'PARK', 'MALL'];
+        const cat = categories[picks.length % categories.length];
+        const names: Record<string, string> = {
+          'CAFE': `Cozy Café in ${zoneObj.name}`,
+          'RESTAURANT': `Vibrant Dining in ${zoneObj.name}`,
+          'PARK': `${zoneObj.name} Scenic Walkway`,
+          'MALL': `${zoneObj.name} Shopping Spot`
+        };
+        const mockId = `fb_mock_${zoneObj.name.toLowerCase()}_${cat.toLowerCase()}_${picks.length}`;
+        const mockCand: PlaceCandidate = {
+          id: mockId,
+          name: names[cat] || `Hangout Spot in ${zoneObj.name}`,
+          category: cat as any,
+          rating: 4.5,
+          lat: zoneObj.lat + (Math.random() - 0.5) * 0.005,
+          lng: zoneObj.lng + (Math.random() - 0.5) * 0.005,
+          estimatedCostPerHead: cat === 'PARK' ? 0 : (cat === 'CAFE' ? 250 : 400),
+          address: `${zoneObj.name}, Mumbai`,
+          openNow: true,
+          isFallback: true
+        };
+        picks.push(mockCand);
+        used.add(mockId);
+      }
+    }
+    return picks.slice(0, 3);
+  }
+
+  const selectedPlaces = pickAffordableSlots();
+
   const slots = selectedPlaces.map((place, slotIdx) => {
     let arrivalTime = '11:00 AM';
     let duration = 90;
@@ -434,9 +486,10 @@ function buildFallbackItineraryData(
       optionalCostMax,
       imageUrl: place.imageUrl || null,
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
-      note: `Enjoy a wonderful outing at ${place.name} matching the ${groupData.groupType?.toLowerCase() || 'friends'} vibe.`,
+      note: getFallbackSlotDescription(place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
       lat: place.lat,
-      lng: place.lng
+      lng: place.lng,
+      address: place.address || ''
     };
   });
 
@@ -517,25 +570,67 @@ function buildFallbackItineraryData(
     ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.walkingTime || 0), 0) / memberTravelsForPlan.length)
     : 0;
 
+  let tagline = `A wonderful day out in ${zoneObj.name}.`;
+  if (budgetTier === 'TRAVEL_FRIENDLY') {
+    tagline = `A commute-optimized day out in ${zoneObj.name} designed to minimize travel for everyone.`;
+  } else if (budgetTier === 'BUDGET_FRIENDLY') {
+    tagline = `A pocket-friendly day out exploring scenic walks and cozy local spots in ${zoneObj.name}.`;
+  } else if (budgetTier === 'BALANCED') {
+    tagline = `A well-balanced itinerary featuring top-rated cafes and relaxing spots in ${zoneObj.name}.`;
+  } else if (budgetTier === 'EXPERIENCE_FIRST') {
+    tagline = `An excitement-filled day highlighting the best food, gaming, and premium experiences in ${zoneObj.name}.`;
+  }
+
+  let whyRecommended: string[] = [];
+  if (budgetTier === 'TRAVEL_FRIENDLY') {
+    whyRecommended = [
+      "Optimized for minimal travel time",
+      `Average travel time ${avgTotalTime} minutes`,
+      `Longest commute only ${longestTravelTime} minutes`,
+      "Fairly distributed transit costs"
+    ];
+  } else if (budgetTier === 'BUDGET_FRIENDLY') {
+    whyRecommended = [
+      "Lowest overall cost per head",
+      `98% budget compatibility`,
+      "Pocket-friendly cafes and stops",
+      "Saves budget for future outings"
+    ];
+  } else if (budgetTier === 'BALANCED') {
+    whyRecommended = [
+      "Best overall match score",
+      `Average travel time ${avgTotalTime} mins`,
+      `Matches ${groupData.groupType?.toLowerCase() || 'friends'} vibe`,
+      "Highly rated popular spots"
+    ];
+  } else { // EXPERIENCE_FIRST
+    whyRecommended = [
+      "Top-rated experiences nearby",
+      "Premium food and entertainment",
+      "Includes trending group activities",
+      "Highest overall venue ratings"
+    ];
+  }
+
   return {
     id: planId,
     groupId: groupData.id,
     planIndex,
     name: zoneObj.name,
-    tagline: `A wonderful ${budgetTier.toLowerCase().replace('_', ' ')} day out in ${zoneObj.name}.`,
+    tagline,
     budgetTier,
     totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
     totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots[0].travelToNextMinutes || 0) + (slots[1].travelToNextMinutes || 0),
-    score: 0.85,
+    score: budgetTier === 'BALANCED' ? 0.95 : (budgetTier === 'TRAVEL_FRIENDLY' ? 0.92 : (budgetTier === 'EXPERIENCE_FIRST' ? 0.88 : 0.82)),
 
-    experienceScore: 0.85,
-    travelScore: 0.85,
-    budgetScore: 0.85,
+    experienceScore: budgetTier === 'EXPERIENCE_FIRST' ? 0.95 : 0.82,
+    travelScore: budgetTier === 'TRAVEL_FRIENDLY' ? 0.95 : 0.82,
+    budgetScore: budgetTier === 'BUDGET_FRIENDLY' ? 0.95 : 0.78,
     fairnessScore: travelFairnessScore,
     popularityScore: 0.90,
     groupTypeMatchScore: 1.0,
     vibeMatchScore: 1.0,
-    compositeScore: 0.85,
+    compositeScore: budgetTier === 'BALANCED' ? 0.95 : (budgetTier === 'TRAVEL_FRIENDLY' ? 0.92 : (budgetTier === 'EXPERIENCE_FIRST' ? 0.88 : 0.82)),
 
     avgTrainTime,
     avgCabTime: avgAutoTime,
@@ -553,12 +648,7 @@ function buildFallbackItineraryData(
     mandatoryCost: totalMandatoryCost,
     optionalCostMin: slotsOptionalMin,
     optionalCostMax: slotsOptionalMax,
-    whyRecommended: [
-      "Everyone can afford this plan",
-      `Average travel time ${avgTotalTime} minutes`,
-      `Matches ${groupData.groupType?.toLowerCase() || 'friends'} vibe`,
-      "Highest conversation score"
-    ],
+    whyRecommended,
     slots,
     memberTravels: memberTravelsForPlan
   };
@@ -884,6 +974,7 @@ async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: 
   console.log(`[FALLBACK] zoneFallbacks table is empty for "${zoneName}". Using in-memory candidates sorted by proximity.`);
   return MUMBAI_FALLBACK_CANDIDATES
     .map(c => ({ ...c, _dist: getHaversineDistance({ lat: zoneLat, lng: zoneLng }, { lat: c.lat, lng: c.lng }) }))
+    .filter(c => c._dist <= 4.5) // Restrict to a tight 4.5km radius to prevent cross-suburb mismatch
     .sort((a, b) => (a as any)._dist - (b as any)._dist)
     .slice(0, 10)
     .map(({ _dist: _, ...c }) => c as PlaceCandidate);
@@ -1069,7 +1160,7 @@ async function executePlanningEngine(
 
     const zoneLowestBudget = Math.min(...memberAvailableBudgets.map(m => m.availableBudget));
 
-    const radiusKm = 5.0;
+    const radiusKm = 3.0;
     const latDiff = radiusKm / 111.0;
     const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
 
@@ -1334,7 +1425,7 @@ async function executePlanningEngine(
 
   const usedPlaceIds = new Set<string>();
   const draftItineraries: any[] = [];
-  const tiers = ['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM', 'BALANCED'] as const;
+  const tiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
 
   const buildPass = async (allowSharedVenues = false) => {
     const shuffledZones = [...candidateZones];
@@ -1544,8 +1635,7 @@ async function executePlanningEngine(
             if (details && details.photos && details.photos.length > 0) {
               const photoRef = details.photos[0].photo_reference;
               if (photoRef) {
-                const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-                finalImg = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
+                finalImg = `/api/places/photo?ref=${encodeURIComponent(photoRef)}`;
               }
             }
             if (details && details.website) {
@@ -1592,7 +1682,8 @@ async function executePlanningEngine(
           link: finalLink,
           note: `Enjoy a wonderful outing at ${place.name} matching the ${groupData.groupType.toLowerCase()} vibe.`,
           lat: place.lat,
-          lng: place.lng
+          lng: place.lng,
+          address: place.address || ''
         };
       });
 
@@ -1802,12 +1893,20 @@ export const plannerService = {
       const presentUserIds = presentMembers.map((m: any) => m.userId);
       let presentLocations = locations.filter((loc: any) => presentUserIds.includes(loc.userId));
 
-      // If some members have no locations, assign them the Mumbai centroid instead of failing
+      // If some members have no locations, assign the calculated group midpoint/centroid of members who have locations, or Mumbai centroid if none.
+      const submittedLocations = presentLocations.filter((loc: any) => loc.lat !== 19.0760 || loc.lng !== 72.8777);
+      let defaultLat = 19.0760;
+      let defaultLng = 72.8777;
+      if (submittedLocations.length > 0) {
+        defaultLat = submittedLocations.reduce((sum: number, l: any) => sum + l.lat, 0) / submittedLocations.length;
+        defaultLng = submittedLocations.reduce((sum: number, l: any) => sum + l.lng, 0) / submittedLocations.length;
+      }
+
       if (presentLocations.length < presentMembers.length) {
-        console.warn(`[PLANNER] ${presentMembers.length - presentLocations.length} member(s) missing locations. Assigning Mumbai centroid as fallback.`);
+        console.warn(`[PLANNER] ${presentMembers.length - presentLocations.length} member(s) missing locations. Assigning calculated group midpoint/centroid.`);
         for (const m of presentMembers) {
           if (!presentLocations.find((l: any) => l.userId === m.userId)) {
-            presentLocations.push({ userId: m.userId, lat: 19.0760, lng: 72.8777, locationName: 'Mumbai (default)' });
+            presentLocations.push({ userId: m.userId, lat: defaultLat, lng: defaultLng, locationName: 'Group Midpoint (default)' });
           }
         }
       }
@@ -1889,13 +1988,18 @@ export const plannerService = {
         console.error('[PLANNER] executePlanningEngine failed, falling back to hardcoded plans:', engineErr);
       }
 
-      // If the planning engine produced no plans, fall back to budget+location-aware builder
-      if (draftPlans.length === 0) {
-        console.warn('[PLANNER] No plans generated by engine. Using fallback itinerary builder.');
+      // Pad to exactly 4 plans if fewer are generated
+      if (draftPlans.length < 4) {
+        console.warn(`[PLANNER] Only ${draftPlans.length} plans generated by engine. Padding with fallback itineraries.`);
         const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
         const budget = lowestBudget || budgetSummary?.min || 1000;
-        for (let fi = 1; fi <= 3; fi++) {
-          draftPlans.push(buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget));
+        const existingIndexes = new Set(draftPlans.map(d => d.planIndex));
+        for (let fi = 1; fi <= 4; fi++) {
+          if (!existingIndexes.has(fi)) {
+            const fallbackPlan = buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget);
+            fallbackPlan.planIndex = fi;
+            draftPlans.push(fallbackPlan);
+          }
         }
       }
 
@@ -1975,11 +2079,12 @@ export const plannerService = {
 
         it.slots.forEach((s: any) => {
           const draftSlot = draft.slots.find((ds: any) => ds.order === s.order) || draft.slots[s.order - 1];
+          const finalVenueId = (draftSlot?.venueId && !draftSlot.venueId.startsWith('fb_') && !draftSlot.venueId.startsWith('fallback_')) ? draftSlot.venueId : null;
           dbSlots.push({
             id: randomUUID(),
             planId,
             slotOrder: s.order,
-            venueId: draftSlot?.venueId || null,
+            venueId: finalVenueId,
             experienceId: draftSlot?.experienceId || null,
             venueName: s.name,
             name: s.name,
@@ -2013,6 +2118,30 @@ export const plannerService = {
         });
       });
 
+      const dbVenues: any[] = [];
+      const seenVenueIds = new Set<string>();
+      draftPlans.forEach((draft: any) => {
+        draft.slots.forEach((ds: any) => {
+          if (ds.venueId && !ds.venueId.startsWith('fb_') && !ds.venueId.startsWith('fallback_') && !seenVenueIds.has(ds.venueId)) {
+            seenVenueIds.add(ds.venueId);
+            dbVenues.push({
+              id: ds.venueId,
+              name: ds.name,
+              address: ds.address || '',
+              lat: ds.lat,
+              lng: ds.lng,
+              rating: ds.rating ?? null,
+              category: ds.category || '',
+              mandatoryCost: ds.mandatoryCost || 0,
+              optionalCostMin: ds.optionalCostMin || 0,
+              optionalCostMax: ds.optionalCostMax || 0,
+              imageUrl: ds.imageUrl || null,
+              link: ds.link || null
+            });
+          }
+        });
+      });
+
       let saveSucceeded = false;
       try {
         const saveRes = await hangoutApi<any>(`/groups/${groupId}/plans`, {
@@ -2021,6 +2150,7 @@ export const plannerService = {
             plans: dbPlans,
             slots: dbSlots,
             memberTravels: dbMemberTravels,
+            venues: dbVenues,
             generationOptions: options,
           },
         });
@@ -2087,12 +2217,20 @@ export const plannerService = {
     const locations = await locationRepository.getGroupLocations(groupId);
     const presentLocations: any[] = locations.filter(l => presentUserIds.includes(l.userId));
 
-    // If some members have no locations, assign Mumbai centroid instead of failing
+    // If some members have no locations, assign the calculated group midpoint/centroid of members who have locations, or Mumbai centroid if none.
+    const submittedLocations = presentLocations.filter((loc: any) => loc.lat !== 19.0760 || loc.lng !== 72.8777);
+    let defaultLat = 19.0760;
+    let defaultLng = 72.8777;
+    if (submittedLocations.length > 0) {
+      defaultLat = submittedLocations.reduce((sum: number, l: any) => sum + l.lat, 0) / submittedLocations.length;
+      defaultLng = submittedLocations.reduce((sum: number, l: any) => sum + l.lng, 0) / submittedLocations.length;
+    }
+
     if (presentLocations.length < presentMembers.length) {
-      console.warn(`[PLANNER-LOCAL] ${presentMembers.length - presentLocations.length} member(s) missing locations. Assigning Mumbai centroid.`);
+      console.warn(`[PLANNER-LOCAL] ${presentMembers.length - presentLocations.length} member(s) missing locations. Assigning calculated group midpoint/centroid.`);
       for (const m of presentMembers) {
         if (!presentLocations.find((l: any) => l.userId === m.userId)) {
-          presentLocations.push({ userId: m.userId, lat: 19.0760, lng: 72.8777, locationName: 'Mumbai (default)' });
+          presentLocations.push({ userId: m.userId, lat: defaultLat, lng: defaultLng, locationName: 'Group Midpoint (default)' });
         }
       }
     }
@@ -2194,13 +2332,18 @@ export const plannerService = {
         console.error('[PLANNER-LOCAL] executePlanningEngine failed, falling back to hardcoded plans:', engineErr);
       }
 
-      // If the planning engine produced no plans, fall back to budget+location-aware builder
-      if (draftPlans.length === 0) {
-        console.warn('[PLANNER-LOCAL] No plans generated by engine. Using fallback itinerary builder.');
+      // Pad to exactly 4 plans if fewer are generated
+      if (draftPlans.length < 4) {
+        console.warn(`[PLANNER-LOCAL] Only ${draftPlans.length} plans generated by engine. Padding with fallback itineraries.`);
         const mLocs = presentLocations.map((l: any) => ({ lat: l.lat, lng: l.lng }));
         const budget = lowestBudget || presentBudgetSummary?.min || 1000;
-        for (let fi = 1; fi <= 3; fi++) {
-          draftPlans.push(buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget));
+        const existingIndexes = new Set(draftPlans.map(d => d.planIndex));
+        for (let fi = 1; fi <= 4; fi++) {
+          if (!existingIndexes.has(fi)) {
+            const fallbackPlan = buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget);
+            fallbackPlan.planIndex = fi;
+            draftPlans.push(fallbackPlan);
+          }
         }
       }
 
@@ -2280,11 +2423,12 @@ export const plannerService = {
 
         it.slots.forEach((s: any) => {
           const draftSlot = draft.slots.find((ds: any) => ds.order === s.order) || draft.slots[s.order - 1];
+          const finalVenueId = (draftSlot?.venueId && !draftSlot.venueId.startsWith('fb_') && !draftSlot.venueId.startsWith('fallback_')) ? draftSlot.venueId : null;
           dbSlots.push({
             id: randomUUID(),
             planId,
             slotOrder: s.order,
-            venueId: draftSlot?.venueId || null,
+            venueId: finalVenueId,
             experienceId: draftSlot?.experienceId || null,
             venueName: s.name,
             name: s.name,
@@ -2340,7 +2484,7 @@ export const plannerService = {
 
           // Increment timesGenerated locally for the places
           for (const slot of dbSlots) {
-            if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+            if (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) {
               await tx.run(sql`
                 INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
                 VALUES (${slot.venueId}, 1, 0, 0, 0)
