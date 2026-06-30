@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const ref = req.nextUrl.searchParams.get('ref');
-    const maxWidth = req.nextUrl.searchParams.get('maxwidth') || '400';
+    const maxWidth = req.nextUrl.searchParams.get('maxwidth') || '300';
 
     if (!ref) {
       return Response.json({ error: 'Missing photo reference ("ref")' }, { status: 400 });
