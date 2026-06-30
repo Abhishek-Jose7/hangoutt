@@ -72,6 +72,7 @@ export async function getAdminPlaces(): ActionResponse<any[]> {
         isFeatured: p.isFeatured === 1 || p.isFeatured === true ? 1 : 0,
         isHidden: p.isHidden === 1 || p.isHidden === true ? 1 : 0,
         boostFactor: typeof p.boostFactor === 'number' ? p.boostFactor : 1.0,
+        imageUrl: p.imageUrl,
         mandatoryCost: costs[0]?.mandatoryCost ?? 0,
         optionalCostMin: costs[0]?.optionalCostMin ?? 0,
         optionalCostMax: costs[0]?.optionalCostMax ?? 0,

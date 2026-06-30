@@ -29,6 +29,7 @@ interface PlaceData {
   isHidden: number;
   boostFactor: number;
   zoneName?: string;
+  imageUrl?: string;
 }
 
 type SortField = 'name' | 'rating' | 'mandatoryCost' | 'overall';
@@ -447,8 +448,21 @@ export default function AdminPlacesPage() {
                         className="hover:bg-stone-900/20 transition-colors group"
                       >
                         {/* Name */}
-                        <td className="py-3 px-4 font-semibold text-white group-hover:text-[#DC143C] transition-colors max-w-xs truncate">
-                          {place.name}
+                        <td className="py-3 px-4 font-semibold text-white group-hover:text-[#DC143C] transition-colors max-w-xs">
+                          <div className="flex items-center gap-3">
+                            {place.imageUrl ? (
+                              <img 
+                                src={place.imageUrl} 
+                                alt={place.name} 
+                                className="h-8 w-8 object-cover rounded-[6px] border border-stone-855 bg-stone-900 flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded-[6px] border border-dashed border-stone-800 bg-stone-950 flex items-center justify-center text-[8px] font-mono text-neutral-600 flex-shrink-0">
+                                NO IMG
+                              </div>
+                            )}
+                            <span className="truncate" title={place.name}>{place.name}</span>
+                          </div>
                         </td>
 
                         {/* Zone */}

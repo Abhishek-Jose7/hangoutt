@@ -3,6 +3,7 @@ type Env = {
   HANGOUT_API_SECRET: string;
   CORS_ORIGIN?: string;
   OLA_MAPS_API_KEY?: string;
+  GOOGLE_MAPS_API_KEY?: string;
 };
 
 type D1Database = {
@@ -1239,130 +1240,99 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   const seenPlaceIds = new Set<string>();
 
   for (const { type, cat } of categoriesToSearch) {
-    const url = `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&types=${type}&location=${lat},${lng}&radius=${radius}&api_key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
     try {
-      const res = await fetch(url, {
-        headers: {
-          'X-Request-Id': `hangoutt-discover-${Date.now()}`,
-          'Referer': 'http://localhost:3000',
-          'Origin': 'http://localhost:3000'
-        }
-      });
+      const res = await fetch(url);
       if (!res.ok) continue;
       const data = await res.json() as any;
-      const results = data?.predictions || data?.results || [];
+      const results = data?.results || [];
 
-      for (const item of results.slice(0, 6)) {
+      for (const item of results.slice(0, 8)) {
         const placeId = item.place_id;
         if (!placeId || seenPlaceIds.has(placeId)) continue;
         seenPlaceIds.add(placeId);
 
-        // Fetch details
-        const detailsUrl = `https://api.olamaps.io/places/v1/details?place_id=${encodeURIComponent(placeId)}&api_key=${apiKey}`;
-        const detailsRes = await fetch(detailsUrl, {
-          headers: {
-            'X-Request-Id': `hangoutt-details-${Date.now()}`,
-            'Referer': 'http://localhost:3000',
-            'Origin': 'http://localhost:3000'
-          }
-        });
-        if (!detailsRes.ok) continue;
-        const detailsData = await detailsRes.json() as any;
-        const result = detailsData?.result;
-        if (!result) continue;
-
-        const name = result.name || item.description || 'Unknown Place';
-        const address = result.formatted_address || result.vicinity || '';
-        const placeLat = result.geometry?.location?.lat;
-        const placeLng = result.geometry?.location?.lng;
+        const name = item.name || 'Unknown Place';
+        const address = item.vicinity || item.formatted_address || '';
+        const placeLat = item.geometry?.location?.lat;
+        const placeLng = item.geometry?.location?.lng;
         if (!placeLat || !placeLng) continue;
 
-        const parsedRating = Number(result.rating || 0);
+        const parsedRating = Number(item.rating || 0);
         const finalRating: number | null = parsedRating > 0 ? parsedRating : null;
-        const finalReviewCount = result.user_ratings_total || 0;
+        const finalReviewCount = Number(item.user_ratings_total || 0);
 
-        const id = `OLA_${placeId}`;
+        const id = `GOOGLE_${placeId}`;
 
         // Filter closed places
-        const businessStatus = (result.business_status || '').toUpperCase();
+        const businessStatus = (item.business_status || '').toUpperCase();
         if (businessStatus.includes('CLOSED')) {
-          // Hide place if it's already in the database
-          await db.prepare(`UPDATE places SET is_hidden = 1 WHERE id = ?`).bind(id).run().catch(() => { });
           continue;
         }
 
-        // Reject only if Ola confirms the venue is bad (rated, has reviews, and scores poorly).
-        // Don't reject unrated venues — the name/type filters below are the real gatekeeper.
-        // Ola Maps has far fewer reviews than Google; many genuine venues have no rating yet.
-        if (finalRating !== null && finalRating > 0 && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 20)) {
+        // Quality Gate for Google Places (if rated, rating must be >= 4.0 and review count >= 10)
+        if (finalRating !== null && finalRating > 0 && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 10)) {
           continue;
         }
 
-        const types = result.types || [];
         const nameLower = name.toLowerCase();
 
-        // Bad Ola place types
-        const badTypes = [
-          'delivery', 'meal_delivery', 'hospital', 'health', 'doctor', 'dentist',
-          'physiotherapist', 'spa', 'gym', 'beauty_salon', 'hair_care',
-          'school', 'university', 'lodging', 'car_repair', 'car_wash',
-          'transit_station', 'bus_station', 'subway_station', 'parking',
-        ];
-        if (badTypes.some((t: string) => types.includes(t))) continue;
-
-        // Name patterns that are never a hangout venue
+        // Strict name patterns that are never a hangout venue (societies, apartments, offices, towers)
         const badPatterns = [
-          'anchor', 'emcee', 'dj ', ' dj', 'show host',
-          'event planner', 'wedding planner', 'decorator', 'caterer', 'catering',
-          'photographer', 'videographer', 'consultant', 'pvt ltd', 'pvt. ltd', 'limited', 'ltd.',
-          'cosmetologist', 'physiotherapist', 'dermatologist',
-          'beauty parlour', 'salon', 'spa', 'gym', 'fitness center',
-          'metro station', 'railway station', 'bus stand', 'bus terminal', 'bus depot',
-          'airport lounge', 'airport terminal',
-          'corporate park', 'corporate tower', 'corporate hub',
-          'apartment', ' apts', 'housing society', 'co-op housing', 'chawl', ' chs', 'chs ', 'c.h.s', 'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
-          'gate no', ' gate 1', ' gate 2', 'garden gate', 'world garden gate',
-          'puppeteer', 'ventriloquist', 'puppet-maker',
-          'cable vision', 'cable tv', 'cable network', 'infotainment',
-          'wall painting', 'statue structure', 'maidan',
-          'kidzania', 'smaaash junior', 'kids play area',
-          'delivery only', 'cloud kitchen', 'takeaway only', 'rto',
-          'monginis', 'ribbons & balloons', 'souffle cake', 'cake shop', 'cake counter', 'cake express', 'farsan', 'dairy',
-          'abcd', 'imagica', 'vastu park', 'abrol vastu', 'auditorium', 'selfie point', 'selfie',
-          'sathrasta', 'transit', 'compound', 'estate', 'marriage hall', 'banquet hall', 'community hall'
+          ' pvt ltd', ' pvt. ltd', ' limited', ' ltd.', 'corporate', 'office',
+          'apartment', ' housing', ' society', ' co-op', ' chs', 'chs ', 'c.h.s',
+          'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
+          'gate no', ' gate 1', ' gate 2', 'transit', 'compound', 'estate', 'marriage hall',
+          'banquet hall', 'community hall', 'rickshaw', 'auto stand', 'parking', 'metro station',
+          'railway station', 'bus stand', 'bus depot', 'bus terminal',
+          'collection', 'boutique', 'clothing', 'designer', 'couture', 'tailor', 'saree',
+          'fashion', 'textile', 'dulha', 'bridal', 'jewellers', 'jewellery', 'jewelers',
+          'advisory', 'advisor', 'advisors', 'fund ', ' fund', 'wealth', 'consultancy', 'consulting',
+          'associates', 'advocates', 'chambers', 'law firm', 'legal', 'finance', 'financial',
+          'investments', 'venture', 'capital', 'foundation', 'trust', 'ngo', 'charity',
+          'diagnostic', ' clinic', 'clinic ', 'hospital', 'nursing home', 'dental', 'eyecare'
         ];
         if (badPatterns.some((p: string) => nameLower.includes(p))) continue;
 
-        // Check if name has plaza or market, but is NOT a whitelisted shopping mall / cinema / restaurant
-        if (nameLower.includes('plaza') || nameLower.includes('market')) {
-          const whitelist = ['cinema', 'theatre', 'multiplex', 'phoenix marketcity', 'jio world plaza', 'palladium', 'mall', 'dosa plaza'];
-          if (!whitelist.some(w => nameLower.includes(w))) {
-            continue;
-          }
+        // Photo URL
+        let imageUrl: string | null = null;
+        if (item.photos && item.photos.length > 0 && item.photos[0].photo_reference) {
+          const photoRef = item.photos[0].photo_reference;
+          imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
         }
 
-        // 'amusement_park' catches water parks, theme parks, corporate parks — tighter gate
-        if (type === 'amusement_park' && finalReviewCount < 50) continue;
-
-        // Calculate costs
+        // Budget Calculations
+        const priceLevel = typeof item.price_level === 'number' ? item.price_level : null;
         let mandatoryCost = 0;
         let optionalCostMin = 0;
         let optionalCostMax = 0;
 
         if (cat === 'CAFE') {
           mandatoryCost = 0;
-          optionalCostMin = 200;
-          optionalCostMax = 600;
+          if (priceLevel === 1) { optionalCostMin = 150; optionalCostMax = 350; }
+          else if (priceLevel === 2) { optionalCostMin = 300; optionalCostMax = 600; }
+          else if (priceLevel === 3) { optionalCostMin = 500; optionalCostMax = 1000; }
+          else if (priceLevel === 4) { optionalCostMin = 1000; optionalCostMax = 2000; }
+          else { optionalCostMin = 250; optionalCostMax = 550; }
         } else if (cat === 'RESTAURANT') {
           mandatoryCost = 0;
-          optionalCostMin = 300;
-          optionalCostMax = 1000;
+          if (priceLevel === 1) { optionalCostMin = 200; optionalCostMax = 500; }
+          else if (priceLevel === 2) { optionalCostMin = 400; optionalCostMax = 900; }
+          else if (priceLevel === 3) { optionalCostMin = 800; optionalCostMax = 1800; }
+          else if (priceLevel === 4) { optionalCostMin = 1500; optionalCostMax = 3500; }
+          else { optionalCostMin = 350; optionalCostMax = 950; }
+        } else if (cat === 'DESSERT') {
+          mandatoryCost = 0;
+          if (priceLevel === 1) { optionalCostMin = 100; optionalCostMax = 300; }
+          else if (priceLevel === 2) { optionalCostMin = 200; optionalCostMax = 500; }
+          else if (priceLevel === 3) { optionalCostMin = 400; optionalCostMax = 900; }
+          else { optionalCostMin = 150; optionalCostMax = 450; }
         } else if (cat === 'BOWLING') {
-          mandatoryCost = 350; // standard per game per person
+          mandatoryCost = 350;
           optionalCostMin = 100;
           optionalCostMax = 400;
         } else if (cat === 'ARCADE') {
-          mandatoryCost = 300; // standard load
+          mandatoryCost = 300;
           optionalCostMin = 100;
           optionalCostMax = 500;
         } else if (cat === 'MUSEUM') {
@@ -1377,10 +1347,6 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           mandatoryCost = 0;
           optionalCostMin = 0;
           optionalCostMax = 0;
-        } else if (cat === 'DESSERT') {
-          mandatoryCost = 0;
-          optionalCostMin = 150;
-          optionalCostMax = 450;
         } else if (cat === 'MOVIE') {
           mandatoryCost = 300;
           optionalCostMin = 0;
@@ -1406,9 +1372,15 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
 
         // Save to D1
         await db.prepare(
-          `INSERT OR REPLACE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'OLA', ?, ?, ?, ?, ?, ?)`
-        ).bind(id, name, address, placeLat, placeLng, finalRating, finalReviewCount, placeId, now, now, firstSeen, now, now).run();
+          `INSERT OR REPLACE INTO places (
+            id, name, address, lat, lng, rating, review_count, 
+            source_name, source_place_id, last_verified, verified_at, 
+            first_seen, business_status, image_url, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          id, name, address, placeLat, placeLng, finalRating, finalReviewCount, 
+          placeId, now, now, firstSeen, businessStatus, imageUrl, now, now
+        ).run();
 
         // Save categories
         const catId1 = crypto.randomUUID();
@@ -1727,9 +1699,9 @@ async function handleAdminDiscoverZone(request: Request, env: Env) {
     return json({ success: false, error: { message: `Zone ${zoneName} not supported` } }, { status: 400, headers: corsHeaders(env) });
   }
 
-  const apiKey = env.OLA_MAPS_API_KEY || '';
+  const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
   if (!apiKey) {
-    return json({ success: false, error: { message: 'OLA_MAPS_API_KEY not configured on worker' } }, { status: 500, headers: corsHeaders(env) });
+    return json({ success: false, error: { message: 'GOOGLE_MAPS_API_KEY not configured on worker' } }, { status: 500, headers: corsHeaders(env) });
   }
 
   const count = await discoverZonePlaces(env.DB, zone.name, zone.lat, zone.lng, zone.radius, apiKey);
@@ -1791,6 +1763,7 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
     SELECT 
       p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
       p.is_featured AS isFeatured, p.is_hidden AS isHidden, p.boost_factor AS boostFactor,
+      p.image_url AS imageUrl,
       c.mandatory_cost AS mandatoryCost, c.optional_cost_min AS optionalCostMin, c.optional_cost_max AS optionalCostMax,
       s.popularity, s.budget_friendliness AS budgetFriendliness, s.overall,
       (SELECT group_concat(cat.category, ', ') FROM place_categories cat WHERE cat.place_id = p.id) AS categories

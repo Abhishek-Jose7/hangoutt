@@ -325,6 +325,7 @@ export const places = sqliteTable('places', {
   businessStatus: text('business_status').default('OPERATIONAL').notNull(),
   openingHoursJson: text('opening_hours_json'),
   phone: text('phone'),
+  imageUrl: text('image_url'),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

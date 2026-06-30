@@ -1,5 +1,4 @@
 import 'server-only';
-import { fetchOlaMaps } from './olaClient';
 import { ValidationError } from '../errors';
 
 export interface GeocodingResult {
@@ -11,22 +10,24 @@ export interface GeocodingResult {
 export async function geocodeAddress(address: string): Promise<GeocodingResult> {
   console.log(`Geocoding query address: ${address}`);
   
-  const apiKey = process.env.OLA_MAPS_API_KEY;
-  const isPlaceholder = !apiKey || apiKey === 'placeholder_ola_maps_key' || apiKey.includes('placeholder');
-  
-  if (!isPlaceholder) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (apiKey) {
     try {
-      const res = await fetchOlaMaps<any>(`/places/v1/geocode?address=${encodeURIComponent(address)}`);
-      if (res && res.geocodingResults && res.geocodingResults[0]) {
-        const first = res.geocodingResults[0];
-        return {
-          lat: first.geometry.location.lat,
-          lng: first.geometry.location.lng,
-          formattedAddress: first.formatted_address || address,
-        };
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json() as any;
+        if (data.status === 'OK' && data.results && data.results[0]) {
+          const first = data.results[0];
+          return {
+            lat: first.geometry.location.lat,
+            lng: first.geometry.location.lng,
+            formattedAddress: first.formatted_address || address,
+          };
+        }
       }
     } catch (err) {
-      console.error('Ola Maps Geocoding failed, falling back to simulator:', err);
+      console.error('Google Maps Geocoding failed, falling back to simulator:', err);
     }
   }
 

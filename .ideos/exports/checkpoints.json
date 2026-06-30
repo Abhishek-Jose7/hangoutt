@@ -12,6 +12,42 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-29T16:22:31.006Z"
+    },
+    {
+      "id": "5eacda9c-0811-4cd3-9d08-553508369262",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "claude code adolescent",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/decisions.json\",\".ideos/exports/features.json\",\".ideos/exports/sessions.json\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-shm\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-wal\",\".wrangler/tmp/bundle-uAwhid/middleware-insertion-facade.js\",\".wrangler/tmp/bundle-uAwhid/middleware-loader.entry.ts\",\".wrangler/tmp/dev-9eSPro/api.js\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T09:10:13.865Z"
+    },
+    {
+      "id": "836cfaa4-4e49-4ee7-a43c-154532a96579",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "db: clean junk venues and sync migrations schema",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-shm\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-wal\",\"scripts/bootstrap_venues.js\",\"drizzle/migrations/meta/_journal.json\",\"local.db\",\"scripts/clean_ola_venues.js\",\"scripts/sync_local_migrations.js\",\"workers/api.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T13:26:30.538Z"
+    },
+    {
+      "id": "1e6be4f5-529b-4bec-a39c-3603d276bfe4",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "db: permanently delete 424 junk places from local and remote databases",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-shm\",\".wrangler/state/v3/d1/miniflare-D1DatabaseObject/de1016c9010d91b26ca9c3eb768143182474e8e7059ce999b5564bed57346a79.sqlite-wal\",\"scripts/bootstrap_venues.js\",\"local.db\",\"scripts/clean_ola_venues.js\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T13:29:16.722Z"
     }
   ]
 }

@@ -1523,12 +1523,18 @@ async function executePlanningEngine(
         
         if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_')) {
           try {
-            const details = await getVenueDetails(place.id.startsWith('OLA_') ? place.id.slice(4) : place.id);
+            let actualPlaceId = place.id;
+            if (place.id.startsWith('GOOGLE_')) {
+              actualPlaceId = place.id.slice(7);
+            } else if (place.id.startsWith('OLA_')) {
+              actualPlaceId = place.id.slice(4);
+            }
+            const details = await getVenueDetails(actualPlaceId);
             if (details && details.photos && details.photos.length > 0) {
               const photoRef = details.photos[0].photo_reference;
               if (photoRef) {
-                const apiKey = process.env.OLA_MAPS_API_KEY;
-                finalImg = `https://api.olamaps.io/places/v1/photo?photo_reference=${encodeURIComponent(photoRef)}&api_key=${apiKey}`;
+                const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+                finalImg = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
               }
             }
             if (details && details.website) {

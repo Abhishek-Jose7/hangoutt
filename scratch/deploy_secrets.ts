@@ -19,7 +19,7 @@ if (fs.existsSync(envPath)) {
   });
 }
 
-const secretsToSet = ['OLA_MAPS_API_KEY', 'HANGOUT_API_SECRET', 'GROQ_API_KEY'];
+const secretsToSet = ['GOOGLE_MAPS_API_KEY', 'OLA_MAPS_API_KEY', 'HANGOUT_API_SECRET', 'GROQ_API_KEY'];
 
 function setSecret(name: string, value: string): Promise<void> {
   return new Promise((resolve, reject) => {
