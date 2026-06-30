@@ -70,7 +70,7 @@ export async function getVenueImageUrl(
     }
 
     const photoRef = photos[0].photo_reference;
-    return `${GOOGLE_BASE_URL}/photo?maxwidth=600&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
+    return `/api/places/photo?ref=${encodeURIComponent(photoRef)}`;
   } catch (err: any) {
     if (err.name === 'AbortError') {
       console.warn(`Google Places API request aborted (timeout) for "${searchQuery}".`);

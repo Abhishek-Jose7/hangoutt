@@ -633,11 +633,10 @@ async function reactiveVenueFetch(
 
         const rating = item.rating ? Number(item.rating) : null;
         const reviewCount = item.user_ratings_total || 0;
-        // Only reject if Ola has enough evidence the venue is genuinely bad.
-        // Unrated venues may be legitimate — Ola has far fewer reviews than Google Maps.
+        // Only reject if we have enough evidence the venue is genuinely bad.
         if (rating !== null && rating > 0 && reviewCount > 0 && (rating < 4.0 || reviewCount < 20)) continue;
 
-        const id = `OLA_${placeId}`;
+        const id = `GOOGLE_${placeId}`;
         const costs = REACTIVE_CATEGORY_COSTS[category] ?? { mandatory: 200, min: 0, max: 400 };
         const popularity = rating ? rating / 5.0 : 0.5;
         const budgetFriendliness = Math.max(0, Math.min(1, 1.0 - (costs.mandatory / 1500)));
@@ -651,7 +650,7 @@ async function reactiveVenueFetch(
             address: item.formatted_address || item.vicinity || '',
             lat: placeLat, lng: placeLng,
             rating, reviewCount,
-            sourceName: 'OLA', sourcePlaceId: placeId,
+            sourceName: 'GOOGLE', sourcePlaceId: placeId,
             lastVerified: now, verifiedAt: now,
             firstSeen: now, businessStatus: 'OPERATIONAL',
             createdAt: now, updatedAt: now,
@@ -1117,9 +1116,7 @@ async function executePlanningEngine(
         return;
       }
 
-      // Reject only if Ola confirms the venue is bad (rated, has reviews, and scores poorly).
-      // Don't reject unrated venues — Ola has far fewer reviews than Google and many
-      // genuine hangout spots have no Ola rating yet.
+      // Quality gate: reject venues with confirmed low ratings
       if (p.rating && p.rating > 0 && (p.reviewCount ?? 0) > 0 && (p.rating < 4.0 || (p.reviewCount ?? 0) < 20)) {
         logRejection(p.name, `Low quality (rating=${p.rating}, reviews=${p.reviewCount ?? 0})`);
         return;
