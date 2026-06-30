@@ -2,7 +2,11 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const API_KEY = 'AIzaSyD_Wtdg8MU9q687h5qTSaQW2S72AVkhyrI';
+const API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+if (!API_KEY) {
+  console.error("Error: GOOGLE_MAPS_API_KEY environment variable is not set.");
+  process.exit(1);
+}
 
 const DISCOVERY_ZONES = [
   // === South Mumbai ===

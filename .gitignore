@@ -41,3 +41,15 @@ yarn-error.log*
 next-env.d.ts
 .scar/db.sqlite
 .scar/db.sqlite-*
+
+# local SQLite DB
+local.db
+local.db-*
+
+# Cloudflare Wrangler state
+.wrangler/
+.dev.vars
+
+# Temporary SQL cleanups
+cleanup.sql
+cleanup_keys.sql

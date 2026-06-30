@@ -1294,11 +1294,10 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         ];
         if (badPatterns.some((p: string) => nameLower.includes(p))) continue;
 
-        // Photo URL
         let imageUrl: string | null = null;
         if (item.photos && item.photos.length > 0 && item.photos[0].photo_reference) {
           const photoRef = item.photos[0].photo_reference;
-          imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${encodeURIComponent(photoRef)}&key=${apiKey}`;
+          imageUrl = `/api/places/photo?ref=${encodeURIComponent(photoRef)}`;
         }
 
         // Budget Calculations
