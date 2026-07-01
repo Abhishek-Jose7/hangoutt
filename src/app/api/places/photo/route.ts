@@ -2,22 +2,12 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/db/client';
 import { places } from '@/lib/db/schema';
 import { eq, and, isNotNull, like } from 'drizzle-orm';
+import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Secure photo proxy with DB caching.
- *
- * Flow:
- * 1. Look up the photo ref in the DB → if image_data exists, serve the cached JPEG directly
- * 2. If not cached, fetch from Google Places Photo API on the server side
- * 3. Cache the fetched image as base64 in the DB for future requests
- * 4. Serve the image bytes with proper content-type and cache headers
- *
- * This ensures:
- * - The Google API key is NEVER exposed to the client
- * - Once cached, zero Google API calls are needed (survives free tier expiry)
- * - Images are served directly as binary, not as redirects
  */
 export async function GET(req: NextRequest) {
   try {
@@ -26,6 +16,27 @@ export async function GET(req: NextRequest) {
 
     if (!ref) {
       return Response.json({ error: 'Missing photo reference ("ref")' }, { status: 400 });
+    }
+
+    // 0. Fallback to Cloudflare Worker if configured (handles remote D1 database)
+    if (isHangoutApiConfigured()) {
+      const baseUrl = process.env.HANGOUT_API_URL?.trim();
+      const normalizedBase = /^https?:\/\//i.test(baseUrl || '') ? baseUrl : `https://${baseUrl}`;
+      const cleanBase = normalizedBase?.replace(/\/$/, '');
+      const workerUrl = `${cleanBase}/api/places/photo?ref=${encodeURIComponent(ref)}&maxwidth=${maxWidth}`;
+
+      const workerRes = await fetch(workerUrl);
+      if (workerRes.ok) {
+        const imageBuffer = Buffer.from(await workerRes.arrayBuffer());
+        return new Response(imageBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': workerRes.headers.get('content-type') || 'image/jpeg',
+            'Cache-Control': 'public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400',
+            'Content-Length': String(imageBuffer.length),
+          },
+        });
+      }
     }
 
     // 1. Check if we have this image cached in the DB

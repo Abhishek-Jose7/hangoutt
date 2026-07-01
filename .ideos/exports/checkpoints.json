@@ -132,6 +132,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-30T20:47:17.454Z"
+    },
+    {
+      "id": "61ef0de5-6124-40ad-8a59-b90346bd53ec",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "idk",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/lib/services/planner.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-06-30T21:09:51.732Z"
     }
   ]
 }

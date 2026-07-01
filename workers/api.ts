@@ -1269,6 +1269,13 @@ function parseEventLocation(text: string) {
 }
 
 async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string) {
+  // Perturb the search coordinates slightly (within 40% of search radius) to discover different places on each periodic run
+  const maxOffsetDegrees = (radius * 0.4) / 111000;
+  const angle = Math.random() * 2 * Math.PI;
+  const distance = Math.random() * maxOffsetDegrees;
+  const searchLat = lat + distance * Math.cos(angle);
+  const searchLng = lng + distance * Math.sin(angle);
+
   const categoriesToSearch = [
     { type: 'cafe', cat: 'CAFE' },
     { type: 'restaurant', cat: 'RESTAURANT' },
@@ -1286,7 +1293,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   const seenPlaceIds = new Set<string>();
 
   for (const { type, cat } of categoriesToSearch) {
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${searchLat},${searchLng}&radius=${radius}&type=${type}&key=${apiKey}`;
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
@@ -1309,6 +1316,17 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         const finalReviewCount = Number(item.user_ratings_total || 0);
 
         const id = `GOOGLE_${placeId}`;
+
+        // Skip if place already exists in database (fetch new places only)
+        try {
+          const existing = await db.prepare(`SELECT id FROM places WHERE id = ? LIMIT 1`).bind(id).first();
+          if (existing) {
+            console.log(`[DISCOVERY] Skipping existing place: ${name} (${id})`);
+            continue;
+          }
+        } catch (e) {
+          // Proceed if query fails for any reason
+        }
 
         // Filter closed places
         const businessStatus = (item.business_status || '').toUpperCase();
@@ -1417,11 +1435,23 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
 
         // Save to D1
         await db.prepare(
-          `INSERT OR REPLACE INTO places (
+          `INSERT INTO places (
             id, name, address, lat, lng, rating, review_count, 
             source_name, source_place_id, last_verified, verified_at, 
             first_seen, business_status, image_url, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            address = excluded.address,
+            lat = excluded.lat,
+            lng = excluded.lng,
+            rating = excluded.rating,
+            review_count = excluded.review_count,
+            last_verified = excluded.last_verified,
+            verified_at = excluded.verified_at,
+            business_status = excluded.business_status,
+            image_url = COALESCE(excluded.image_url, places.image_url),
+            updated_at = excluded.updated_at`
         ).bind(
           id, name, address, placeLat, placeLng, finalRating, finalReviewCount, 
           placeId, now, now, firstSeen, businessStatus, imageUrl, now, now
@@ -2049,6 +2079,10 @@ export default {
         return health(env);
       }
 
+      if (url.pathname === '/api/places/photo' && request.method === 'GET') {
+        return handlePlacePhotoWorker(request, env);
+      }
+
       const unauthorized = await assertAuthorized(request, env);
       if (unauthorized) return unauthorized;
 
@@ -2110,9 +2144,9 @@ export default {
 
   async scheduled(event: { cron: string }, env: Env, ctx: any) {
     console.log(`Scheduled worker triggered with cron: ${event.cron}`);
-    const apiKey = env.OLA_MAPS_API_KEY || '';
+    const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
     if (!apiKey) {
-      console.error('OLA_MAPS_API_KEY is not set. Scheduled run aborted.');
+      console.error('GOOGLE_MAPS_API_KEY or OLA_MAPS_API_KEY is not set. Scheduled run aborted.');
       return;
     }
 
@@ -2420,5 +2454,103 @@ async function runDedupePass(db: D1Database): Promise<void> {
     console.log('[WORKER] Dedupe pass complete');
   } catch (e) {
     console.error('[WORKER] runDedupePass failed:', e);
+  }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+async function handlePlacePhotoWorker(request: Request, env: Env) {
+  try {
+    const url = new URL(request.url);
+    const ref = url.searchParams.get('ref');
+    const maxWidth = url.searchParams.get('maxwidth') || '300';
+
+    if (!ref) {
+      return json({ error: 'Missing photo reference ("ref")' }, { status: 400, headers: corsHeaders(env) });
+    }
+
+    // 1. Check D1 cache
+    const refFragment = ref.substring(0, 80);
+    const cached = await env.DB.prepare(
+      `SELECT image_data FROM places 
+       WHERE image_data IS NOT NULL AND image_url LIKE ? LIMIT 1`
+    ).bind(`%${refFragment}%`).first<{ image_data: string }>();
+
+    if (cached && cached.image_data) {
+      const imageBuffer = base64ToArrayBuffer(cached.image_data);
+      return new Response(imageBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400',
+          'Content-Length': String(imageBuffer.byteLength),
+          ...corsHeaders(env)
+        },
+      });
+    }
+
+    // 2. Fetch from Google
+    const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
+    if (!apiKey) {
+      return json({ error: 'Worker API key is not configured' }, { status: 500, headers: corsHeaders(env) });
+    }
+
+    const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${ref}&key=${apiKey}`;
+
+    const redirectRes = await fetch(googleUrl, { redirect: 'manual' });
+    const redirectUrl = redirectRes.headers.get('location');
+
+    if (!redirectUrl) {
+      return json({ error: 'Failed to get photo redirect from Google' }, { status: 502, headers: corsHeaders(env) });
+    }
+
+    const imageRes = await fetch(redirectUrl);
+    if (!imageRes.ok) {
+      return json({ error: 'Failed to fetch image from Google CDN' }, { status: 502, headers: corsHeaders(env) });
+    }
+
+    const imageBuffer = await imageRes.arrayBuffer();
+    const base64 = arrayBufferToBase64(imageBuffer);
+
+    // 3. Cache in DB (save to D1)
+    try {
+      await env.DB.prepare(
+        `UPDATE places SET image_data = ? WHERE image_url LIKE ?`
+      ).bind(base64, `%${refFragment}%`).run();
+      console.log(`[PHOTO CACHE] Cached image for ref ${refFragment.substring(0, 30)}...`);
+    } catch (err: any) {
+      console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
+    }
+
+    return new Response(imageBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': imageRes.headers.get('content-type') || 'image/jpeg',
+        'Cache-Control': 'public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400',
+        'Content-Length': String(imageBuffer.byteLength),
+        ...corsHeaders(env)
+      },
+    });
+  } catch (err: any) {
+    console.error('[PHOTO PROXY ERROR]', err);
+    return json({ error: err.message || 'Internal server error' }, { status: 500, headers: corsHeaders(env) });
   }
 }

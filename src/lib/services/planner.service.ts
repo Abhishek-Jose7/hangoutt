@@ -1260,7 +1260,8 @@ async function executePlanningEngine(
         isFeatured: places.isFeatured,
         isHidden: places.isHidden,
         boostFactor: places.boostFactor,
-        firstSeen: places.firstSeen
+        firstSeen: places.firstSeen,
+        imageUrl: places.imageUrl
       })
       .from(places)
       .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
@@ -1450,16 +1451,16 @@ async function executePlanningEngine(
       }
 
       const effectiveBudget = isCheaper ? zoneLowestBudget * 0.8 : zoneLowestBudget;
-      const perSlotCap = Math.max(150, Math.floor(effectiveBudget / 3));
+      const perSlotCap = Math.max(300, Math.floor(effectiveBudget * 0.8)); // Allow slots to consume up to 80% of total budget (min cap ₹300)
       if (c.estimatedCostPerHead > perSlotCap && !c.isFallback) {
         logRejection(c.name, `REJECTED | Reason: Budget (cost ₹${c.estimatedCostPerHead} exceeds per-slot cap ₹${perSlotCap})`);
         return false;
       }
 
-      const dist = getHaversineDistance(avgMemberCoords, { lat: c.lat, lng: c.lng });
+      const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: c.lat, lng: c.lng });
       const maxDistance = isLessTravel ? 5 : 8;
       if (dist > maxDistance && !c.isFallback) {
-        logRejection(c.name, `REJECTED | Reason: Too far (${dist.toFixed(1)}km exceeds allowed ${maxDistance}km)`);
+        logRejection(c.name, `REJECTED | Reason: Too far (${dist.toFixed(1)}km exceeds allowed ${maxDistance}km from zone center)`);
         return false;
       }
 
@@ -1623,6 +1624,8 @@ async function executePlanningEngine(
         }
       };
 
+      const isTwoSlots = zoneData.zoneLowestBudget < 750;
+
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity);
       if (!slot1Place) continue;
       selectedPlanCats.add(slot1Place.category.toUpperCase());
@@ -1633,10 +1636,13 @@ async function executePlanningEngine(
       selectedPlanCats.add(slot2Place.category.toUpperCase());
       candidatesPool = candidatesPool.filter(c => c.id !== slot2Place.id);
 
-      const slot3Place = selectPlaceForSlot(slot3Cats, slot3IsActivity);
-      if (!slot3Place) continue;
-      selectedPlanCats.add(slot3Place.category.toUpperCase());
-      candidatesPool = candidatesPool.filter(c => c.id !== slot3Place.id);
+      let slot3Place: PlaceCandidate | null = null;
+      if (!isTwoSlots) {
+        slot3Place = selectPlaceForSlot(slot3Cats, slot3IsActivity);
+        if (!slot3Place) continue;
+        selectedPlanCats.add(slot3Place.category.toUpperCase());
+        candidatesPool = candidatesPool.filter(c => c.id !== slot3Place!.id);
+      }
 
       const getMandatoryCost = (place: PlaceCandidate) => {
         if ((place as any).mandatoryCost !== undefined) {
@@ -1679,12 +1685,12 @@ async function executePlanningEngine(
 
       const m1 = getMandatoryCost(slot1Place);
       const m2 = getMandatoryCost(slot2Place);
-      const m3 = getMandatoryCost(slot3Place);
+      const m3 = isTwoSlots ? 0 : getMandatoryCost(slot3Place!);
       const totalMandatorySlotsCost = m1 + m2 + m3;
 
       const opt1 = getOptionalCostMin(slot1Place);
       const opt2 = getOptionalCostMin(slot2Place);
-      const opt3 = getOptionalCostMin(slot3Place);
+      const opt3 = isTwoSlots ? 0 : getOptionalCostMin(slot3Place!);
       const totalEstimatedSlotsCost = totalMandatorySlotsCost + opt1 + opt2 + opt3;
 
       if (totalEstimatedSlotsCost > zoneData.zoneLowestBudget) {
@@ -1695,10 +1701,12 @@ async function executePlanningEngine(
       if (!allowSharedVenues) {
         usedPlaceIds.add(slot1Place.id);
         usedPlaceIds.add(slot2Place.id);
-        usedPlaceIds.add(slot3Place.id);
+        if (!isTwoSlots && slot3Place) {
+          usedPlaceIds.add(slot3Place.id);
+        }
       }
 
-      const selectedPlaces = [slot1Place, slot2Place, slot3Place];
+      const selectedPlaces = isTwoSlots ? [slot1Place, slot2Place] : [slot1Place, slot2Place, slot3Place!];
       
       const slotsPromises = selectedPlaces.map(async (place, slotIdx) => {
         let finalImg = place.imageUrl || null;
@@ -1878,7 +1886,7 @@ async function executePlanningEngine(
           tagline,
           budgetTier,
           totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
-          totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots[0].travelToNextMinutes || 0) + (slots[1].travelToNextMinutes || 0),
+          totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + slots.reduce((sum, s) => sum + (s.travelToNextMinutes || 0), 0),
           score: rating,
 
           experienceScore: slotsPopularity,
@@ -1924,8 +1932,8 @@ async function executePlanningEngine(
 
   await buildPass(false);
 
-  if (draftItineraries.length < 2) {
-    console.warn("Fewer than 2 plans generated. Running second pass allowing shared venues...");
+  if (draftItineraries.length < 4) {
+    console.warn(`Only ${draftItineraries.length} plans generated. Running second pass allowing shared venues...`);
     await buildPass(true);
   }
 

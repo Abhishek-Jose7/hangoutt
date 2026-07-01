@@ -32,6 +32,7 @@ export default function PlannerPage() {
   const [selectedRegenOpts, setSelectedRegenOpts] = useState<string[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const [scrollIndex, setScrollIndex] = useState(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [expandedPlanTravel, setExpandedPlanTravel] = useState<Record<string, boolean>>({});
@@ -93,6 +94,7 @@ export default function PlannerPage() {
           setGroup(groupRes.data.group);
           setMembers(groupRes.data.members || []);
           setIsAdmin(groupRes.data.currentUser.role === 'ADMIN');
+          setCurrentUserId(groupRes.data.currentUser.userId);
           setVotingStatus(groupRes.data.group.votingStatus);
           if (groupRes.data.group.generationOptions) {
             try {
@@ -301,6 +303,25 @@ export default function PlannerPage() {
           const isWinningPlan = group.winningPlanId === plan.id;
           const voteCount = votes[plan.id] || 0;
 
+          const isRainySeason = (() => {
+            if (!group?.outingDate) return true;
+            const parts = group.outingDate.split('-');
+            if (parts.length < 2) return true;
+            const month = parseInt(parts[1]);
+            return [6, 7, 8].includes(month); // June, July, August
+          })();
+
+          const myTravel = plan.memberTravelMetrics?.find((mt: any) => mt.userId === currentUserId);
+
+          const foodCount = plan.slots?.filter((s: any) => ['CAFE', 'RESTAURANT', 'DESSERT'].includes(s.category.toUpperCase())).length || 0;
+          const foodStars = foodCount >= 3 ? '⭐⭐⭐⭐⭐' : (foodCount === 2 ? '⭐⭐⭐⭐☆' : '⭐⭐⭐☆☆');
+          
+          const funCount = plan.slots?.filter((s: any) => ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(s.category.toUpperCase())).length || 0;
+          const funStars = funCount >= 2 ? '⭐⭐⭐⭐★' : (funCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
+          
+          const relaxCount = plan.slots?.filter((s: any) => s.category.toUpperCase() === 'PARK').length || 0;
+          const relaxStars = relaxCount >= 2 ? '⭐⭐⭐⭐⭐' : (relaxCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
+
           return (
             <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-auto flex-shrink-0 xl:flex-shrink">
               <CardHeader className="pb-3 border-b border-stone-900/60">
@@ -345,181 +366,272 @@ export default function PlannerPage() {
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-6 space-y-6 flex-grow">
+              <CardContent className="pt-6 space-y-6 flex-grow flex flex-col justify-between">
                 
-                {/* Cost & Duration Banner */}
-                <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
-                  <div>
-                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
-                    <p className="text-sm font-bold text-white mt-1">₹{plan.totalEstimatedCostPerHead} <span className="text-[8px] text-neutral-500 font-normal">/ HEAD</span></p>
-                    <p className="text-[7.5px] text-neutral-400 mt-0.5 leading-none">
-                      Act: ₹{plan.totalEstimatedCostPerHead - plan.avgTotalCost} | Trv: ₹{plan.avgTotalCost}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
-                    <p className="text-sm font-bold text-white mt-1">
-                      {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
-                    <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
-                      {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                </div>
+                <div className="space-y-6">
+                  {/* Monsoon active warning */}
+                  {isRainySeason && (
+                    <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
+                      <span className="text-[11px] leading-none">☔</span>
+                      <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
+                    </div>
+                  )}
 
-                {/* Why Recommended reasons display */}
-                {plan.whyRecommended && Array.isArray(plan.whyRecommended) && plan.whyRecommended.length > 0 && (
-                  <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
-                    <div className="grid grid-cols-1 gap-2 mt-1">
-                      {plan.whyRecommended.slice(0, 4).map((reason: string, rIdx: number) => (
-                        <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
-                          <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
-                          <span>{reason}</span>
-                        </div>
-                      ))}
+                  {/* Cost & Duration Banner */}
+                  <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
+                    <div>
+                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
+                      <p className="text-sm font-bold text-white mt-1">₹{plan.totalEstimatedCostPerHead} <span className="text-[8px] text-neutral-500 font-normal">/ HEAD</span></p>
+                      <p className="text-[7.5px] text-neutral-400 mt-0.5 leading-none">
+                        Act: ₹{plan.totalEstimatedCostPerHead - plan.avgTotalCost} | Trv: ₹{plan.avgTotalCost}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
+                      <p className="text-sm font-bold text-white mt-1">
+                        {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
+                      <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
+                        {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
+                      </Badge>
                     </div>
                   </div>
-                )}
 
-                {/* Confidence Metrics & Trade-offs */}
-                <div className="grid grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] font-mono text-[10px]">
-                  <div className="space-y-1.5 border-r border-stone-900/60 pr-2">
-                    <h5 className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
-                    <div className="flex justify-between items-center">
-                      <span className="text-neutral-400">Overall Match:</span>
-                      <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
+                  {/* Personalized Commute summary */}
+                  {myTravel && (
+                    <div className="bg-stone-900/40 border border-stone-900/60 p-3 rounded-[8px] text-[10px] font-mono space-y-1.5">
+                      <div className="flex justify-between items-center text-neutral-300">
+                        <span className="text-[#00E5A0] font-bold uppercase tracking-wider">👤 YOUR PERSONAL COMMUTE:</span>
+                        <span className="font-bold text-white">Total: {myTravel.totalTime}m (₹{myTravel.totalCost})</span>
+                      </div>
+                      <div className="text-[9px] text-neutral-400 flex flex-wrap gap-2.5">
+                        {myTravel.trainTime > 0 && <span className="flex items-center gap-0.5">🚆 Train: {myTravel.trainTime}m</span>}
+                        {(myTravel.cabTime > 0 || myTravel.autoTime > 0) && <span className="flex items-center gap-0.5">🚕 Cab/Auto: {myTravel.cabTime || myTravel.autoTime}m</span>}
+                        {myTravel.walkTime > 0 && <span className="flex items-center gap-0.5">🚶 Walk: {myTravel.walkTime}m</span>}
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-neutral-400">Commute Score:</span>
-                      <span className="font-semibold text-white">{(plan.travelScore * 10).toFixed(1)}/10</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-neutral-400">Budget Fit:</span>
-                      <span className="font-semibold text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 pl-2 flex flex-col justify-between">
-                    <h5 className="text-[8.5px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
-                    <ul className="space-y-1 text-[8.5px] leading-tight text-neutral-300">
-                      {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
-                        <>
-                          <li className="text-[#00E5A0]">+ Lowest travel time</li>
-                          <li className="text-neutral-400">− Fewer arcade choices</li>
-                        </>
-                      )}
-                      {plan.budgetTier === 'BUDGET_FRIENDLY' && (
-                        <>
-                          <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
-                          <li className="text-neutral-400">− Longer commutes for some</li>
-                        </>
-                      )}
-                      {plan.budgetTier === 'BALANCED' && (
-                        <>
-                          <li className="text-[#00E5A0]">+ Great rating/commute split</li>
-                          <li className="text-neutral-400">− Popular spots get crowded</li>
-                        </>
-                      )}
-                      {plan.budgetTier === 'EXPERIENCE_FIRST' && (
-                        <>
-                          <li className="text-[#00E5A0]">+ Premium gaming & food</li>
-                          <li className="text-neutral-400">− Higher budget required</li>
-                        </>
-                      )}
-                    </ul>
-                  </div>
-                </div>
+                  )}
 
-                {/* Timeline slots */}
-                <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
-                  {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
-                    return (
-                      <div key={index} className="relative">
-                        {/* Timeline point */}
-                        <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
-                          {slot.slotOrder}
-                        </span>
-                        
-                        <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
-                          {/* Slot Image */}
-                          <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
-                            <img
-                              src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
-                              alt={slot.name}
-                              className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
-                            />
+                  {/* Vibe / Fun / Adventure Meter */}
+                  <div className="grid grid-cols-3 gap-2 text-[9px] text-neutral-400 font-mono bg-stone-900/20 border border-stone-900/60 p-3 rounded-[8px]">
+                    <div className="flex flex-col gap-0.5">
+                      <span>🍔 Food Vibe:</span>
+                      <span className="text-white font-bold">{foodStars}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span>🕹️ Fun/Arcade:</span>
+                      <span className="text-white font-bold">{funStars}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span>🚶 Relax Vibe:</span>
+                      <span className="text-white font-bold">{relaxStars}</span>
+                    </div>
+                  </div>
+
+                  {/* Why Recommended reasons display */}
+                  {plan.whyRecommended && Array.isArray(plan.whyRecommended) && plan.whyRecommended.length > 0 && (
+                    <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
+                      <div className="grid grid-cols-1 gap-2 mt-1">
+                        {plan.whyRecommended.slice(0, 4).map((reason: string, rIdx: number) => (
+                          <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
+                            <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
+                            <span>{reason}</span>
                           </div>
-                          <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
-                            <div className="flex justify-between items-start gap-2">
-                              <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {slot.link ? (
-                                    <a
-                                      href={slot.link}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="hover:underline hover:text-[#ff3b5f] transition-colors"
-                                    >
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Confidence Metrics & Trade-offs */}
+                  <div className="grid grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] font-mono text-[10px]">
+                    <div className="space-y-2.5 border-r border-stone-900/60 pr-2">
+                      <h5 className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[9px]">
+                          <span className="text-neutral-400">Overall Match:</span>
+                          <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
+                          <div className="bg-[#00E5A0] h-full" style={{ width: `${plan.score * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[9px]">
+                          <span className="text-neutral-400">Travel Score:</span>
+                          <span className="font-semibold text-white">{(plan.travelScore * 10).toFixed(1)}/10</span>
+                        </div>
+                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
+                          <div className="bg-stone-600 h-full" style={{ width: `${plan.travelScore * 100}%` }}></div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[9px]">
+                          <span className="text-neutral-400">Budget Fit:</span>
+                          <span className="font-semibold text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span>
+                        </div>
+                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
+                          <div className="bg-stone-600 h-full" style={{ width: `${plan.budgetScore * 100}%` }}></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 pl-2 flex flex-col justify-between">
+                      <h5 className="text-[8.5px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
+                      <ul className="space-y-1 text-[8.5px] leading-tight text-neutral-300">
+                        {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
+                          <>
+                            <li className="text-[#00E5A0]">+ Lowest travel time</li>
+                            <li className="text-neutral-400">− Fewer arcade choices</li>
+                          </>
+                        )}
+                        {plan.budgetTier === 'BUDGET_FRIENDLY' && (
+                          <>
+                            <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
+                            <li className="text-neutral-400">− Longer commutes for some</li>
+                          </>
+                        )}
+                        {plan.budgetTier === 'BALANCED' && (
+                          <>
+                            <li className="text-[#00E5A0]">+ Great rating/commute split</li>
+                            <li className="text-neutral-400">− Popular spots get crowded</li>
+                          </>
+                        )}
+                        {plan.budgetTier === 'EXPERIENCE_FIRST' && (
+                          <>
+                            <li className="text-[#00E5A0]">+ Premium gaming & food</li>
+                            <li className="text-neutral-400">− Higher budget required</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Commute Disparity Warning */}
+                  {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
+                    (() => {
+                      const maxMetric = plan.memberTravelMetrics.reduce((max: any, m: any) => m.totalTime > max.totalTime ? m : max, plan.memberTravelMetrics[0]);
+                      const maxMember = members.find((m: any) => m.userId === maxMetric.userId);
+                      if (maxMetric.totalTime > plan.avgTotalTime + 15) {
+                        return (
+                          <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
+                            <span className="text-sm">⚠️</span>
+                            <span><strong>Commute Disparity:</strong> {maxMember?.name || 'A participant'} travels the most ({maxMetric.totalTime} mins). Everyone else is under {plan.avgTotalTime + 5} mins. Consider matching their transit choice.</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+
+                  {/* Timeline slots */}
+                  <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
+                    {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
+                      return (
+                        <div key={index} className="relative">
+                          {/* Timeline point */}
+                          <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
+                            {slot.slotOrder}
+                          </span>
+                          
+                          <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
+                            {/* Slot Image */}
+                            <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
+                              <img
+                                src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
+                                alt={slot.name}
+                                className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
+                              />
+                            </div>
+                            <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
+                              <div className="flex justify-between items-start gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {slot.link ? (
+                                      <a
+                                        href={slot.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hover:underline hover:text-[#ff3b5f] transition-colors"
+                                      >
+                                        <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                          {slot.name.toUpperCase()}
+                                        </h4>
+                                      </a>
+                                    ) : (
                                       <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
                                         {slot.name.toUpperCase()}
                                       </h4>
-                                    </a>
-                                  ) : (
-                                    <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                      {slot.name.toUpperCase()}
-                                    </h4>
-                                  )}
-                                  {slot.link && (
-                                    <a
-                                      href={slot.link}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
-                                      title="View location or book"
-                                    >
-                                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                        <polyline points="15 3 21 3 21 9" />
-                                        <line x1="10" y1="14" x2="21" y2="3" />
-                                      </svg>
-                                    </a>
-                                  )}
+                                    )}
+                                    {slot.link && (
+                                      <a
+                                        href={slot.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
+                                        title="View location or book"
+                                      >
+                                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                          <polyline points="15 3 21 3 21 9" />
+                                          <line x1="10" y1="14" x2="21" y2="3" />
+                                        </svg>
+                                      </a>
+                                    )}
+                                  </div>
+                                  <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
+                                    {slot.category}
+                                  </span>
                                 </div>
-                                <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
-                                  {slot.category}
+                                <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
+                                  {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
                                 </span>
                               </div>
-                              <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
-                                {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
-                              {slot.note}
-                            </p>
-                            <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
-                              <span className="flex items-center gap-1">
-                                <DollarSign className="h-3 w-3 text-[#DC143C]" />
-                                ESTIMATED: ₹{slot.estimatedCostPerHead}
-                              </span>
+                              <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
+                                {slot.note}
+                              </p>
+                              <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
+                                <span className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-[#DC143C]" />
+                                  ESTIMATED: ₹{slot.estimatedCostPerHead}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Transit transition connector */}
-                        {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
-                          <div className="my-6 relative pl-4 border-l border-dashed border-stone-700/80 text-[10px] text-neutral-400 font-mono flex items-center gap-1.5 h-12 -ml-6">
-                            <span className="absolute -left-[4px] h-2 w-2 rounded-full bg-stone-700 border border-stone-600" />
-                            <span>⏱️ <strong>{slot.travelToNextMinutes} min</strong> transit to next stop</span>
-                            <span className="text-neutral-600">//</span>
-                            <span>Auto/Cab: <strong>₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}</strong> per head</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {/* Transit transition connector */}
+                          {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
+                            <div className="my-6 relative pl-4 border-l border-dashed border-stone-700/80 text-[10px] text-neutral-400 font-mono flex flex-col justify-center gap-1 min-h-[48px] -ml-6">
+                              <span className="absolute -left-[4px] h-2 w-2 rounded-full bg-stone-700 border border-stone-600" />
+                              <div className="flex items-center gap-2">
+                                <span>⏱️ TRANSIT TRANSITION:</span>
+                                <span className="text-white font-bold">{slot.travelToNextMinutes} mins</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-neutral-500 font-bold uppercase text-[9px] mt-0.5">
+                                {slot.travelToNextMinutes > 15 ? (
+                                  <>
+                                    <span className="text-neutral-400 flex items-center gap-0.5">🚕 AUTO/CAB: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}</span>
+                                    <span>•</span>
+                                    <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK: 5 mins</span>
+                                  </>
+                                ) : (
+                                  <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK ONLY: {slot.travelToNextMinutes} mins</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Return trip commute estimator */}
+                  <div className="bg-stone-950 border border-dashed border-stone-850/60 p-3 flex justify-between items-center text-[9px] font-mono text-neutral-400 rounded-[8px]">
+                    <span className="flex items-center gap-1">🏠 ESTIMATED RETURN COMMUTE</span>
+                    <span className="text-white font-bold">~{plan.avgTotalTime} mins | ₹{plan.avgTotalCost} avg</span>
+                  </div>
                 </div>
 
                 {/* Transit Grid */}
@@ -665,6 +777,51 @@ export default function PlannerPage() {
           />
         ))}
       </div>
+
+      {/* AI Outing Trade-offs & Comparisons Dashboard */}
+      {plans.length > 0 && (
+        <Card className="border border-stone-900 bg-stone-950/45 text-white rounded-[12px] p-6 font-mono text-xs w-full mt-10">
+          <CardHeader className="p-0 pb-4 border-b border-stone-900">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest text-[#DC143C]">AI Outing Trade-offs & Comparisons</CardTitle>
+            <CardDescription className="text-[10px] text-neutral-400 font-sans">Comparing travel times, costs, and outdoor monsoon protection for the 4 generated routes.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-[10.5px]">
+              {plans.map((p) => {
+                const typeLabel = budgetTierLabels[p.budgetTier] || p.budgetTier.replace('_', ' ');
+                const hasPark = p.slots.some((s: any) => s.category.toUpperCase() === 'PARK');
+                return (
+                  <div key={p.id} className="bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] space-y-3 flex flex-col justify-between hover:border-[#DC143C]/20 transition-all duration-200">
+                    <div>
+                      <Badge className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 uppercase text-[8px] font-bold py-0.5 px-2 mb-2 rounded-[4px]">
+                        {typeLabel}
+                      </Badge>
+                      <h4 className="font-bold text-white uppercase text-xs tracking-wider">{p.name}</h4>
+                      <p className="text-[9px] text-neutral-400 mt-1 leading-normal font-sans">{p.tagline}</p>
+                    </div>
+                    <div className="space-y-1.5 pt-2 border-t border-stone-900/40 text-[9.5px]">
+                      <div className="flex justify-between">
+                        <span className="text-neutral-400">Activities Cost:</span>
+                        <span className="text-white font-bold">₹{p.totalEstimatedCostPerHead - p.avgTotalCost}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-400">Commute Time:</span>
+                        <span className="text-white font-bold">{p.avgTotalTime} mins avg</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-400">Rain Safety:</span>
+                        <span className={hasPark ? 'text-neutral-400' : 'text-[#00E5A0] font-bold'}>
+                          {hasPark ? '☔ 67% (Outdoor Stop)' : '☔ 100% (Indoor Only)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Regeneration Modal */}
       {isRegenOpen && (
