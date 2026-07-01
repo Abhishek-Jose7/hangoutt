@@ -279,6 +279,149 @@ const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   { id: 'fb_pottery_andheri', name: 'The Pottery Studio Andheri', category: 'POTTERY',     rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 1000, address: 'Andheri West, Mumbai',    openNow: true, isExperience: true, isFallback: true },
 ];
 
+export interface ItineraryTemplate {
+  slot1: string[];
+  slot1Act: boolean;
+  slot2: string[];
+  slot2Act: boolean;
+  slot3: string[];
+  slot3Act: boolean;
+}
+
+export const ITINERARY_TEMPLATES: ItineraryTemplate[] = [
+  // 1. Arcade -> Restaurant -> Dessert
+  { slot1: ['ARCADE'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 2. Cafe -> Pottery -> Restaurant
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['POTTERY', 'WORKSHOP'], slot2Act: true, slot3: ['RESTAURANT'], slot3Act: false },
+  // 3. Museum -> Mall -> Cafe
+  { slot1: ['MUSEUM'], slot1Act: true, slot2: ['MALL'], slot2Act: true, slot3: ['CAFE'], slot3Act: false },
+  // 4. Bowling -> Restaurant -> Park
+  { slot1: ['BOWLING'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['PARK'], slot3Act: true },
+  // 5. Escape room -> Restaurant -> Dessert
+  { slot1: ['ESCAPE_ROOM'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 6. Park -> Cafe -> Arcade
+  { slot1: ['PARK'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['ARCADE'], slot3Act: true },
+  // 7. Art Gallery -> Restaurant -> Cafe
+  { slot1: ['ART_GALLERY', 'MUSEUM'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['CAFE'], slot3Act: false },
+  // 8. Sports -> Restaurant -> Dessert
+  { slot1: ['SPORTS'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 9. Cafe -> Painting -> Restaurant
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['PAINTING', 'WORKSHOP'], slot2Act: true, slot3: ['RESTAURANT'], slot3Act: false },
+  // 10. Bowling -> Cafe -> Sports
+  { slot1: ['BOWLING'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['SPORTS', 'ARCADE'], slot3Act: true },
+  // 11. Movie -> Restaurant -> Cafe
+  { slot1: ['MOVIE'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['CAFE'], slot3Act: false },
+  // 12. Park -> Restaurant -> Dessert
+  { slot1: ['PARK'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 13. Museum -> Cafe -> Mall
+  { slot1: ['MUSEUM'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['MALL'], slot3Act: true },
+  // 14. Arcade -> Restaurant -> Park
+  { slot1: ['ARCADE'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['PARK'], slot3Act: true },
+  // 15. Workshop -> Cafe -> Dessert
+  { slot1: ['WORKSHOP', 'POTTERY'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 16. Escape Room -> Cafe -> Restaurant
+  { slot1: ['ESCAPE_ROOM'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT'], slot3Act: false },
+  // 17. Park -> Cafe -> Restaurant
+  { slot1: ['PARK'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT'], slot3Act: false },
+  // 18. Museum -> Restaurant -> Dessert
+  { slot1: ['MUSEUM'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 19. Sports -> Cafe -> Arcade
+  { slot1: ['SPORTS'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['ARCADE'], slot3Act: true },
+  // 20. Art Gallery -> Cafe -> Dessert
+  { slot1: ['ART_GALLERY', 'MUSEUM'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 21. Bowling -> Cafe -> Dessert
+  { slot1: ['BOWLING'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 22. Cafe -> Arcade -> Restaurant
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['ARCADE'], slot2Act: true, slot3: ['RESTAURANT'], slot3Act: false },
+  // 23. Mall -> Cafe -> Dessert
+  { slot1: ['MALL'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 24. Cafe -> Museum -> Restaurant
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['MUSEUM'], slot2Act: true, slot3: ['RESTAURANT'], slot3Act: false },
+  // 25. Workshop -> Restaurant -> Dessert
+  { slot1: ['WORKSHOP', 'PAINTING'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  // 26. Arcade -> Cafe -> Restaurant
+  { slot1: ['ARCADE'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT'], slot3Act: false },
+  // 27. Park -> Cafe -> Movie
+  { slot1: ['PARK'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['MOVIE'], slot3Act: true },
+  // 28. Escape Room -> Restaurant -> Park
+  { slot1: ['ESCAPE_ROOM'], slot1Act: true, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['PARK'], slot3Act: true },
+  // 29. Cafe -> Sports -> Restaurant
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['SPORTS'], slot2Act: true, slot3: ['RESTAURANT'], slot3Act: false },
+  // 30. Museum -> Cafe -> Restaurant
+  { slot1: ['MUSEUM'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT'], slot3Act: false }
+];
+
+export const POPULAR_CHAINS = [
+  'starbucks', 'social', 'barbeque nation', 'bbq nation', 'timezone',
+  'mcdonald', 'pizza hut', 'domino', 'kfc', 'burger king', 'coffee day',
+  'ccd', 'third wave', 'blue tokai', 'tea trails', 'natural ice cream',
+  'naturals', 'theobroma', 'chili', 'subway', 'sbarro', 'pizza express',
+  'mainland china', 'copper chimney', 'hard rock', 'smokey house',
+  'smaaash', 'starbucks coffee'
+];
+
+export const isChain = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  return POPULAR_CHAINS.some(chain => lower.includes(chain));
+};
+
+export function generateWhyRecommended(plan: any, groupData: any): string[] {
+  const reasons: string[] = [];
+
+  // 1. Travel compatibility
+  if (plan.longestTravelTime <= 45) {
+    reasons.push("✓ Everyone travels under 45 min");
+  } else if (plan.longestTravelTime <= 60) {
+    reasons.push("✓ Max travel time under 1 hour");
+  } else {
+    reasons.push("✓ Balanced travel times for group");
+  }
+
+  // 2. Budget compatibility
+  if (plan.budgetTier === 'BUDGET_FRIENDLY' || plan.budgetTier === 'TRAVEL_FRIENDLY') {
+    reasons.push("✓ Highly pocket-friendly costs");
+  } else if (plan.budgetScore >= 0.8) {
+    reasons.push("✓ Fits group budget parameters");
+  }
+
+  // 3. Venue quality / Highest rated
+  const slots = plan.slots || [];
+  const ratings = slots.map((s: any) => s.rating).filter((r: any) => r !== null && r !== undefined);
+  if (ratings.length > 0) {
+    const maxRating = Math.max(...ratings);
+    if (maxRating >= 4.5) {
+      const bestSlot = slots.find((s: any) => s.rating === maxRating);
+      reasons.push(`✓ Includes top-rated ${bestSlot?.name || 'venue'} (${maxRating}★)`);
+    } else {
+      reasons.push("✓ High quality venue selection");
+    }
+  }
+
+  // 4. Weather / Monsoon safety
+  const isRainySeason = (() => {
+    if (!groupData?.outingDate) return false;
+    const parts = groupData.outingDate.split('-');
+    if (parts.length < 2) return false;
+    const month = parseInt(parts[1]);
+    return [6, 7, 8].includes(month); // June, July, August
+  })();
+  if (isRainySeason) {
+    const hasOutdoor = slots.some((s: any) => ['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes(s.category.toUpperCase()));
+    if (!hasOutdoor) {
+      reasons.push("✓ 100% indoor/monsoon protected");
+    } else {
+      reasons.push("✓ Monsoon active - outdoor travel caution");
+    }
+  }
+
+  // 5. Vibe / Preference fit
+  const overallFit = Math.round(plan.score * 100);
+  reasons.push(`✓ Fits ${overallFit}% of preferences`);
+
+  return reasons;
+}
+
+
 const VENUE_DESCRIPTIONS: Record<string, string> = {
   'fb_cafe_prithvi': 'Legendary open-air garden café next to Prithvi Theatre. Renowned for its Irish coffee, cutting chai, samosas, and artistic crowd.',
   'fb_cafe_candies': 'An iconic, multi-level villa café in Bandra with quirky Mediterranean decor, cold coffee, chicken sliders, and outdoor seating.',
@@ -1148,6 +1291,11 @@ function scorePlaceCandidateRefactored(
               0.10 * travelFairness +
               0.05 * ratingScore;
   
+  // Apply direct penalty to chain places to prioritize local favorites
+  if (isChain) {
+    score = score - 0.20;
+  }
+
   // Apply boostFactor
   const boost = typeof place.boostFactor === 'number' ? place.boostFactor : 1.0;
   score = score * boost;
@@ -1294,28 +1442,52 @@ async function executePlanningEngine(
       }
 
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: p.lat, lng: p.lng });
-      if (dist <= radiusKm) {
-        candidates.push({
-          id: p.id,
-          name: p.name,
-          category: p.category,
-          rating: p.rating || 4.0,
-          lat: p.lat,
-          lng: p.lng,
-          estimatedCostPerHead: p.mandatoryCost + p.optionalCostMin,
-          address: p.address || '',
-          openNow: true,
-          mandatoryCost: p.mandatoryCost,
-          optionalCostMin: p.optionalCostMin,
-          optionalCostMax: p.optionalCostMax,
-          lastVerified: p.lastVerified,
-          isFeatured: p.isFeatured,
-          isHidden: p.isHidden,
-          boostFactor: p.boostFactor,
-          firstSeen: p.firstSeen,
-          imageUrl: p.imageUrl
-        } as any);
+      
+      // Ensure the venue strictly belongs to the midpoint zone location
+      const nameLower = p.name.toLowerCase();
+      const addrLower = (p.address || '').toLowerCase();
+      const zoneLower = zone.name.toLowerCase();
+
+      // Normalize BKC and other variations
+      const zoneTerms = [zoneLower];
+      if (zoneLower === 'bkc') {
+        zoneTerms.push('bandra kurla complex');
       }
+
+      const matchesText = zoneTerms.some(term => nameLower.includes(term) || addrLower.includes(term));
+      
+      let isAllowedInZone = false;
+      if (dist <= 1.5) {
+        isAllowedInZone = true;
+      } else if (dist <= 2.5 && matchesText) {
+        isAllowedInZone = true;
+      }
+
+      if (!isAllowedInZone) {
+        logRejection(p.name, `REJECTED | Reason: Venue not matching midpoint zone "${zone.name}" (dist=${dist.toFixed(1)}km, no name/address match)`);
+        return;
+      }
+
+      candidates.push({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        rating: p.rating || 4.0,
+        lat: p.lat,
+        lng: p.lng,
+        estimatedCostPerHead: p.mandatoryCost + p.optionalCostMin,
+        address: p.address || '',
+        openNow: true,
+        mandatoryCost: p.mandatoryCost,
+        optionalCostMin: p.optionalCostMin,
+        optionalCostMax: p.optionalCostMax,
+        lastVerified: p.lastVerified,
+        isFeatured: p.isFeatured,
+        isHidden: p.isHidden,
+        boostFactor: p.boostFactor,
+        firstSeen: p.firstSeen,
+        imageUrl: p.imageUrl
+      } as any);
     });
 
     const dbExperiences = await db
@@ -1380,30 +1552,47 @@ async function executePlanningEngine(
         }
       }
 
-      if (dist <= 10.0 || isFeatured) {
-        candidates.push({
-          id: e.id,
-          name: e.title,
-          category: e.category,
-          rating: e.rating || 4.5,
-          lat: e.latitude,
-          lng: e.longitude,
-          estimatedCostPerHead: e.ticketPrice,
-          address: e.sourceUrl || '',
-          openNow: true,
-          isExperience: true,
-          imageUrl: e.imageUrl || undefined,
-          sourceUrl: e.sourceUrl,
-          mandatoryCost: e.ticketPrice,
-          optionalCostMin: 0,
-          optionalCostMax: 0,
-          lastVerified: e.updatedAt,
-          isFeatured: isFeatured ? 1 : 0,
-          isHidden: 0,
-          boostFactor: 1.0,
-          firstSeen: e.firstSeen
-        } as any);
+      // Stricter zone matching for experiences
+      const eNameLower = e.title.toLowerCase();
+      const eZoneLower = zone.name.toLowerCase();
+      const eZoneTerms = [eZoneLower];
+      if (eZoneLower === 'bkc') eZoneTerms.push('bandra kurla complex');
+      const eMatchesText = eZoneTerms.some(term => eNameLower.includes(term));
+      
+      let isExpAllowed = false;
+      if (dist <= 1.8) {
+        isExpAllowed = true;
+      } else if (dist <= 3.5 && (eMatchesText || isFeatured)) {
+        isExpAllowed = true;
       }
+
+      if (!isExpAllowed && !isFeatured) {
+        logRejection(e.title, `REJECTED | Reason: Experience not matching midpoint zone "${zone.name}" (dist=${dist.toFixed(1)}km)`);
+        return;
+      }
+
+      candidates.push({
+        id: e.id,
+        name: e.title,
+        category: e.category,
+        rating: e.rating || 4.5,
+        lat: e.latitude,
+        lng: e.longitude,
+        estimatedCostPerHead: e.ticketPrice,
+        address: e.sourceUrl || '',
+        openNow: true,
+        isExperience: true,
+        imageUrl: e.imageUrl || undefined,
+        sourceUrl: e.sourceUrl,
+        mandatoryCost: e.ticketPrice,
+        optionalCostMin: 0,
+        optionalCostMax: 0,
+        lastVerified: e.updatedAt,
+        isFeatured: isFeatured ? 1 : 0,
+        isHidden: 0,
+        boostFactor: 1.0,
+        firstSeen: e.firstSeen
+      } as any);
     });
 
     if (candidates.length < 5) {
@@ -1517,6 +1706,26 @@ async function executePlanningEngine(
       [shuffledZones[idx], shuffledZones[j]] = [shuffledZones[j], shuffledZones[idx]];
     }
 
+    // Shuffle the templates pool to guarantee diversity
+    const templatesPool = [...ITINERARY_TEMPLATES];
+    for (let j = templatesPool.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [templatesPool[j], templatesPool[k]] = [templatesPool[k], templatesPool[j]];
+    }
+
+    const getActiveTemplate = (idx: number): ItineraryTemplate => {
+      if (isMoreActivities) {
+        return { slot1: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot3Act: true };
+      }
+      if (isMoreCreative) {
+        return { slot1: ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'], slot3Act: true };
+      }
+      if (isMoreFood) {
+        return { slot1: ['CAFE'], slot1Act: false, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT', 'CAFE'], slot3Act: false };
+      }
+      return templatesPool[idx % templatesPool.length];
+    };
+
     for (let i = 0; i < 4; i++) {
       if (draftItineraries.length >= 4) break;
 
@@ -1531,71 +1740,24 @@ async function executePlanningEngine(
       const filterAndUnused = (list: any[]) => allowSharedVenues ? list : list.filter(c => !usedPlaceIds.has(c.id));
       let candidatesPool = filterAndUnused(zoneData.candidates);
 
-      let slot1Cats: string[] = [];
-      let slot1IsActivity = true;
-      let slot2Cats: string[] = [];
-      let slot2IsActivity = false;
-      let slot3Cats: string[] = [];
-      let slot3IsActivity = false;
-
-      if (isMoreActivities) {
-        slot1Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'];
-        slot1IsActivity = true;
-        slot2Cats = ['CAFE', 'RESTAURANT'];
-        slot2IsActivity = false;
-        slot3Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'];
-        slot3IsActivity = true;
-      } else if (isMoreCreative) {
-        slot1Cats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'];
-        slot1IsActivity = true;
-        slot2Cats = ['CAFE', 'RESTAURANT'];
-        slot2IsActivity = false;
-        slot3Cats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'];
-        slot3IsActivity = true;
-      } else if (isMoreFood) {
-        slot1Cats = ['CAFE'];
-        slot1IsActivity = false;
-        slot2Cats = ['RESTAURANT'];
-        slot2IsActivity = false;
-        slot3Cats = ['DESSERT', 'CAFE'];
-        slot3IsActivity = false;
-      } else {
-        if (planIndex === 1) {
-          slot1Cats = ['PARK', 'MUSEUM'];
-          slot1IsActivity = true;
-          slot2Cats = ['CAFE'];
-          slot2IsActivity = false;
-          slot3Cats = ['DESSERT', 'PARK'];
-          slot3IsActivity = false;
-        } else if (planIndex === 2) {
-          slot1Cats = ['CAFE'];
-          slot1IsActivity = false;
-          slot2Cats = ['MUSEUM', 'ART_GALLERY', 'PARK', 'ARCADE'];
-          slot2IsActivity = true;
-          slot3Cats = ['RESTAURANT', 'DESSERT'];
-          slot3IsActivity = false;
-        } else if (planIndex === 3) {
-          slot1Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM'];
-          slot1IsActivity = true;
-          slot2Cats = ['RESTAURANT', 'CAFE'];
-          slot2IsActivity = false;
-          slot3Cats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM'];
-          slot3IsActivity = true;
-        } else {
-          slot1Cats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'MUSEUM'];
-          slot1IsActivity = true;
-          slot2Cats = ['CAFE', 'RESTAURANT'];
-          slot2IsActivity = false;
-          slot3Cats = ['PARK', 'DESSERT', 'CAFE'];
-          slot3IsActivity = false;
-        }
-      }
+      const template = getActiveTemplate(planIndex - 1);
+      const slot1Cats = template.slot1;
+      const slot1IsActivity = template.slot1Act;
+      const slot2Cats = template.slot2;
+      const slot2IsActivity = template.slot2Act;
+      const slot3Cats = template.slot3;
+      const slot3IsActivity = template.slot3Act;
 
       // Track categories already picked in this plan to avoid e.g. CAFE+CAFE in same plan
       const selectedPlanCats = new Set<string>();
+      let chainCount = 0;
 
       const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean) => {
         let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
+        if (chainCount >= 1) {
+          matches = matches.filter(c => !isChain(c.name));
+        }
+
         if (matches.length === 0) {
           if (isActivity) {
             matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
@@ -1609,20 +1771,29 @@ async function executePlanningEngine(
               matches = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
             }
           }
+          if (chainCount >= 1) {
+            matches = matches.filter(c => !isChain(c.name));
+          }
         }
         if (matches.length === 0) return null;
 
         const top3 = matches.slice(0, 3);
         const rand = Math.random();
+        let selected: PlaceCandidate;
         if (top3.length === 1) {
-          return top3[0];
+          selected = top3[0];
         } else if (top3.length === 2) {
-          return rand < 0.6 ? top3[0] : top3[1];
+          selected = rand < 0.6 ? top3[0] : top3[1];
         } else {
-          if (rand < 0.5) return top3[0];
-          if (rand < 0.85) return top3[1];
-          return top3[2];
+          if (rand < 0.5) selected = top3[0];
+          else if (rand < 0.85) selected = top3[1];
+          else selected = top3[2];
         }
+
+        if (isChain(selected.name)) {
+          chainCount++;
+        }
+        return selected;
       };
 
       const isTwoSlots = zoneData.zoneLowestBudget < 750;
@@ -1752,7 +1923,7 @@ async function executePlanningEngine(
           void db.update(places)
             .set({ imageUrl: finalImg })
             .where(eq(places.id, place.id))
-            .catch(err => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
+            .catch((err: any) => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
         }
 
         const duration = getDurationForCategory(place.category);
@@ -1855,13 +2026,34 @@ async function executePlanningEngine(
 
         const planId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : require('crypto').randomUUID();
 
-        const slotsPopularity = slots.reduce((sum, s) => {
-          const matched = zoneData.candidates.find(cand => cand.id === s.venueId || cand.id === s.experienceId);
-          return sum + (matched?.score || 0.8);
-        }, 0) / slots.length;
+        // Dynamic travel score
+        const travelScore = Math.max(0.5, Math.min(0.98, 1.0 - (avgTotalTime / 120.0)));
 
-        const budgetDenominator = Math.max(1, zoneData.zoneLowestBudget);
-        const rating = 0.40 * (slotsPopularity) + 0.20 * Math.max(0, 1.0 - (totalMandatoryCost / budgetDenominator)) + 0.20 * (travelFairnessScore) + 0.20 * (1.0);
+        // Dynamic budget score
+        const budgetScore = Math.max(0.5, Math.min(0.98, 1.0 - (totalMandatoryCost / (zoneData.zoneLowestBudget || 2000)) * 0.2));
+
+        // Dynamic preference score based on average candidate suitability/rating
+        const preferenceScore = Math.max(0.5, Math.min(0.98, slots.reduce((sum, s) => sum + (s.rating || 4.2), 0) / (slots.length * 5.0)));
+
+        // Dynamic quality score based on average ratings
+        const ratings = slots.map(s => s.rating).filter(r => r !== null && r !== undefined);
+        const avgRating = ratings.length > 0 ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length : 4.2;
+        const qualityScore = Math.max(0.5, Math.min(0.98, avgRating / 5.0 + 0.1));
+
+        // Dynamic weather score
+        const isRainySeason = (() => {
+          if (!groupData?.outingDate) return false;
+          const parts = groupData.outingDate.split('-');
+          if (parts.length < 2) return false;
+          const month = parseInt(parts[1]);
+          return [6, 7, 8].includes(month);
+        })();
+        const hasOutdoor = slots.some(s => ['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes(s.category.toUpperCase()));
+        const weatherScore = isRainySeason ? (hasOutdoor ? 0.60 : 0.95) : 0.95;
+
+        // Composite overall score using the weights:
+        // Travel (35%), Budget (25%), Preferences (20%), Venue Quality (15%), Weather (5%)
+        const overallScore = travelScore * 0.35 + budgetScore * 0.25 + preferenceScore * 0.20 + qualityScore * 0.15 + weatherScore * 0.05;
 
         // Compute real per-member travel averages from breakdown data
         const avgTrainTime = memberTravelsForPlan.length > 0
@@ -1884,7 +2076,7 @@ async function executePlanningEngine(
         let tagline = `A wonderful day out in ${zoneObj.name}.`;
 
         if (planIndex === 1) {
-          tagline = `A pocket-friendly day out exploring parks and cozy cafes in ${zoneObj.name}.`;
+          tagline = `A pocket-friendly day out exploring scenic walks and cozy local spots in ${zoneObj.name}.`;
         } else if (planIndex === 2) {
           tagline = `Start with coffee, explore a local attraction, then end the day with a great meal in ${zoneObj.name}.`;
         } else if (planIndex === 3) {
@@ -1892,6 +2084,15 @@ async function executePlanningEngine(
         } else if (planIndex === 4) {
           tagline = `Discover pottery classes, art galleries, and cultural experiences in ${zoneObj.name}.`;
         }
+
+        const draftPlanForWhy = {
+          longestTravelTime,
+          budgetTier,
+          budgetScore,
+          score: overallScore,
+          slots
+        };
+        const whyRecList = generateWhyRecommended(draftPlanForWhy, groupData);
 
         return {
           id: planId,
@@ -1902,16 +2103,16 @@ async function executePlanningEngine(
           budgetTier,
           totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
           totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + slots.reduce((sum, s) => sum + (s.travelToNextMinutes || 0), 0),
-          score: rating,
+          score: overallScore,
 
-          experienceScore: slotsPopularity,
-          travelScore: travelFairnessScore,
-          budgetScore: Math.max(0.0, 1.0 - (totalMandatoryCost / budgetDenominator)),
+          experienceScore: preferenceScore,
+          travelScore: travelScore,
+          budgetScore: budgetScore,
           fairnessScore: travelFairnessScore,
-          popularityScore: slotsPopularity,
-          groupTypeMatchScore: 1.0,
-          vibeMatchScore: 1.0,
-          compositeScore: rating,
+          popularityScore: qualityScore,
+          groupTypeMatchScore: preferenceScore,
+          vibeMatchScore: weatherScore,
+          compositeScore: overallScore,
 
           avgTrainTime,
           avgCabTime: avgAutoTime,
@@ -1929,12 +2130,7 @@ async function executePlanningEngine(
           mandatoryCost: totalMandatoryCost,
           optionalCostMin: slotsOptionalMin,
           optionalCostMax: slotsOptionalMax,
-          whyRecommended: [
-            totalMandatoryCost + slotsOptionalMin <= zoneData.zoneLowestBudget ? "Everyone can afford this plan" : "Fits budget preferences",
-            `Average travel time ${avgTotalTime} minutes`,
-            vibes && vibes.length > 0 ? `Matches ${vibes.join(' & ')} vibe` : "Matches Activities vibe",
-            planIndex === 1 ? "Highest conversation score" : "Great venue variety"
-          ],
+          whyRecommended: whyRecList,
           slots,
           memberTravels: memberTravelsForPlan
         };

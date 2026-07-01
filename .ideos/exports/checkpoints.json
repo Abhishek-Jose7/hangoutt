@@ -156,6 +156,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-01T07:29:45.985Z"
+    },
+    {
+      "id": "0b06d569-6cce-4d40-8903-e13a3566fdef",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "pls work",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"eval/metrics.ts\",\"eval/setup.ts\",\"scratch/check_db.js\",\"scratch/query_places.js\",\"scratch/sync_remote_images.js\",\"scratch/test_photo_route.ts\",\"scratch/verify_image_caching.js\",\"src/actions/feedback.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-01T09:02:13.667Z"
     }
   ]
 }

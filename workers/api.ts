@@ -2507,10 +2507,49 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
       });
     }
 
+    const fallbackRedirect = async () => {
+      try {
+        const placeRecord = await env.DB.prepare(
+          `SELECT pc.category 
+           FROM places p 
+           JOIN place_categories pc ON p.id = pc.place_id 
+           WHERE p.image_url = ? LIMIT 1`
+        ).bind(expectedImageUrl).first<{ category: string }>();
+        const category = placeRecord ? placeRecord.category : undefined;
+        const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
+          'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
+          'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
+          'DESSERT': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
+          'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
+          'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
+          'BOWLING': 'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
+          'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
+          'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
+          'LIVE_MUSIC': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop',
+        };
+        const fallbackUrl = (category && CATEGORY_FALLBACK_IMAGES[category.toUpperCase()]) || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+        return new Response(null, {
+          status: 307,
+          headers: {
+            'Location': fallbackUrl,
+            ...corsHeaders(env)
+          }
+        });
+      } catch {
+        return new Response(null, {
+          status: 307,
+          headers: {
+            'Location': 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop',
+            ...corsHeaders(env)
+          }
+        });
+      }
+    };
+
     // 2. Fetch from Google
     const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
     if (!apiKey) {
-      return json({ error: 'Worker API key is not configured' }, { status: 500, headers: corsHeaders(env) });
+      return fallbackRedirect();
     }
 
     const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${ref}&key=${apiKey}`;
@@ -2519,12 +2558,12 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
     const redirectUrl = redirectRes.headers.get('location');
 
     if (!redirectUrl) {
-      return json({ error: 'Failed to get photo redirect from Google' }, { status: 502, headers: corsHeaders(env) });
+      return fallbackRedirect();
     }
 
     const imageRes = await fetch(redirectUrl);
     if (!imageRes.ok) {
-      return json({ error: 'Failed to fetch image from Google CDN' }, { status: 502, headers: corsHeaders(env) });
+      return fallbackRedirect();
     }
 
     const imageBuffer = await imageRes.arrayBuffer();
@@ -2551,6 +2590,12 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
     });
   } catch (err: any) {
     console.error('[PHOTO PROXY ERROR]', err);
-    return json({ error: err.message || 'Internal server error' }, { status: 500, headers: corsHeaders(env) });
+    return new Response(null, {
+      status: 307,
+      headers: {
+        'Location': 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop',
+        ...corsHeaders(env)
+      }
+    });
   }
 }

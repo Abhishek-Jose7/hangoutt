@@ -36,6 +36,7 @@ export default function PlannerPage() {
   const [scrollIndex, setScrollIndex] = useState(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [expandedPlanTravel, setExpandedPlanTravel] = useState<Record<string, boolean>>({});
+  const [expandedItineraries, setExpandedItineraries] = useState<Record<string, boolean>>({});
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -380,10 +381,10 @@ export default function PlannerPage() {
                   {/* Cost & Duration Banner */}
                   <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
                     <div>
-                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Estimated Budget</p>
-                      <p className="text-sm font-bold text-white mt-1">₹{plan.totalEstimatedCostPerHead} <span className="text-[8px] text-neutral-500 font-normal">/ HEAD</span></p>
-                      <p className="text-[7.5px] text-neutral-400 mt-0.5 leading-none">
-                        Act: ₹{plan.totalEstimatedCostPerHead - plan.avgTotalCost} | Trv: ₹{plan.avgTotalCost}
+                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Expected Spend</p>
+                      <p className="text-sm font-bold text-white mt-1">
+                        ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
+                        <span className="text-[8px] text-neutral-500 font-normal block mt-0.5">/ HEAD</span>
                       </p>
                     </div>
                     <div>
@@ -397,37 +398,6 @@ export default function PlannerPage() {
                       <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
                         {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
                       </Badge>
-                    </div>
-                  </div>
-
-                  {/* Personalized Commute summary */}
-                  {myTravel && (
-                    <div className="bg-stone-900/40 border border-stone-900/60 p-3 rounded-[8px] text-[10px] font-mono space-y-1.5">
-                      <div className="flex justify-between items-center text-neutral-300">
-                        <span className="text-[#00E5A0] font-bold uppercase tracking-wider">👤 YOUR PERSONAL COMMUTE:</span>
-                        <span className="font-bold text-white">Total: {myTravel.totalTime}m (₹{myTravel.totalCost})</span>
-                      </div>
-                      <div className="text-[9px] text-neutral-400 flex flex-wrap gap-2.5">
-                        {myTravel.trainTime > 0 && <span className="flex items-center gap-0.5">🚆 Train: {myTravel.trainTime}m</span>}
-                        {(myTravel.cabTime > 0 || myTravel.autoTime > 0) && <span className="flex items-center gap-0.5">🚕 Cab/Auto: {myTravel.cabTime || myTravel.autoTime}m</span>}
-                        {myTravel.walkTime > 0 && <span className="flex items-center gap-0.5">🚶 Walk: {myTravel.walkTime}m</span>}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Vibe / Fun / Adventure Meter */}
-                  <div className="grid grid-cols-3 gap-2 text-[9px] text-neutral-400 font-mono bg-stone-900/20 border border-stone-900/60 p-3 rounded-[8px]">
-                    <div className="flex flex-col gap-0.5">
-                      <span>🍔 Food Vibe:</span>
-                      <span className="text-white font-bold">{foodStars}</span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span>🕹️ Fun/Arcade:</span>
-                      <span className="text-white font-bold">{funStars}</span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span>🚶 Relax Vibe:</span>
-                      <span className="text-white font-bold">{relaxStars}</span>
                     </div>
                   </div>
 
@@ -446,283 +416,341 @@ export default function PlannerPage() {
                     </div>
                   )}
 
-                  {/* Confidence Metrics & Trade-offs */}
-                  <div className="grid grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] font-mono text-[10px]">
-                    <div className="space-y-2.5 border-r border-stone-900/60 pr-2">
-                      <h5 className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center text-[9px]">
-                          <span className="text-neutral-400">Overall Match:</span>
-                          <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
-                        </div>
-                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
-                          <div className="bg-[#00E5A0] h-full" style={{ width: `${plan.score * 100}%` }}></div>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center text-[9px]">
-                          <span className="text-neutral-400">Travel Score:</span>
-                          <span className="font-semibold text-white">{(plan.travelScore * 10).toFixed(1)}/10</span>
-                        </div>
-                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
-                          <div className="bg-stone-600 h-full" style={{ width: `${plan.travelScore * 100}%` }}></div>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center text-[9px]">
-                          <span className="text-neutral-400">Budget Fit:</span>
-                          <span className="font-semibold text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span>
-                        </div>
-                        <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
-                          <div className="bg-stone-600 h-full" style={{ width: `${plan.budgetScore * 100}%` }}></div>
-                        </div>
-                      </div>
+                  {/* Overall Match & Toggle details */}
+                  <div className="flex justify-between items-center bg-stone-900/30 border border-stone-900/60 px-4 py-2.5 rounded-[8px] font-mono text-[10px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-neutral-400 font-bold uppercase tracking-wider">🎯 Match Fit:</span>
+                      <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
                     </div>
-                    <div className="space-y-1.5 pl-2 flex flex-col justify-between">
-                      <h5 className="text-[8.5px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
-                      <ul className="space-y-1 text-[8.5px] leading-tight text-neutral-300">
-                        {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
-                          <>
-                            <li className="text-[#00E5A0]">+ Lowest travel time</li>
-                            <li className="text-neutral-400">− Fewer arcade choices</li>
-                          </>
-                        )}
-                        {plan.budgetTier === 'BUDGET_FRIENDLY' && (
-                          <>
-                            <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
-                            <li className="text-neutral-400">− Longer commutes for some</li>
-                          </>
-                        )}
-                        {plan.budgetTier === 'BALANCED' && (
-                          <>
-                            <li className="text-[#00E5A0]">+ Great rating/commute split</li>
-                            <li className="text-neutral-400">− Popular spots get crowded</li>
-                          </>
-                        )}
-                        {plan.budgetTier === 'EXPERIENCE_FIRST' && (
-                          <>
-                            <li className="text-[#00E5A0]">+ Premium gaming & food</li>
-                            <li className="text-neutral-400">− Higher budget required</li>
-                          </>
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* Commute Disparity Warning */}
-                  {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
-                    (() => {
-                      const maxMetric = plan.memberTravelMetrics.reduce((max: any, m: any) => m.totalTime > max.totalTime ? m : max, plan.memberTravelMetrics[0]);
-                      const maxMember = members.find((m: any) => m.userId === maxMetric.userId);
-                      if (maxMetric.totalTime > plan.avgTotalTime + 15) {
-                        return (
-                          <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
-                            <span className="text-sm">⚠️</span>
-                            <span><strong>Commute Disparity:</strong> {maxMember?.name || 'A participant'} travels the most ({maxMetric.totalTime} mins). Everyone else is under {plan.avgTotalTime + 5} mins. Consider matching their transit choice.</span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()
-                  )}
-
-                  {/* Timeline slots */}
-                  <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
-                    {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
-                      return (
-                        <div key={index} className="relative">
-                          {/* Timeline point */}
-                          <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
-                            {slot.slotOrder}
-                          </span>
-                          
-                          <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
-                            {/* Slot Image */}
-                            <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
-                              <img
-                                src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
-                                alt={slot.name}
-                                className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
-                              />
-                            </div>
-                            <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
-                              <div className="flex justify-between items-start gap-2">
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    {slot.link ? (
-                                      <a
-                                        href={slot.link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="hover:underline hover:text-[#ff3b5f] transition-colors"
-                                      >
-                                        <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                          {slot.name.toUpperCase()}
-                                        </h4>
-                                      </a>
-                                    ) : (
-                                      <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
-                                        {slot.name.toUpperCase()}
-                                      </h4>
-                                    )}
-                                    {slot.link && (
-                                      <a
-                                        href={slot.link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
-                                        title="View location or book"
-                                      >
-                                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                          <polyline points="15 3 21 3 21 9" />
-                                          <line x1="10" y1="14" x2="21" y2="3" />
-                                        </svg>
-                                      </a>
-                                    )}
-                                  </div>
-                                  <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
-                                    {slot.category}
-                                  </span>
-                                </div>
-                                <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
-                                  {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
-                                {slot.note}
-                              </p>
-                              <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
-                                <span className="flex items-center gap-1">
-                                  <DollarSign className="h-3 w-3 text-[#DC143C]" />
-                                  ESTIMATED: ₹{slot.estimatedCostPerHead}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Transit transition connector */}
-                          {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
-                            <div className="my-6 relative pl-4 border-l border-dashed border-stone-700/80 text-[10px] text-neutral-400 font-mono flex flex-col justify-center gap-1 min-h-[48px] -ml-6">
-                              <span className="absolute -left-[4px] h-2 w-2 rounded-full bg-stone-700 border border-stone-600" />
-                              <div className="flex items-center gap-2">
-                                <span>⏱️ TRANSIT TRANSITION:</span>
-                                <span className="text-white font-bold">{slot.travelToNextMinutes} mins</span>
-                              </div>
-                              <div className="flex items-center gap-3 text-neutral-500 font-bold uppercase text-[9px] mt-0.5">
-                                {slot.travelToNextMinutes > 15 ? (
-                                  <>
-                                    <span className="text-neutral-400 flex items-center gap-0.5">🚕 AUTO/CAB: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}</span>
-                                    <span>•</span>
-                                    <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK: 5 mins</span>
-                                  </>
-                                ) : (
-                                  <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK ONLY: {slot.travelToNextMinutes} mins</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Return trip commute estimator */}
-                  <div className="bg-stone-950 border border-dashed border-stone-850/60 p-3 flex justify-between items-center text-[9px] font-mono text-neutral-400 rounded-[8px]">
-                    <span className="flex items-center gap-1">🏠 ESTIMATED RETURN COMMUTE</span>
-                    <span className="text-white font-bold">~{plan.avgTotalTime} mins | ₹{plan.avgTotalCost} avg</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpandedItineraries(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                      className="text-[9px] font-bold text-[#00E5A0] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2.5 cursor-pointer flex items-center gap-1 transition-all"
+                    >
+                      {expandedItineraries[plan.id] ? 'COLLAPSE ▲' : 'EXPAND ITINERARY ▼'}
+                    </Button>
                   </div>
                 </div>
 
-                {/* Transit Grid */}
-                {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
-                  <div className="border-t border-stone-900/60 pt-6 mt-6">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5">
-                        <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                          <path d="M2 12h20" />
-                        </svg>
-                        YOUR TRAVEL BREAKDOWN
-                      </h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setExpandedPlanTravel(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                        className="text-[9px] font-mono text-[#DC143C] hover:bg-stone-900 hover:text-white rounded-[6px] h-7 px-3 cursor-pointer"
-                      >
-                        {expandedPlanTravel[plan.id] ? 'HIDE MEMBERS' : 'SHOW MEMBERS'}
-                      </Button>
-                    </div>
+                {expandedItineraries[plan.id] && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-355">
+                      
+                      {/* Personalized Commute summary */}
+                      {myTravel && (
+                        <div className="bg-stone-900/40 border border-stone-900/60 p-3 rounded-[8px] text-[10px] font-mono space-y-1.5">
+                          <div className="flex justify-between items-center text-neutral-300">
+                            <span className="text-[#00E5A0] font-bold uppercase tracking-wider">👤 YOUR PERSONAL COMMUTE:</span>
+                            <span className="font-bold text-white">Total: {myTravel.totalTime}m (₹{myTravel.totalCost})</span>
+                          </div>
+                          <div className="text-[9px] text-neutral-400 flex flex-wrap gap-2.5">
+                            {myTravel.trainTime > 0 && <span className="flex items-center gap-0.5">🚆 Train: {myTravel.trainTime}m</span>}
+                            {(myTravel.cabTime > 0 || myTravel.autoTime > 0) && <span className="flex items-center gap-0.5">🚕 Cab/Auto: {myTravel.cabTime || myTravel.autoTime}m</span>}
+                            {myTravel.walkTime > 0 && <span className="flex items-center gap-0.5">🚶 Walk: {myTravel.walkTime}m</span>}
+                          </div>
+                        </div>
+                      )}
 
-                    {!expandedPlanTravel[plan.id] ? (
-                      <div className="bg-stone-950/50 border border-stone-900/80 rounded-[8px] p-3 text-[10px] font-mono text-neutral-400 space-y-1.5">
-                        <div className="flex justify-between">
-                          <span>Average Commute Time:</span>
-                          <span className="text-white font-bold">{plan.avgTotalTime} mins</span>
+                      {/* Vibe / Fun / Adventure Meter */}
+                      <div className="grid grid-cols-3 gap-2 text-[9px] text-neutral-400 font-mono bg-stone-900/20 border border-stone-900/60 p-3 rounded-[8px]">
+                        <div className="flex flex-col gap-0.5">
+                          <span>🍔 Food Vibe:</span>
+                          <span className="text-white font-bold">{foodStars}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Commute Time Range:</span>
-                          <span className="text-white">{plan.shortestTravelTime}m – {plan.longestTravelTime}m</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span>🕹️ Fun/Arcade:</span>
+                          <span className="text-white font-bold">{funStars}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Average Commute Cost:</span>
-                          <span className="text-[#DC143C] font-bold">₹{plan.avgTotalCost}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span>🚶 Relax Vibe:</span>
+                          <span className="text-white font-bold">{relaxStars}</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
-                        <table className="w-full text-left border-collapse font-mono text-[10px]">
-                          <thead>
-                            <tr className="border-b border-stone-850 text-neutral-400 font-bold">
-                              <th className="py-2 px-3">Member</th>
-                              <th className="py-2 px-3">Train</th>
-                              <th className="py-2 px-3">Cab / Auto</th>
-                              <th className="py-2 px-3">Walk</th>
-                              <th className="py-2 px-3 text-right">Total Commute</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {plan.memberTravelMetrics.map((mt: any) => {
-                              const memberObj = members.find((m: any) => m.userId === mt.userId);
-                              const name = memberObj ? memberObj.name : 'Participant';
-                              return (
-                                <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
-                                  <td className="py-2 px-3 font-semibold text-white">{name}</td>
-                                  <td className="py-2 px-3">
-                                    {mt.trainTime > 0 ? (
-                                      <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
-                                    ) : (
-                                      <span className="text-neutral-600">N/A</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    {mt.cabTime > 0 || mt.autoTime > 0 ? (
-                                      <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
-                                    ) : (
-                                      <span className="text-neutral-600">N/A</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    {mt.walkTime > 0 ? (
-                                      <span>{mt.walkTime}m</span>
-                                    ) : (
-                                      <span className="text-neutral-600">0m</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-3 text-right font-bold text-white">
-                                    {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+
+                      {/* Confidence Metrics & Trade-offs */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] font-mono text-[10px]">
+                        <div className="space-y-2.5 border-r border-stone-900/60 pr-2">
+                          <h5 className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px]">
+                              <span className="text-neutral-400 font-semibold">Overall Match:</span>
+                              <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
+                              <div className="bg-[#00E5A0] h-full" style={{ width: `${plan.score * 100}%` }}></div>
+                            </div>
+                          </div>
+                          
+                          {/* Dynamic score breakdown display */}
+                          <div className="pt-2 border-t border-stone-900/40 space-y-1.5 text-[8px] text-neutral-400">
+                            <div className="flex justify-between items-center">
+                              <span>✈ Travel (35% weight):</span>
+                              <span className="font-semibold text-white">{(plan.travelScore * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span>💵 Budget (25% weight):</span>
+                              <span className="font-semibold text-white">{(plan.budgetScore * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span>🎯 Preferences (20% weight):</span>
+                              <span className="font-semibold text-white">{(plan.groupTypeMatchScore * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span>★ Venue Quality (15% weight):</span>
+                              <span className="font-semibold text-white">{(plan.popularityScore * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span>☔ Weather (5% weight):</span>
+                              <span className="font-semibold text-white">{(plan.vibeMatchScore * 100).toFixed(0)}%</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5 pl-2 flex flex-col justify-between">
+                          <h5 className="text-[8.5px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
+                          <ul className="space-y-1 text-[8.5px] leading-tight text-neutral-300">
+                            {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
+                              <>
+                                <li className="text-[#00E5A0]">+ Lowest travel time</li>
+                                <li className="text-neutral-400">− Fewer arcade choices</li>
+                              </>
+                            )}
+                            {plan.budgetTier === 'BUDGET_FRIENDLY' && (
+                              <>
+                                <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
+                                <li className="text-neutral-400">− Longer commutes for some</li>
+                              </>
+                            )}
+                            {plan.budgetTier === 'BALANCED' && (
+                              <>
+                                <li className="text-[#00E5A0]">+ Great rating/commute split</li>
+                                <li className="text-neutral-400">− Popular spots get crowded</li>
+                              </>
+                            )}
+                            {plan.budgetTier === 'EXPERIENCE_FIRST' && (
+                              <>
+                                <li className="text-[#00E5A0]">+ Premium gaming & food</li>
+                                <li className="text-neutral-400">− Higher budget required</li>
+                              </>
+                            )}
+                          </ul>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* Commute Disparity Warning */}
+                      {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
+                        (() => {
+                          const maxMetric = plan.memberTravelMetrics.reduce((max: any, m: any) => m.totalTime > max.totalTime ? m : max, plan.memberTravelMetrics[0]);
+                          const maxMember = members.find((m: any) => m.userId === maxMetric.userId);
+                          if (maxMetric.totalTime > plan.avgTotalTime + 15) {
+                            return (
+                              <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
+                                <span className="text-sm">⚠️</span>
+                                <span><strong>Commute Disparity:</strong> {maxMember?.name || 'A participant'} travels the most ({maxMetric.totalTime} mins). Everyone else is under {plan.avgTotalTime + 5} mins. Consider matching their transit choice.</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()
+                      )}
+
+                      {/* Timeline slots */}
+                      <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 font-mono text-xs">
+                        {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => {
+                          return (
+                            <div key={index} className="relative">
+                              {/* Timeline point */}
+                              <span className="absolute -left-[35px] top-1.5 flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[10px] font-mono font-bold shadow-md">
+                                {slot.slotOrder}
+                              </span>
+                              
+                              <div className="bg-stone-950/80 border border-stone-900 rounded-[12px] overflow-hidden shadow-lg flex flex-col sm:flex-row hover:border-[#DC143C]/20 transition-all duration-200 sm:min-h-[144px]">
+                                {/* Slot Image */}
+                                <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
+                                  <img
+                                    src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
+                                    alt={slot.name}
+                                    className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
+                                  />
+                                </div>
+                                <div className="p-4 flex-grow space-y-2 flex flex-col justify-between">
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {slot.link ? (
+                                          <a
+                                            href={slot.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="hover:underline hover:text-[#ff3b5f] transition-colors"
+                                          >
+                                            <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                              {slot.name.toUpperCase()}
+                                            </h4>
+                                          </a>
+                                        ) : (
+                                          <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                            {slot.name.toUpperCase()}
+                                          </h4>
+                                        )}
+                                        {slot.link && (
+                                          <a
+                                            href={slot.link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[#DC143C] hover:text-[#ff3b5f] transition-colors inline-flex items-center"
+                                            title="View location or book"
+                                          >
+                                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                              <polyline points="15 3 21 3 21 9" />
+                                              <line x1="10" y1="14" x2="21" y2="3" />
+                                            </svg>
+                                          </a>
+                                        )}
+                                      </div>
+                                      <span className="inline-block mt-1 px-2.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[8px] font-mono font-bold uppercase tracking-widest">
+                                        {slot.category}
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-2 py-0.5 rounded-[4px] font-mono whitespace-nowrap">
+                                      {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed font-light mt-2">
+                                    {slot.note}
+                                  </p>
+                                  <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[9px] font-bold text-neutral-400 font-mono">
+                                    <span className="flex items-center gap-1">
+                                      <DollarSign className="h-3 w-3 text-[#DC143C]" />
+                                      EXPECTED SPEND: ₹{slot.estimatedCostPerHead === 0 ? '0 (Free)' : `${Math.max(0, Math.round((slot.estimatedCostPerHead * 0.75)/50)*50)} – ₹${Math.round((slot.estimatedCostPerHead * 1.25)/50)*50}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Transit transition connector */}
+                              {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
+                                <div className="my-6 relative pl-4 border-l border-dashed border-stone-700/80 text-[10px] text-neutral-400 font-mono flex flex-col justify-center gap-1 min-h-[48px] -ml-6">
+                                  <span className="absolute -left-[4px] h-2 w-2 rounded-full bg-stone-700 border border-stone-600" />
+                                  <div className="flex items-center gap-2">
+                                    <span>⏱️ TRANSIT TRANSITION:</span>
+                                    <span className="text-white font-bold">{slot.travelToNextMinutes} mins</span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-neutral-500 font-bold uppercase text-[9px] mt-0.5">
+                                    {slot.travelToNextMinutes > 15 ? (
+                                      <>
+                                        <span className="text-neutral-400 flex items-center gap-0.5">🚕 AUTO/CAB: ₹{slot.travelToNextCost || Math.ceil((30 + Math.max(0, (slot.travelToNextMinutes / 3.0) - 1.5) * 15) / Math.min(3, group?.memberCount || 2))}</span>
+                                        <span>•</span>
+                                        <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK: 5 mins</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-neutral-400 flex items-center gap-0.5">🚶 WALK ONLY: {slot.travelToNextMinutes} mins</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Return trip commute estimator */}
+                      <div className="bg-stone-950 border border-dashed border-stone-850/60 p-3 flex justify-between items-center text-[9px] font-mono text-neutral-400 rounded-[8px]">
+                        <span className="flex items-center gap-1">🏠 ESTIMATED RETURN COMMUTE</span>
+                        <span className="text-white font-bold">~{plan.avgTotalTime} mins | ₹{plan.avgTotalCost} avg</span>
+                      </div>
+
+                      {/* Transit Grid */}
+                      {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
+                        <div className="border-t border-stone-900/60 pt-6 mt-6">
+                          <div className="flex justify-between items-center mb-3">
+                            <h4 className="text-[10px] font-bold text-white uppercase tracking-widest font-mono flex items-center gap-1.5">
+                              <svg className="h-4 w-4 text-[#DC143C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                <path d="M2 12h20" />
+                              </svg>
+                              YOUR TRAVEL BREAKDOWN
+                            </h4>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setExpandedPlanTravel(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                              className="text-[9px] font-mono text-[#DC143C] hover:bg-stone-900 hover:text-white rounded-[6px] h-7 px-3 cursor-pointer"
+                            >
+                              {expandedPlanTravel[plan.id] ? 'HIDE MEMBERS' : 'SHOW MEMBERS'}
+                            </Button>
+                          </div>
+
+                          {!expandedPlanTravel[plan.id] ? (
+                            <div className="bg-stone-950/50 border border-stone-900/80 rounded-[8px] p-3 text-[10px] font-mono text-neutral-400 space-y-1.5">
+                              <div className="flex justify-between">
+                                <span>Average Commute Time:</span>
+                                <span className="text-white font-bold">{plan.avgTotalTime} mins</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Commute Time Range:</span>
+                                <span className="text-white">{plan.shortestTravelTime}m – {plan.longestTravelTime}m</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Average Commute Cost:</span>
+                                <span className="text-[#DC143C] font-bold">₹{plan.avgTotalCost}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto bg-stone-950/80 border border-stone-900 rounded-[12px] p-3 shadow-lg">
+                              <table className="w-full text-left border-collapse font-mono text-[10px]">
+                                <thead>
+                                  <tr className="border-b border-stone-850 text-neutral-400 font-bold">
+                                    <th className="py-2 px-3">Member</th>
+                                    <th className="py-2 px-3">Train</th>
+                                    <th className="py-2 px-3">Cab / Auto</th>
+                                    <th className="py-2 px-3">Walk</th>
+                                    <th className="py-2 px-3 text-right">Total Commute</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {plan.memberTravelMetrics.map((mt: any) => {
+                                    const memberObj = members.find((m: any) => m.userId === mt.userId);
+                                    const name = memberObj ? memberObj.name : 'Participant';
+                                    return (
+                                      <tr key={mt.id} className="border-b border-stone-900/40 hover:bg-stone-900/20 text-neutral-300">
+                                        <td className="py-2 px-3 font-semibold text-white">{name}</td>
+                                        <td className="py-2 px-3">
+                                          {mt.trainTime > 0 ? (
+                                            <span>{mt.trainTime}m <span className="text-neutral-500">(₹{mt.trainCost})</span></span>
+                                          ) : (
+                                            <span className="text-neutral-600">N/A</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          {mt.cabTime > 0 || mt.autoTime > 0 ? (
+                                            <span>{mt.cabTime || mt.autoTime}m <span className="text-neutral-500">(₹{mt.cabCost || mt.autoCost})</span></span>
+                                          ) : (
+                                            <span className="text-neutral-600">N/A</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          {mt.walkTime > 0 ? (
+                                            <span>{mt.walkTime}m</span>
+                                          ) : (
+                                            <span className="text-neutral-600">0m</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-bold text-white">
+                                          {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
               </CardContent>
               {votingStatus === 'OPEN' && (
