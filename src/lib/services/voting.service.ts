@@ -58,7 +58,7 @@ export const votingService = {
     try {
       if (plan && plan.slots) {
         for (const slot of plan.slots) {
-          if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+          if (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) {
             await db.run(sql`
               INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
               VALUES (${slot.venueId}, 0, 0, 1, 0)
@@ -175,7 +175,7 @@ export const votingService = {
 
         // Increment timesWon locally for the places
         for (const slot of slots) {
-          if (slot.venueId && !slot.venueId.startsWith('fallback_')) {
+          if (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) {
             await tx.run(sql`
               INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
               VALUES (${slot.venueId}, 0, 0, 0, 1)

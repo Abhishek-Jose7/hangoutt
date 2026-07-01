@@ -84,7 +84,7 @@ export function OutingFeedback({ historyId, groupId, planId, slots }: OutingFeed
   const [favoriteSlotId, setFavoriteSlotId] = useState<string | undefined>();
   const [venueRatings, setVenueRatings] = useState<Record<string, { rating: number; wouldVisitAgain: boolean }>>({});
 
-  const venueSlots = slots.filter(s => s.placeId && !s.placeId.startsWith('fallback_'));
+  const venueSlots = slots.filter(s => s.placeId && !s.placeId.startsWith('fb_') && !s.placeId.startsWith('fallback_'));
 
   function setVenueRating(placeId: string, rating: number) {
     setVenueRatings(prev => ({ ...prev, [placeId]: { ...prev[placeId], rating, wouldVisitAgain: prev[placeId]?.wouldVisitAgain ?? false } }));

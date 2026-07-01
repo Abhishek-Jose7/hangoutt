@@ -144,6 +144,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-06-30T21:09:51.732Z"
+    },
+    {
+      "id": "8b6e7b24-1a27-41d1-950f-6bd51678f907",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "fix: worker new discovery offsets, ON CONFLICT update, and worker photo proxy fallback",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/app/(app)/planner/[groupId]/page.tsx\",\"src/app/api/places/photo/route.ts\",\"src/lib/services/planner.service.ts\",\"workers/api.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-01T07:29:45.985Z"
     }
   ]
 }

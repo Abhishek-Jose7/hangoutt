@@ -1312,7 +1312,8 @@ async function executePlanningEngine(
           isFeatured: p.isFeatured,
           isHidden: p.isHidden,
           boostFactor: p.boostFactor,
-          firstSeen: p.firstSeen
+          firstSeen: p.firstSeen,
+          imageUrl: p.imageUrl
         } as any);
       }
     });
@@ -1711,8 +1712,9 @@ async function executePlanningEngine(
       const slotsPromises = selectedPlaces.map(async (place, slotIdx) => {
         let finalImg = place.imageUrl || null;
         let finalLink = place.sourceUrl || null;
+        let needsDbUpdate = false;
         
-        if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_')) {
+        if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience) {
           try {
             let actualPlaceId = place.id;
             if (place.id.startsWith('GOOGLE_')) {
@@ -1725,6 +1727,9 @@ async function executePlanningEngine(
               const photoRef = details.photos[0].photo_reference;
               if (photoRef) {
                 finalImg = `/api/places/photo?ref=${encodeURIComponent(photoRef)}`;
+                if (finalImg !== place.imageUrl) {
+                  needsDbUpdate = true;
+                }
               }
             }
             if (details && details.website) {
@@ -1735,9 +1740,19 @@ async function executePlanningEngine(
 
         if (!finalImg) {
           finalImg = await getVenueImageUrl(place.name, city, place.category);
+          if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience && finalImg !== place.imageUrl) {
+            needsDbUpdate = true;
+          }
         }
         if (!finalLink) {
           finalLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
+        }
+
+        if (needsDbUpdate && place.id && !place.isExperience) {
+          void db.update(places)
+            .set({ imageUrl: finalImg })
+            .where(eq(places.id, place.id))
+            .catch(err => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
         }
 
         const duration = getDurationForCategory(place.category);

@@ -69,7 +69,7 @@ export async function getPlansForGroupAction(groupId: string): ActionResponse<an
     try {
       const { db } = await import('@/lib/db/client');
       const { sql } = await import('drizzle-orm');
-      const uniqueVenueIds = Array.from(new Set(plansList.flatMap(p => p.slots.map(s => s.venueId)).filter(id => id && !id.startsWith('fallback_'))));
+      const uniqueVenueIds = Array.from(new Set(plansList.flatMap(p => p.slots.map(s => s.venueId)).filter(id => id && !id.startsWith('fb_') && !id.startsWith('fallback_'))));
       for (const venueId of uniqueVenueIds) {
         await db.run(sql`
           INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)

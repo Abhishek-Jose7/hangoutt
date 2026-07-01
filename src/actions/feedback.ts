@@ -80,7 +80,7 @@ export async function submitOutingFeedback(
       }).onConflictDoNothing();
 
       // Boost popularity for well-rated real venues
-      if (vr.rating >= 4 && !vr.placeId.startsWith('fallback_')) {
+      if (vr.rating >= 4 && !vr.placeId.startsWith('fb_') && !vr.placeId.startsWith('fallback_')) {
         await db.update(placeScores)
           .set({ popularity: sql`MIN(1.0, popularity + 0.02)` })
           .where(eq(placeScores.placeId, vr.placeId))

@@ -992,7 +992,7 @@ async function getPlans(request: Request, env: Env, groupId: string) {
   });
 
   // Increment times_viewed for all unique places being viewed
-  const uniqueVenueIds = Array.from(new Set(slots.map((s: any) => s.venueId).filter(id => id && !id.startsWith('fallback_'))));
+  const uniqueVenueIds = Array.from(new Set(slots.map((s: any) => s.venueId).filter(id => id && !id.startsWith('fb_') && !id.startsWith('fallback_'))));
   if (uniqueVenueIds.length > 0) {
     const viewStatements = [];
     for (const venueId of uniqueVenueIds) {
@@ -1055,7 +1055,7 @@ async function castVote(request: Request, env: Env, groupId: string) {
   // Increment times_voted for each place in the plan
   try {
     const slotsRes = await env.DB.prepare(`SELECT venue_id FROM plan_slots WHERE plan_id = ?`).bind(body.planId).all<{ venue_id: string | null }>();
-    const voteVenueIds = (slotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fallback_'));
+    const voteVenueIds = (slotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fb_') && !id.startsWith('fallback_'));
     const voteStatements = [];
     for (const venueId of voteVenueIds) {
       voteStatements.push(env.DB.prepare(
@@ -1138,7 +1138,7 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
   let winnerVenueIds: string[] = [];
   try {
     const winnerSlotsRes = await env.DB.prepare(`SELECT venue_id FROM plan_slots WHERE plan_id = ?`).bind(body.winnerPlanId).all<{ venue_id: string | null }>();
-    winnerVenueIds = (winnerSlotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fallback_')) as string[];
+    winnerVenueIds = (winnerSlotsRes.results || []).map(s => s.venue_id).filter(id => id && !id.startsWith('fb_') && !id.startsWith('fallback_')) as string[];
   } catch (err) {
     console.error('Failed to query winning plan slots:', err);
   }
@@ -2487,12 +2487,12 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
       return json({ error: 'Missing photo reference ("ref")' }, { status: 400, headers: corsHeaders(env) });
     }
 
-    // 1. Check D1 cache
-    const refFragment = ref.substring(0, 80);
+    // 1. Check D1 cache — match by exact image_url to avoid LIKE pattern complexity errors
+    const expectedImageUrl = `/api/places/photo?ref=${encodeURIComponent(ref)}`;
     const cached = await env.DB.prepare(
       `SELECT image_data FROM places 
-       WHERE image_data IS NOT NULL AND image_url LIKE ? LIMIT 1`
-    ).bind(`%${refFragment}%`).first<{ image_data: string }>();
+       WHERE image_data IS NOT NULL AND image_url = ? LIMIT 1`
+    ).bind(expectedImageUrl).first<{ image_data: string }>();
 
     if (cached && cached.image_data) {
       const imageBuffer = base64ToArrayBuffer(cached.image_data);
@@ -2530,12 +2530,12 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
     const imageBuffer = await imageRes.arrayBuffer();
     const base64 = arrayBufferToBase64(imageBuffer);
 
-    // 3. Cache in DB (save to D1)
+    // 3. Cache in DB (save to D1) — use exact match on image_url
     try {
       await env.DB.prepare(
-        `UPDATE places SET image_data = ? WHERE image_url LIKE ?`
-      ).bind(base64, `%${refFragment}%`).run();
-      console.log(`[PHOTO CACHE] Cached image for ref ${refFragment.substring(0, 30)}...`);
+        `UPDATE places SET image_data = ? WHERE image_url = ?`
+      ).bind(base64, expectedImageUrl).run();
+      console.log(`[PHOTO CACHE] Cached image for ref ${ref.substring(0, 30)}...`);
     } catch (err: any) {
       console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
     }

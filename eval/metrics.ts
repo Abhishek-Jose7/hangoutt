@@ -81,7 +81,7 @@ export function computeMetrics(
       venueId: s.venueId ?? null,
       estimatedCostPerHead: s.estimatedCostPerHead ?? 0,
       durationMinutes: s.durationMinutes ?? 0,
-      isFallback: (s.venueId ?? '').startsWith('fallback_'),
+      isFallback: (s.venueId ?? '').startsWith('fallback_') || (s.venueId ?? '').startsWith('fb_'),
       rating: s.rating ?? null,
     }));
     return {

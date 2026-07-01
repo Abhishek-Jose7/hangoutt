@@ -12,7 +12,16 @@ Module._resolveFilename = function (request: string, ...args: any[]) {
   return originalResolve.call(this, request, ...args);
 };
 
+// Load env configuration from .env files
+try {
+  const { loadEnvConfig } = require('@next/env');
+  loadEnvConfig(process.cwd());
+} catch (err) {
+  console.warn('Warning: Failed to load env variables using @next/env:', err);
+}
+
 // Ensure eval runs as test environment
 if (!process.env.NODE_ENV) {
   (process.env as any).NODE_ENV = 'test';
 }
+

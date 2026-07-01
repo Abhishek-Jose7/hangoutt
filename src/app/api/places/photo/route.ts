@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db/client';
 import { places } from '@/lib/db/schema';
-import { eq, and, isNotNull, like } from 'drizzle-orm';
+import { eq, and, isNotNull } from 'drizzle-orm';
 import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
 export const dynamic = 'force-dynamic';
@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 1. Check if we have this image cached in the DB
-    const refFragment = ref.substring(0, 80); // Use first 80 chars as a matching key
+    // 1. Check if we have this image cached in the DB — use exact match to avoid LIKE complexity errors
+    const expectedImageUrl = `/api/places/photo?ref=${encodeURIComponent(ref)}`;
     
     const cached = await db
       .select({ imageData: places.imageData, imageUrl: places.imageUrl })
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
       .where(
         and(
           isNotNull(places.imageData),
-          like(places.imageUrl, `%${refFragment}%`)
+          eq(places.imageUrl, expectedImageUrl)
         )
       )
       .limit(1);
@@ -91,17 +91,15 @@ export async function GET(req: NextRequest) {
     const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
     const base64 = imageBuffer.toString('base64');
 
-    // 3. Cache in DB (fire and forget — don't block the response)
-    const refForLike = `%${refFragment}%`;
-    db.update(places)
-      .set({ imageData: base64 })
-      .where(like(places.imageUrl, refForLike))
-      .then(() => {
-        console.log(`[PHOTO CACHE] Cached image for ref ${refFragment.substring(0, 30)}...`);
-      })
-      .catch((err: Error) => {
-        console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
-      });
+    // 3. Cache in DB
+    try {
+      const updateResult = await db.update(places)
+        .set({ imageData: base64 })
+        .where(eq(places.imageUrl, expectedImageUrl));
+      console.log(`[PHOTO CACHE] Cached image for ref ${ref.substring(0, 30)}... Result:`, updateResult);
+    } catch (err: any) {
+      console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
+    }
 
     // 4. Serve the image
     return new Response(imageBuffer, {
