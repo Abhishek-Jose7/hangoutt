@@ -168,6 +168,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-01T09:02:13.667Z"
+    },
+    {
+      "id": "57f8ccc5-cb09-4532-9ec1-311a2fd6b92b",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "ughhhh",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scratch/check_zones.js\",\"src/app/(app)/planner/[groupId]/page.tsx\",\"src/app/api/places/photo/route.ts\",\"src/lib/services/planner.service.ts\",\"tsconfig.json\",\"workers/api.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-01T09:32:10.430Z"
     }
   ]
 }

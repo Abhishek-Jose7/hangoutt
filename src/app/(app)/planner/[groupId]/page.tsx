@@ -56,6 +56,22 @@ export default function PlannerPage() {
     'PREMIUM': 'EXPERIENCE FIRST',
   };
 
+  const getFrontendFallbackImage = (category: string) => {
+    const cat = (category || 'CAFE').toUpperCase();
+    const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
+      'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
+      'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
+      'DESSERT': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
+      'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
+      'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
+      'BOWLING': 'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
+      'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
+      'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
+      'WORKSHOP': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
+    };
+    return CATEGORY_FALLBACK_IMAGES[cat] || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+  };
+
   function getEndTime(startTimeStr: string, durationMinutes: number): string {
     try {
       const match = startTimeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)/i);
@@ -324,7 +340,7 @@ export default function PlannerPage() {
           const relaxStars = relaxCount >= 2 ? '⭐⭐⭐⭐⭐' : (relaxCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
 
           return (
-            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-auto flex-shrink-0 xl:flex-shrink">
+            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-full xl:h-[1220px] flex-shrink-0 xl:flex-shrink">
               <CardHeader className="pb-3 border-b border-stone-900/60">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-1">
@@ -367,73 +383,132 @@ export default function PlannerPage() {
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-6 space-y-6 flex-grow flex flex-col justify-between">
+              <CardContent className="pt-6 space-y-4 flex-grow flex flex-col justify-between">
                 
-                <div className="space-y-6">
-                  {/* Monsoon active warning */}
-                  {isRainySeason && (
-                    <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
-                      <span className="text-[11px] leading-none">☔</span>
-                      <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
-                    </div>
-                  )}
-
-                  {/* Cost & Duration Banner */}
-                  <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
-                    <div>
-                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Expected Spend</p>
-                      <p className="text-sm font-bold text-white mt-1">
-                        ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
-                        <span className="text-[8px] text-neutral-500 font-normal block mt-0.5">/ HEAD</span>
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
-                      <p className="text-sm font-bold text-white mt-1">
-                        {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
-                      <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
-                        {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
-                      </Badge>
+                {/* Mobile/Tablet Collapsed View */}
+                <div className={expandedItineraries[plan.id] ? "hidden" : "block xl:hidden space-y-4 font-mono text-xs"}>
+                  {/* Outing Pathway & Transit Chain */}
+                  <div className="space-y-1.5">
+                    <p className="text-[8px] text-neutral-500 uppercase tracking-widest">OUTING PATHWAY & TRANSIT TIME</p>
+                    <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none select-none bg-stone-900/10 border border-stone-900/40 p-2 rounded-[8px]">
+                      {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => {
+                        const transitMin = slot.travelToNextMinutes;
+                        return (
+                          <React.Fragment key={sIdx}>
+                            <div className="flex flex-col bg-stone-900/60 border border-stone-850 px-2.5 py-1.5 rounded-[6px] flex-shrink-0 min-w-[100px] max-w-[130px]">
+                              <span className="text-[9.5px] font-bold text-white truncate uppercase">{slot.name}</span>
+                              <span className="text-[7.5px] text-neutral-400 truncate mt-0.5">{slot.category} • ₹{slot.estimatedCostPerHead}</span>
+                            </div>
+                            {sIdx < plan.slots.length - 1 && (
+                              <div className="flex flex-col items-center justify-center flex-shrink-0 px-0.5">
+                                <span className="text-neutral-500 text-[10px] font-bold">➔</span>
+                                <span className="text-[7.5px] text-[#DC143C] font-semibold mt-0.5">{transitMin || 15}m</span>
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Why Recommended reasons display */}
-                  {plan.whyRecommended && Array.isArray(plan.whyRecommended) && plan.whyRecommended.length > 0 && (
-                    <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
-                      <div className="grid grid-cols-1 gap-2 mt-1">
-                        {plan.whyRecommended.slice(0, 4).map((reason: string, rIdx: number) => (
-                          <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
-                            <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
-                            <span>{reason}</span>
-                          </div>
-                        ))}
-                      </div>
+                  {/* Compact Stats Row */}
+                  <div className="grid grid-cols-3 gap-2 bg-[#DC143C]/5 border border-[#DC143C]/10 p-3 rounded-[8px] text-center">
+                    <div>
+                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Cost Range</p>
+                      <p className="text-[11px] font-bold text-white mt-0.5">
+                        ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
+                      </p>
                     </div>
-                  )}
+                    <div>
+                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Avg Commute</p>
+                      <p className="text-[11px] font-bold text-white mt-0.5">{plan.avgTotalTime} mins</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Match Fit</p>
+                      <p className="text-[11px] font-bold text-[#00E5A0] mt-0.5">{(plan.score * 100).toFixed(0)}%</p>
+                    </div>
+                  </div>
 
-                  {/* Overall Match & Toggle details */}
-                  <div className="flex justify-between items-center bg-stone-900/30 border border-stone-900/60 px-4 py-2.5 rounded-[8px] font-mono text-[10px]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-neutral-400 font-bold uppercase tracking-wider">🎯 Match Fit:</span>
-                      <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
-                    </div>
+                  {/* Strategy badge & expand button */}
+                  <div className="flex justify-between items-center bg-stone-900/30 px-3 py-2 rounded-[6px] border border-stone-900/60">
+                    <Badge variant="outline" className="bg-stone-950 border border-stone-850 uppercase text-[7.5px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[3px]">
+                      {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
+                    </Badge>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setExpandedItineraries(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                      className="text-[9px] font-bold text-[#00E5A0] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2.5 cursor-pointer flex items-center gap-1 transition-all"
+                      className="text-[8.5px] font-bold text-[#00E5A0] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2 cursor-pointer flex items-center gap-1 transition-all"
                     >
-                      {expandedItineraries[plan.id] ? 'COLLAPSE ▲' : 'EXPAND ITINERARY ▼'}
+                      EXPAND DETAILS ▼
                     </Button>
                   </div>
                 </div>
 
-                {expandedItineraries[plan.id] && (
+                {/* Always-Expanded Desktop View or Mobile/Tablet Expanded View */}
+                <div className={expandedItineraries[plan.id] ? "block space-y-6 w-full flex-grow flex flex-col justify-between" : "hidden xl:block xl:space-y-6 w-full flex-grow xl:flex xl:flex-col xl:justify-between"}>
+                  <div className="space-y-6 flex-grow flex flex-col justify-between w-full">
+                    <div className="space-y-6">
+                      {/* Header collapse shortcut button (mobile only) */}
+                      <div className="flex justify-between items-center bg-stone-900/30 border border-stone-900/60 px-3 py-2 rounded-[6px] font-mono text-[9px] xl:hidden">
+                        <span className="text-[#00E5A0] font-bold uppercase tracking-wider">🎯 Match Fit: {(plan.score * 100).toFixed(0)}%</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedItineraries(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                          className="text-[8.5px] font-bold text-[#DC143C] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2.5 cursor-pointer flex items-center gap-1 transition-all"
+                        >
+                          COLLAPSE DETAILS ▲
+                        </Button>
+                      </div>
+
+                      {/* Monsoon active warning */}
+                      {isRainySeason && (
+                        <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
+                          <span className="text-[11px] leading-none">☔</span>
+                          <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
+                        </div>
+                      )}
+
+                      {/* Cost & Duration Banner */}
+                      <div className="grid grid-cols-3 gap-4 bg-[#DC143C]/10 border border-[#DC143C]/20 p-4 rounded-[8px] text-center font-mono">
+                        <div>
+                          <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Expected Spend</p>
+                          <p className="text-sm font-bold text-white mt-1">
+                            ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
+                            <span className="text-[8px] text-neutral-500 font-normal block mt-0.5">/ HEAD</span>
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
+                          <p className="text-sm font-bold text-white mt-1">
+                            {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
+                          <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[8px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[4px] font-mono">
+                            {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Why Recommended reasons display */}
+                      {plan.whyRecommended && Array.isArray(plan.whyRecommended) && plan.whyRecommended.length > 0 && (
+                        <div className="bg-stone-900/40 border border-stone-850 p-4 rounded-[8px] space-y-2">
+                          <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
+                          <div className="grid grid-cols-1 gap-2 mt-1">
+                            {plan.whyRecommended.slice(0, 4).map((reason: string, rIdx: number) => (
+                              <div key={rIdx} className="flex items-center gap-2 text-[10px] text-neutral-300 font-mono">
+                                <Check className="h-3.5 w-3.5 text-[#00E5A0] flex-shrink-0 font-bold" />
+                                <span>{reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-355">
                       
                       {/* Personalized Commute summary */}
@@ -567,7 +642,7 @@ export default function PlannerPage() {
                                 {/* Slot Image */}
                                 <div className="relative w-full sm:w-36 h-28 sm:h-auto flex-shrink-0 bg-stone-900/50">
                                   <img
-                                    src={slot.imageUrl || 'https://placehold.co/600x400/0f0f0f/DC143C.png?text=OUTING'}
+                                    src={slot.imageUrl || getFrontendFallbackImage(slot.category)}
                                     alt={slot.name}
                                     className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
                                   />
@@ -750,8 +825,8 @@ export default function PlannerPage() {
                         </div>
                       )}
                     </div>
-                  )}
-
+                  </div>
+                </div>
               </CardContent>
               {votingStatus === 'OPEN' && (
                 <CardFooter className="p-4 border-t border-stone-900/60 bg-black/15 flex justify-end rounded-b-[12px]">

@@ -173,11 +173,31 @@ const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; 
   MOVIE:       { mandatory: 350, min: 0,   max: 100  },
 };
 
+const CATEGORY_UNSPLASH_IMAGES: Record<string, string> = {
+  'CAFE':        'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
+  'RESTAURANT':  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
+  'DESSERT':     'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
+  'PARK':        'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
+  'ARCADE':      'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
+  'BOWLING':     'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
+  'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
+  'MUSEUM':      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?w=600&auto=format&fit=crop',
+  'MALL':        'https://images.unsplash.com/photo-1519567241046-7f570f9b8e83?w=600&auto=format&fit=crop',
+  'SPORTS':      'https://images.unsplash.com/photo-1461896836934-bd45ba24e7e5?w=600&auto=format&fit=crop',
+  'MOVIE':       'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop',
+  'POTTERY':     'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
+  'WORKSHOP':    'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
+};
+
+function getFallbackImageUrl(category: string): string {
+  return CATEGORY_UNSPLASH_IMAGES[category.toUpperCase()] || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+}
+
 const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   // ── CAFÉ ──────────────────────────────────────────────────────────────────
-  { id: 'fb_cafe_prithvi',    name: 'Prithvi Cafe',              category: 'CAFE',        rating: 4.6, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 300,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true },
-  { id: 'fb_cafe_candies',    name: 'Candies',                   category: 'CAFE',        rating: 4.5, lat: 19.0590, lng: 72.8280, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
-  { id: 'fb_cafe_doolally_k', name: 'Doolally Taproom Khar',     category: 'CAFE',        rating: 4.4, lat: 19.0715, lng: 72.8356, estimatedCostPerHead: 400,  address: 'Khar West, Mumbai',       openNow: true, isFallback: true },
+  { id: 'fb_cafe_prithvi',    name: 'Prithvi Cafe',              category: 'CAFE',        rating: 4.6, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 300,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
+  { id: 'fb_cafe_candies',    name: 'Candies',                   category: 'CAFE',        rating: 4.5, lat: 19.0590, lng: 72.8280, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
+  { id: 'fb_cafe_doolally_k', name: 'Doolally Taproom Khar',     category: 'CAFE',        rating: 4.4, lat: 19.0715, lng: 72.8356, estimatedCostPerHead: 400,  address: 'Khar West, Mumbai',       openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
   { id: 'fb_cafe_doolally_a', name: 'Doolally Taproom Andheri',  category: 'CAFE',        rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 400,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
   { id: 'fb_cafe_chai_kings', name: 'Chai Kings',                category: 'CAFE',        rating: 4.3, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 150,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
   { id: 'fb_cafe_vashi_bru',  name: 'Cafe Bru Vashi',            category: 'CAFE',        rating: 4.2, lat: 19.0745, lng: 72.9978, estimatedCostPerHead: 250,  address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
@@ -550,12 +570,28 @@ function buildFallbackItineraryData(
   const hasMoviePreference = (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
     (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie'));
 
-  const rankedPool = MUMBAI_FALLBACK_CANDIDATES
+  const rankedPoolSorted = MUMBAI_FALLBACK_CANDIDATES
     .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
-    .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) }))
+    .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }), imageUrl: c.imageUrl || getFallbackImageUrl(c.category) }))
     .filter(c => c._d <= 4.5) // Restrict fallback candidates to a tight 4.5km radius to prevent location mismatch
     .sort((a, b) => a._d - b._d)
     .map(({ _d: _, ...c }) => c as PlaceCandidate);
+
+  // Fisher-Yates shuffle within distance tiers to ensure different venues on each regeneration
+  // Group by distance tier (0-1.5km, 1.5-3km, 3-4.5km) then shuffle within each tier
+  const rankedPool = [...rankedPoolSorted];
+  const shuffleRange = (arr: PlaceCandidate[], start: number, end: number) => {
+    for (let i = Math.min(end, arr.length - 1); i > start; i--) {
+      const j = start + Math.floor(Math.random() * (i - start + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  };
+  // Find tier boundaries
+  const tier1End = rankedPool.findIndex(c => getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) > 1.5);
+  const tier2End = rankedPool.findIndex(c => getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }) > 3.0);
+  if (tier1End > 0) shuffleRange(rankedPool, 0, tier1End - 1);
+  if (tier2End > tier1End) shuffleRange(rankedPool, Math.max(0, tier1End), tier2End - 1);
+  if (tier2End >= 0 && tier2End < rankedPool.length) shuffleRange(rankedPool, tier2End, rankedPool.length - 1);
 
   const globalUsed = globalUsedPlaceIds || new Set<string>();
 
@@ -588,30 +624,42 @@ function buildFallbackItineraryData(
       const cat = requiredCats[i];
       const maxC = maxCosts[i];
 
-      let candidate = rankedPool.find(c =>
+      // Pick from top-3 matching candidates randomly instead of always the first match
+      const matchingCandidates = rankedPool.filter(c =>
         c.category.toUpperCase() === cat &&
         !used.has(c.id) &&
         !globalUsed.has(c.id) &&
         c.estimatedCostPerHead <= maxC &&
         isVenueOpenAtTime(c.category, groupData.outingTime)
       );
+      const top3 = matchingCandidates.slice(0, 3);
+      let candidate: PlaceCandidate | undefined;
+      if (top3.length > 0) {
+        candidate = top3[Math.floor(Math.random() * top3.length)];
+      }
 
       if (!candidate) {
-        candidate = rankedPool.find(c =>
+        const relaxedMatches = rankedPool.filter(c =>
           c.category.toUpperCase() === cat &&
           !used.has(c.id) &&
           !globalUsed.has(c.id) &&
           isVenueOpenAtTime(c.category, groupData.outingTime)
         );
+        if (relaxedMatches.length > 0) {
+          candidate = relaxedMatches[Math.floor(Math.random() * Math.min(3, relaxedMatches.length))];
+        }
       }
 
       if (!candidate) {
-        candidate = rankedPool.find(c =>
+        const anyCatMatches = rankedPool.filter(c =>
           !used.has(c.id) &&
           !globalUsed.has(c.id) &&
           c.estimatedCostPerHead <= maxC &&
           isVenueOpenAtTime(c.category, groupData.outingTime)
         );
+        if (anyCatMatches.length > 0) {
+          candidate = anyCatMatches[Math.floor(Math.random() * Math.min(3, anyCatMatches.length))];
+        }
       }
 
       if (candidate) {
@@ -706,7 +754,7 @@ function buildFallbackItineraryData(
       mandatoryCost,
       optionalCostMin,
       optionalCostMax,
-      imageUrl: place.imageUrl || null,
+      imageUrl: place.imageUrl || getFallbackImageUrl(place.category),
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
       note: getFallbackSlotDescription(place.id, place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
       lat: place.lat,
@@ -1329,7 +1377,16 @@ async function executePlanningEngine(
 ): Promise<any[]> {
   const city = 'Mumbai';
   const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
-  const candidateZones = selectCandidateZones(memberCoords);
+  const allCandidateZones = selectCandidateZones(memberCoords);
+  
+  // Randomly sample 4 zones from the larger pool (8) to ensure each regeneration
+  // produces genuinely different zone midpoints and itineraries
+  const shuffledAllZones = [...allCandidateZones];
+  for (let i = shuffledAllZones.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
+  }
+  const candidateZones = shuffledAllZones.slice(0, 4);
 
   const avgLat = memberCoords.reduce((sum, c) => sum + c.lat, 0) / memberCoords.length;
   const avgLng = memberCoords.reduce((sum, c) => sum + c.lng, 0) / memberCoords.length;
@@ -1909,11 +1966,19 @@ async function executePlanningEngine(
           } catch (err) {}
         }
 
-        if (!finalImg) {
-          finalImg = await getVenueImageUrl(place.name, city, place.category);
-          if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience && finalImg !== place.imageUrl) {
-            needsDbUpdate = true;
+        const isUnsplashImg = !finalImg || finalImg.includes('unsplash.com') || finalImg.includes('placehold.co');
+        if (isUnsplashImg) {
+          const googleImg = await getVenueImageUrl(place.name, city, place.category);
+          if (googleImg && !googleImg.includes('unsplash.com') && !googleImg.includes('placehold.co')) {
+            finalImg = googleImg;
+            if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience && finalImg !== place.imageUrl) {
+              needsDbUpdate = true;
+            }
           }
+        }
+        // Final fallback: always have a category-based Unsplash image if still null
+        if (!finalImg) {
+          finalImg = getFallbackImageUrl(place.category);
         }
         if (!finalLink) {
           finalLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
