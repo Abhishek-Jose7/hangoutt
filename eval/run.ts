@@ -79,7 +79,7 @@ async function main() {
   const { unlinkSync } = await import('fs');
   try { unlinkSync(tempPath); } catch {}
 
-  const htmlPath = writeReports(entries, summary, regressionText);
+  const reportPaths = writeReports(entries, summary, regressionText);
 
   // Print executive summary
   console.log('━'.repeat(60));
@@ -99,7 +99,8 @@ async function main() {
     console.log(`  ⚠ HIGH FALLBACK RATE — run bootstrap discovery`);
   }
   console.log('━'.repeat(60));
-  console.log(`\n  HTML report → ${htmlPath}\n`);
+  console.log(`\n  HTML report -> ${reportPaths.htmlPath}`);
+  console.log(`  Best itineraries summary -> ${reportPaths.markdownPath}\n`);
 }
 
 main().catch(err => {

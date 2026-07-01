@@ -56,20 +56,8 @@ export default function PlannerPage() {
     'PREMIUM': 'EXPERIENCE FIRST',
   };
 
-  const getFrontendFallbackImage = (category: string) => {
-    const cat = (category || 'CAFE').toUpperCase();
-    const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
-      'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
-      'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
-      'DESSERT': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
-      'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
-      'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
-      'BOWLING': 'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
-      'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
-      'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-      'WORKSHOP': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-    };
-    return CATEGORY_FALLBACK_IMAGES[cat] || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+  const getFrontendFallbackImage = (_category: string) => {
+    return '/images/mumbai_map.png';
   };
 
   function getEndTime(startTimeStr: string, durationMinutes: number): string {

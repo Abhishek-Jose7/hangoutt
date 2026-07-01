@@ -11,6 +11,11 @@ export const categoryEnum = z.enum([
   'ESCAPE_ROOM', 'MOVIE', 'MOVIE_THEATER', 'MALL', 'DESSERT', 'SPORTS'
 ]);
 
+const imageUrlSchema = z.string().refine(
+  value => value.startsWith('/') || /^https?:\/\//i.test(value),
+  'Image URL must be absolute or app-relative.'
+);
+
 export const slotSchema = z.object({
   order: z.number().int().min(1).max(5),
   venueId: z.string().nullable().optional(),
@@ -23,7 +28,7 @@ export const slotSchema = z.object({
   estimatedCostPerHead: z.number().int().min(0),
   note: z.string().min(10),
   travelToNextCost: z.number().int().min(0).nullable().optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: imageUrlSchema.nullable().optional(),
   link: z.string().url().nullable().optional(),
 }).refine(data => !!data.venueId || !!data.experienceId, {
   message: "Either venueId or experienceId must be provided.",
@@ -34,7 +39,7 @@ export const itinerarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(2).max(40),
   tagline: z.string().min(5).max(120),
-  budgetTier: z.enum(['BUDGET_FRIENDLY', 'BALANCED', 'PREMIUM']),
+  budgetTier: z.enum(['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST', 'PREMIUM']),
   totalEstimatedCostPerHead: z.number().int().min(0),
   totalDurationMinutes: z.number().int().min(60),
   slots: z.array(slotSchema).min(1).max(5),

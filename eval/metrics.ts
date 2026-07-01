@@ -1,4 +1,5 @@
 import type { Scenario } from './scenarios';
+import { getVenueZone } from '../src/lib/services/planner.service';
 
 export interface SlotMetrics {
   name: string;
@@ -148,6 +149,18 @@ export function computeMetrics(
       violations.push(`HOURS_VIOLATION:${s.name}(${cat})@${scenario.outingTime}`);
     }
   });
+
+  // === Strict zone integrity ===
+  for (const plan of plans) {
+    const labelZone = String(plan.meetupZone ?? plan.name ?? '');
+    for (const slot of plan.slots ?? []) {
+      if (typeof slot.lat !== 'number' || typeof slot.lng !== 'number') continue;
+      const slotZone = getVenueZone(slot.lat, slot.lng, slot.name ?? '', slot.address ?? '');
+      if (labelZone && slotZone !== labelZone) {
+        violations.push(`ZONE_MISMATCH:${labelZone}->${slotZone}:${slot.name}`);
+      }
+    }
+  }
 
   // === Quality score 0–100 ===
   const budgetScore = budgetRespected ? 25 : Math.max(0, 25 - (budgetUtilization - 1) * 25);

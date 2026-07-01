@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db/client';
-import { places, placeCategories } from '@/lib/db/schema';
+import { places } from '@/lib/db/schema';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
 
@@ -68,30 +68,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Not cached — fetch from Google
     const fallbackRedirect = async () => {
-      try {
-        const placeRecord = await db
-          .select({ category: placeCategories.category })
-          .from(places)
-          .innerJoin(placeCategories, eq(places.id, placeCategories.placeId))
-          .where(eq(places.imageUrl, expectedImageUrl))
-          .limit(1);
-        const category = placeRecord.length > 0 ? placeRecord[0].category : undefined;
-        const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
-          'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
-          'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
-          'DESSERT': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
-          'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
-          'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
-          'BOWLING': 'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
-          'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
-          'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-          'LIVE_MUSIC': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop',
-        };
-        const fallbackUrl = (category && CATEGORY_FALLBACK_IMAGES[category.toUpperCase()]) || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
-        return Response.redirect(fallbackUrl, 307);
-      } catch {
-        return Response.redirect('https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop', 307);
-      }
+      return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);
     };
 
     // 2. Not cached — fetch from Google
@@ -140,6 +117,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('[PHOTO PROXY ERROR]', err);
-    return Response.redirect('https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop', 307);
+    return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);
   }
 }

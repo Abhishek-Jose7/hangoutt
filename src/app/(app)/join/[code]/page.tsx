@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
 import PageContainer from '@/components/shared/PageContainer';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import Link from 'next/link';
 export default function JoinGroupPage() {
   const params = useParams();
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
   const inviteCode = params.code as string;
 
   const [status, setStatus] = useState<'LOADING' | 'SUCCESS' | 'ERROR'>('LOADING');
@@ -20,9 +22,19 @@ export default function JoinGroupPage() {
   const [targetGroupId, setTargetGroupId] = useState('');
 
   useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
     if (!inviteCode) {
       setStatus('ERROR');
       setErrorMsg('No invite code provided.');
+      return;
+    }
+
+    if (!isSignedIn) {
+      const returnTo = `/join/${encodeURIComponent(inviteCode)}`;
+      router.replace(`/sign-in?redirect_url=${encodeURIComponent(returnTo)}`);
       return;
     }
 
@@ -55,7 +67,7 @@ export default function JoinGroupPage() {
     };
 
     processJoin();
-  }, [inviteCode, router]);
+  }, [inviteCode, isLoaded, isSignedIn, router]);
 
   return (
     <PageContainer title="Outing Join Portal">

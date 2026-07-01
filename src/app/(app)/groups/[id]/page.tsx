@@ -15,7 +15,7 @@ import { submitMemberVibes, updateMemberPresenceAction } from '@/actions/members
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
 import { OutingFeedback } from '@/components/OutingFeedback';
-import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -678,14 +678,13 @@ export default function GroupDetailsPage() {
                   >
                     {plans.map((plan) => {
                       const voteCount = votes[plan.id] || 0;
-                      const isExpanded = expandedPlanId === plan.id;
-                      const placesText = plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => s.name).join(' → ') || 'No places specified';
+                      const orderedSlots = [...(plan.slots ?? [])].sort((a: any, b: any) => a.slotOrder - b.slotOrder);
 
                       return (
                         <div key={plan.id} className="w-full shrink-0 snap-center snap-always px-1">
                           <Card 
-                            className="bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 cursor-pointer hover:border-[#DC143C]/40 transition-all select-none"
-                            onClick={() => setExpandedPlanId(isExpanded ? null : plan.id)}
+                            className="min-h-[430px] bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 cursor-pointer hover:border-[#DC143C]/40 transition-all select-none"
+                            onClick={() => setExpandedPlanId(plan.id)}
                           >
                             <div className="space-y-3">
                               <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-2.5">
@@ -711,9 +710,29 @@ export default function GroupDetailsPage() {
                                 <p className="text-xs text-neutral-300 font-sans tracking-wide leading-relaxed">{plan.tagline}</p>
                               </div>
 
-                              <div className="space-y-1">
-                                <span className="text-[9px] uppercase font-mono text-neutral-500 tracking-wider font-bold">PLACES</span>
-                                <p className="text-xs text-white font-mono tracking-wider font-bold line-clamp-2 leading-snug">{placesText}</p>
+                              <div className="rounded-[8px] border border-[#353534]/70 bg-black/25 px-4 py-4">
+                                <div className="relative pl-8">
+                                  <div className="absolute left-[10px] top-3 bottom-3 w-px bg-[#DC143C]/35" />
+                                  {orderedSlots.map((slot: any, sIdx: number) => (
+                                    <div key={slot.id || sIdx} className="relative pb-5 last:pb-0">
+                                      <span className="absolute -left-[29px] top-0 flex h-5 w-5 items-center justify-center rounded-full bg-[#DC143C] text-black text-[10px] font-mono font-black">
+                                        {sIdx + 1}
+                                      </span>
+                                      <p className="text-[12px] font-mono font-bold uppercase tracking-wide text-white leading-tight">
+                                        {slot.name}
+                                      </p>
+                                      <p className="mt-0.5 text-[9px] font-mono uppercase tracking-wider text-neutral-500">
+                                        {slot.arrivalTime} / {slot.category}
+                                      </p>
+                                      {sIdx < orderedSlots.length - 1 && (
+                                        <div className="mt-3 space-y-1 text-[9.5px] font-mono font-bold uppercase tracking-wider text-neutral-400">
+                                          <div>| walk {Math.min(slot.travelToNextMinutes || 15, 8)} min</div>
+                                          <div>| cab Rs {slot.travelToNextCost || Math.max(16, Math.round((slot.travelToNextMinutes || 15) * 1.1))}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
 
                               {/* Travel and cost indicators */}
@@ -738,21 +757,11 @@ export default function GroupDetailsPage() {
 
                               {/* Expand Prompt indicator */}
                               <div className="flex items-center justify-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-neutral-500 pt-1">
-                                {isExpanded ? (
-                                  <>
-                                    <ChevronUp className="h-3.5 w-3.5 text-neutral-500" />
-                                    TAP TO COLLAPSE DETAILS
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronDown className="h-3.5 w-3.5 text-[#DC143C]" />
-                                    TAP TO EXPAND DETAILS
-                                  </>
-                                )}
+                                TAP TO VIEW DETAILS
                               </div>
 
                               {/* Expanded content */}
-                              {isExpanded && (
+                              {expandedPlanId === '__never__' && (
                                 <div className="pt-3.5 border-t border-[#353534] space-y-4 animate-in fade-in slide-in-from-top-2 duration-250 text-left">
                                   <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono block">
                                     Itinerary Timeline
@@ -855,26 +864,105 @@ export default function GroupDetailsPage() {
                       Next
                     </Button>
                   </div>
+
+                  {expandedPlanId && (
+                    (() => {
+                      const activePlan = plans.find((p: any) => p.id === expandedPlanId);
+                      if (!activePlan) return null;
+                      const detailSlots = [...(activePlan.slots ?? [])].sort((a: any, b: any) => a.slotOrder - b.slotOrder);
+                      return (
+                        <div className="fixed inset-0 z-50 bg-black text-white md:hidden overflow-y-auto">
+                          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#353534] bg-black/95 px-4 py-4 backdrop-blur-md">
+                            <div>
+                              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#DC143C]">Itinerary details</p>
+                              <h3 className="mt-1 text-base font-mono font-bold uppercase tracking-wide text-white">{activePlan.name}</h3>
+                            </div>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setExpandedPlanId(null)}
+                              className="h-10 w-10 rounded-[6px] border border-[#353534] bg-[#111] text-white hover:bg-[#1c1b1b]"
+                            >
+                              <X className="h-5 w-5" />
+                              <span className="sr-only">Close itinerary details</span>
+                            </Button>
+                          </div>
+
+                          <div className="space-y-5 px-4 py-5 pb-24">
+                            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-400">
+                              <div className="rounded-[6px] border border-[#353534] bg-[#0e0e0e] p-3">
+                                <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Cost / head</span>
+                                <strong className="mt-1 block text-sm text-white">Rs {activePlan.totalEstimatedCostPerHead}</strong>
+                              </div>
+                              <div className="rounded-[6px] border border-[#353534] bg-[#0e0e0e] p-3">
+                                <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Avg commute</span>
+                                <strong className="mt-1 block text-sm text-white">{activePlan.avgTotalTime || activePlan.avgCabTime} mins</strong>
+                              </div>
+                            </div>
+
+                            <div className="relative ml-3 border-l border-[#DC143C]/35 pl-6">
+                              {detailSlots.map((slot: any, sIdx: number) => (
+                                <div key={slot.id || sIdx} className="relative pb-7 last:pb-0">
+                                  <span className="absolute -left-[37px] top-0 flex h-6 w-6 items-center justify-center rounded-full bg-[#DC143C] text-black text-[11px] font-mono font-black">
+                                    {sIdx + 1}
+                                  </span>
+                                  <div className="rounded-[8px] border border-[#353534] bg-[#0e0e0e] p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <h4 className="text-sm font-mono font-bold uppercase tracking-wide text-white">{slot.name}</h4>
+                                        <p className="mt-1 text-[9px] font-mono uppercase tracking-wider text-neutral-500">
+                                          {slot.category} / {slot.arrivalTime} / {slot.durationMinutes}m
+                                        </p>
+                                      </div>
+                                      <span className="shrink-0 rounded-[4px] border border-[#DC143C]/20 bg-[#DC143C]/10 px-2 py-1 text-[9px] font-mono font-bold text-[#DC143C]">
+                                        Rs {slot.estimatedCostPerHead}
+                                      </span>
+                                    </div>
+                                    {slot.note && (
+                                      <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
+                                        {slot.note}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {sIdx < detailSlots.length - 1 && (
+                                    <div className="py-3 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400">
+                                      <div>| walk {Math.min(slot.travelToNextMinutes || 15, 8)} min</div>
+                                      <div>| cab Rs {slot.travelToNextCost || Math.max(16, Math.round((slot.travelToNextMinutes || 15) * 1.1))}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="rounded-[8px] border border-[#353534] bg-[#0e0e0e] p-4">
+                              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#00E1AB]">Score details</p>
+                              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-400">
+                                <div>Experience: <span className="text-white">{(activePlan.experienceScore * 10).toFixed(1)}/10</span></div>
+                                <div>Travel: <span className="text-white">{(activePlan.travelScore * 10).toFixed(1)}/10</span></div>
+                                <div>Budget: <span className="text-white">{(activePlan.budgetScore * 10).toFixed(1)}/10</span></div>
+                                <div>Fairness: <span className="text-white">{(activePlan.fairnessScore * 10).toFixed(1)}/10</span></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
 
                 {/* 2. Desktop Bento View (hidden md:grid) */}
-                <div className="hidden md:grid grid-cols-6 gap-6 items-start">
+                <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
                   {plans.map((plan, idx) => {
                     const voteCount = votes[plan.id] || 0;
                     const isFeatured = idx === 0;
-                    const isExpanded = expandedPlanId === plan.id || isFeatured; // featured is expanded by default
-                    const colSpan = isFeatured ? 'col-span-6 lg:col-span-4' : 'col-span-3 lg:col-span-2';
+                    const isExpanded = true;
                     const placesText = plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => s.name).join(' → ') || 'No places specified';
 
                     return (
                       <Card 
                         key={plan.id} 
-                        className={`border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg backdrop-blur-md flex flex-col justify-between gap-5 rounded-[12px] hover:border-[#DC143C]/40 transition-all cursor-pointer ${colSpan}`}
-                        onClick={() => {
-                          if (!isFeatured) {
-                            setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id);
-                          }
-                        }}
+                        className="h-full min-h-[560px] border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg backdrop-blur-md flex flex-col justify-between gap-5 rounded-[12px] hover:border-[#DC143C]/40 transition-all"
                       >
                         <div className="space-y-4">
                           <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-3.5">
@@ -918,20 +1006,6 @@ export default function GroupDetailsPage() {
                               <span className="text-[#DC143C] font-bold text-xs">{(plan.score * 10).toFixed(1)}/10</span>
                             </div>
                           </div>
-
-                          {!isFeatured && (
-                            <div className="flex items-center justify-center gap-1 text-[9px] font-mono uppercase tracking-widest text-neutral-500">
-                              {isExpanded ? (
-                                <>
-                                  <ChevronUp className="h-3 w-3" /> CLICK TO COLLAPSE
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="h-3 w-3" /> CLICK FOR DETAILS
-                                </>
-                              )}
-                            </div>
-                          )}
 
                           {/* Collapsible details for non-featured OR default for featured */}
                           {isExpanded && (
@@ -977,8 +1051,8 @@ export default function GroupDetailsPage() {
                             size="sm"
                             disabled={isCasting || userVotedPlanId === plan.id}
                             onClick={(e) => {
-                              e.stopPropagation();
-                              handleVoteCast(plan.id);
+                               e.stopPropagation();
+                               handleVoteCast(plan.id);
                             }}
                             className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[9.5px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
@@ -1002,7 +1076,7 @@ export default function GroupDetailsPage() {
                   })}
 
                   {/* 3. Live Vote Distribution Bento Block */}
-                  <Card className="col-span-3 lg:col-span-2 border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg rounded-[12px] flex flex-col justify-between gap-5 min-h-[300px]">
+                  <Card className="border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg rounded-[12px] flex flex-col justify-between gap-5 min-h-[300px]">
                     <div className="space-y-1">
                       <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1.5 font-mono">
                         <Vote className="h-3.5 w-3.5" /> Live Consensus

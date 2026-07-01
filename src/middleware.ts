@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 // Define public routes that do not require authentication
 const isPublicRoute = createRouteMatcher([
   '/',
+  '/join(.*)',
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/health/db',
@@ -63,4 +64,3 @@ export const config = {
     '/(api|trpc)(.*)',
   ],
 };
-

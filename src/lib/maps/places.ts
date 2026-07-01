@@ -4,19 +4,7 @@ import { VenueCategory } from '../types/planner.types';
 const getGoogleApiKey = () => process.env.GOOGLE_MAPS_API_KEY;
 const GOOGLE_BASE_URL = 'https://maps.googleapis.com/maps/api/place';
 
-// High-quality Unsplash images for categories (used when Google Places has no photo)
-const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
-  'CAFE': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
-  'RESTAURANT': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
-  'DESSERT': 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
-  'PARK': 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
-  'ARCADE': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
-  'BOWLING': 'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
-  'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
-  'POTTERY': 'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-  'LIVE_MUSIC': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop',
-};
-const DEFAULT_FALLBACK = 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+const DEFAULT_FALLBACK = '/images/mumbai_map.png';
 
 /**
  * Resolve a real venue photo URL using the Google Places API.
@@ -82,12 +70,9 @@ export async function getVenueImageUrl(
 }
 
 /**
- * Returns a category-based fallback image URL.
+ * Returns a local fallback when Google Places has no usable photo.
  */
-export function getCategoryFallback(category?: string): string {
-  if (category && CATEGORY_FALLBACK_IMAGES[category]) {
-    return CATEGORY_FALLBACK_IMAGES[category];
-  }
+export function getCategoryFallback(_category?: string): string {
   return DEFAULT_FALLBACK;
 }
 

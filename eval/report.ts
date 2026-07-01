@@ -35,6 +35,12 @@ export interface ReportSummary {
   violationBreakdown: Record<string, number>;
 }
 
+export interface ReportPaths {
+  jsonPath: string;
+  htmlPath: string;
+  markdownPath: string;
+}
+
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = (p / 100) * (sorted.length - 1);
@@ -135,20 +141,148 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
   };
 }
 
-export function writeReports(entries: ReportEntry[], summary: ReportSummary, regression?: string): string {
+export function writeReports(entries: ReportEntry[], summary: ReportSummary, regression?: string): ReportPaths {
   const reportsDir = path.resolve(process.cwd(), 'eval/reports');
   fs.mkdirSync(reportsDir, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const jsonPath = path.join(reportsDir, `${ts}.json`);
   const htmlPath = path.join(reportsDir, `${ts}.html`);
+  const markdownPath = path.join(reportsDir, `${ts}-best-itineraries.md`);
 
   fs.writeFileSync(jsonPath, JSON.stringify({ summary, entries }, null, 2));
 
   const html = generateHtml(summary, entries, regression);
   fs.writeFileSync(htmlPath, html);
 
-  return htmlPath;
+  fs.writeFileSync(markdownPath, generateBestItinerariesMarkdown(summary, entries, regression));
+
+  return { jsonPath, htmlPath, markdownPath };
+}
+
+function formatCurrency(value: number | string | undefined): string {
+  if (value === undefined || value === null || value === '') return 'Rs --';
+  return `Rs ${value}`;
+}
+
+function formatMinutes(value: number | undefined): string {
+  if (!value || value <= 0) return '-- min';
+  return `${Math.round(value)} min`;
+}
+
+function cleanCell(value: string | undefined | null): string {
+  return String(value ?? '--').replace(/\s+/g, ' ').trim();
+}
+
+function planLine(entry: ReportEntry, rank: number): string {
+  const plan = entry.metrics.plans[0];
+  const stops = plan?.slots.map((slot, index) => {
+    const category = slot.category ? ` (${slot.category})` : '';
+    return `${index + 1}. ${slot.name}${category}`;
+  }).join(' -> ') || 'No stops generated';
+  const violations = entry.metrics.constraintViolations.length > 0
+    ? entry.metrics.constraintViolations.join('; ')
+    : 'None';
+
+  return [
+    `### ${rank}. ${cleanCell(entry.scenario.locationSetName)} - ${cleanCell(entry.scenario.groupType)} - ${cleanCell(entry.scenario.outingTimeLabel)}`,
+    ``,
+    `- Score: ${entry.metrics.overallScore}/100`,
+    `- Zone: ${cleanCell(plan?.meetupZone)}`,
+    `- Budget: ${formatCurrency(entry.scenario.budget)} per head; estimated: ${formatCurrency(plan?.totalEstimatedCostPerHead)} per head`,
+    `- Travel: ${formatMinutes(entry.metrics.avgTravelTimeMinutes)} average`,
+    `- Venue rating: ${entry.metrics.avgVenueRating.toFixed(2)}`,
+    `- Preference match: ${Math.round(entry.metrics.preferenceMatchRatio * 100)}%`,
+    `- Fallback used: ${entry.metrics.engineFallback || entry.metrics.isFallbackOnly ? 'Yes' : 'No'}`,
+    `- Violations: ${violations}`,
+    `- Stops: ${stops}`,
+    ``,
+  ].join('\n');
+}
+
+function generateBestItinerariesMarkdown(summary: ReportSummary, entries: ReportEntry[], regression?: string): string {
+  const validEntries = entries
+    .filter(entry => entry.metrics.planCount > 0)
+    .filter(entry => entry.metrics.constraintViolations.length === 0)
+    .sort((a, b) => {
+      if (b.metrics.overallScore !== a.metrics.overallScore) return b.metrics.overallScore - a.metrics.overallScore;
+      return a.metrics.avgTravelTimeMinutes - b.metrics.avgTravelTimeMinutes;
+    });
+
+  const topOverall = validEntries.slice(0, 25);
+  const topDate = validEntries
+    .filter(entry => entry.scenario.groupType.toLowerCase().includes('date'))
+    .slice(0, 10);
+  const topBudget = validEntries
+    .filter(entry => entry.metrics.budgetUtilization <= 0.9)
+    .slice(0, 10);
+  const topLowTravel = validEntries
+    .filter(entry => entry.metrics.avgTravelTimeMinutes > 0)
+    .sort((a, b) => {
+      if (b.metrics.overallScore !== a.metrics.overallScore) return b.metrics.overallScore - a.metrics.overallScore;
+      return a.metrics.avgTravelTimeMinutes - b.metrics.avgTravelTimeMinutes;
+    })
+    .slice(0, 10);
+
+  const violationRows = Object.entries(summary.violationBreakdown)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, count]) => `| ${name} | ${count} |`)
+    .join('\n') || '| None | 0 |';
+
+  return [
+    `# Hangout Eval Best Itineraries`,
+    ``,
+    `Generated: ${summary.runAt}`,
+    ``,
+    `## Run Summary`,
+    ``,
+    `| Metric | Value |`,
+    `| --- | ---: |`,
+    `| Scenarios | ${summary.totalScenarios} |`,
+    `| Plans generated | ${summary.totalPlansGenerated} |`,
+    `| Average score | ${summary.avgOverallScore}/100 |`,
+    `| Median score | ${summary.medianOverallScore}/100 |`,
+    `| p10 / p90 score | ${summary.p10OverallScore} / ${summary.p90OverallScore} |`,
+    `| Budget respect | ${summary.budgetRespectRate}% |`,
+    `| Constraint violation rate | ${summary.constraintViolRate}% |`,
+    `| Fallback rate | ${summary.fallbackRate}% |`,
+    `| Engine fallback rate | ${summary.engineFallbackRate}% |`,
+    `| Failure rate | ${summary.failureRate}% |`,
+    `| Average travel | ${summary.avgTravelTime} min |`,
+    `| Average venue rating | ${summary.avgVenueRating.toFixed(2)} |`,
+    ``,
+    `## Best Overall Valid Itineraries`,
+    ``,
+    topOverall.length > 0 ? topOverall.map(planLine).join('\n') : `No violation-free itineraries were generated.`,
+    ``,
+    `## Best Date Itineraries`,
+    ``,
+    topDate.length > 0 ? topDate.map(planLine).join('\n') : `No violation-free date itineraries were generated.`,
+    ``,
+    `## Best Budget-Safe Itineraries`,
+    ``,
+    topBudget.length > 0 ? topBudget.map(planLine).join('\n') : `No violation-free budget-safe itineraries were generated.`,
+    ``,
+    `## Best Low-Travel Itineraries`,
+    ``,
+    topLowTravel.length > 0 ? topLowTravel.map(planLine).join('\n') : `No violation-free low-travel itineraries were generated.`,
+    ``,
+    `## Most Common Venues`,
+    ``,
+    `| Venue | Appearances |`,
+    `| --- | ---: |`,
+    ...summary.mostCommonVenues.slice(0, 20).map(venue => `| ${venue.name} | ${venue.count} |`),
+    ``,
+    `## Constraint Violations`,
+    ``,
+    `| Violation | Count |`,
+    `| --- | ---: |`,
+    violationRows,
+    ``,
+    summary.unusedZones.length > 0 ? `Unused zones: ${summary.unusedZones.join(', ')}` : `Unused zones: None`,
+    ``,
+    regression ? `## Regression\n\n\`\`\`\n${regression}\n\`\`\`\n` : ``,
+  ].join('\n');
 }
 
 function bar(pct: number, color = '#00E1AB'): string {

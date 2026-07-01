@@ -8,7 +8,7 @@ import { planRepository, type PlanWithSlots } from '../repositories/plan.reposit
 import { historyRepository } from '../repositories/history.repository';
 import { recommendationService } from './recommendation.service';
 import { generateItineraries } from '../groq/itineraryService';
-import { selectCandidateZones, getHaversineDistance, LatLng } from '../algorithms/zoneSelection';
+import { selectCandidateZones, getHaversineDistance, LatLng, MUMBAI_ZONES } from '../algorithms/zoneSelection';
 import { db, safeTransaction } from '../db/client';
 import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics, featuredExperiences, discoveryQueue, apiBudget } from '../db/schema';
 import { eq, sql, and, between } from 'drizzle-orm';
@@ -173,31 +173,19 @@ const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; 
   MOVIE:       { mandatory: 350, min: 0,   max: 100  },
 };
 
-const CATEGORY_UNSPLASH_IMAGES: Record<string, string> = {
-  'CAFE':        'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop',
-  'RESTAURANT':  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop',
-  'DESSERT':     'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600&auto=format&fit=crop',
-  'PARK':        'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?w=600&auto=format&fit=crop',
-  'ARCADE':      'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=600&auto=format&fit=crop',
-  'BOWLING':     'https://images.unsplash.com/photo-1538510166367-5477e2a521e7?w=600&auto=format&fit=crop',
-  'ESCAPE_ROOM': 'https://images.unsplash.com/photo-1519074069444-1ba4e6664104?w=600&auto=format&fit=crop',
-  'MUSEUM':      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?w=600&auto=format&fit=crop',
-  'MALL':        'https://images.unsplash.com/photo-1519567241046-7f570f9b8e83?w=600&auto=format&fit=crop',
-  'SPORTS':      'https://images.unsplash.com/photo-1461896836934-bd45ba24e7e5?w=600&auto=format&fit=crop',
-  'MOVIE':       'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop',
-  'POTTERY':     'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-  'WORKSHOP':    'https://images.unsplash.com/photo-1565192647048-f997ded87ab5?w=600&auto=format&fit=crop',
-};
+function getFallbackImageUrl(_category: string): string {
+  return '/images/mumbai_map.png';
+}
 
-function getFallbackImageUrl(category: string): string {
-  return CATEGORY_UNSPLASH_IMAGES[category.toUpperCase()] || 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&auto=format&fit=crop';
+function isDisallowedItineraryImage(imageUrl?: string | null): boolean {
+  return !imageUrl || imageUrl.includes('unsplash.com') || imageUrl.includes('placehold.co');
 }
 
 const MUMBAI_FALLBACK_CANDIDATES: PlaceCandidate[] = [
   // ── CAFÉ ──────────────────────────────────────────────────────────────────
-  { id: 'fb_cafe_prithvi',    name: 'Prithvi Cafe',              category: 'CAFE',        rating: 4.6, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 300,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
-  { id: 'fb_cafe_candies',    name: 'Candies',                   category: 'CAFE',        rating: 4.5, lat: 19.0590, lng: 72.8280, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
-  { id: 'fb_cafe_doolally_k', name: 'Doolally Taproom Khar',     category: 'CAFE',        rating: 4.4, lat: 19.0715, lng: 72.8356, estimatedCostPerHead: 400,  address: 'Khar West, Mumbai',       openNow: true, isFallback: true, imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop' },
+  { id: 'fb_cafe_prithvi',    name: 'Prithvi Cafe',              category: 'CAFE',        rating: 4.6, lat: 19.1075, lng: 72.8263, estimatedCostPerHead: 300,  address: 'Juhu, Mumbai',            openNow: true, isFallback: true },
+  { id: 'fb_cafe_candies',    name: 'Candies',                   category: 'CAFE',        rating: 4.5, lat: 19.0590, lng: 72.8280, estimatedCostPerHead: 350,  address: 'Bandra West, Mumbai',     openNow: true, isFallback: true },
+  { id: 'fb_cafe_doolally_k', name: 'Doolally Taproom Khar',     category: 'CAFE',        rating: 4.4, lat: 19.0715, lng: 72.8356, estimatedCostPerHead: 400,  address: 'Khar West, Mumbai',       openNow: true, isFallback: true },
   { id: 'fb_cafe_doolally_a', name: 'Doolally Taproom Andheri',  category: 'CAFE',        rating: 4.4, lat: 19.1190, lng: 72.8580, estimatedCostPerHead: 400,  address: 'Andheri West, Mumbai',    openNow: true, isFallback: true },
   { id: 'fb_cafe_chai_kings', name: 'Chai Kings',                category: 'CAFE',        rating: 4.3, lat: 19.2290, lng: 72.8570, estimatedCostPerHead: 150,  address: 'Borivali West, Mumbai',   openNow: true, isFallback: true },
   { id: 'fb_cafe_vashi_bru',  name: 'Cafe Bru Vashi',            category: 'CAFE',        rating: 4.2, lat: 19.0745, lng: 72.9978, estimatedCostPerHead: 250,  address: 'Vashi, Navi Mumbai',      openNow: true, isFallback: true },
@@ -572,8 +560,12 @@ function buildFallbackItineraryData(
 
   const rankedPoolSorted = MUMBAI_FALLBACK_CANDIDATES
     .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
-    .map(c => ({ ...c, _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }), imageUrl: c.imageUrl || getFallbackImageUrl(c.category) }))
-    .filter(c => c._d <= 4.5) // Restrict fallback candidates to a tight 4.5km radius to prevent location mismatch
+    .map(c => ({
+      ...c,
+      _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }),
+      imageUrl: isDisallowedItineraryImage(c.imageUrl) ? getFallbackImageUrl(c.category) : c.imageUrl
+    }))
+    .filter(c => c._d <= 4.5 && getVenueZone(c.lat, c.lng, c.name, c.address) === zoneObj.name)
     .sort((a, b) => a._d - b._d)
     .map(({ _d: _, ...c }) => c as PlaceCandidate);
 
@@ -754,7 +746,7 @@ function buildFallbackItineraryData(
       mandatoryCost,
       optionalCostMin,
       optionalCostMax,
-      imageUrl: place.imageUrl || getFallbackImageUrl(place.category),
+      imageUrl: isDisallowedItineraryImage(place.imageUrl) ? getFallbackImageUrl(place.category) : place.imageUrl,
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
       note: getFallbackSlotDescription(place.id, place.name, place.category, slotIdx + 1, groupData.groupType || 'friends', zoneObj.name),
       lat: place.lat,
@@ -814,7 +806,7 @@ function buildFallbackItineraryData(
 
   const variance = totalTimes.reduce((sum, t) => sum + Math.pow(t - avgTotalTime, 2), 0) / totalTimes.length;
   const stdDev = Math.sqrt(variance);
-  let travelFairnessScore = stdDev <= 10 ? 1.0 : Math.max(0.0, 1.0 - (stdDev - 10) / 30.0);
+  const travelFairnessScore = stdDev <= 10 ? 1.0 : Math.max(0.0, 1.0 - (stdDev - 10) / 30.0);
 
   const slotsMandatoryCost = slots.reduce((sum, s) => sum + s.mandatoryCost, 0);
   const slotsOptionalMin = slots.reduce((sum, s) => sum + s.optionalCostMin, 0);
@@ -1160,7 +1152,7 @@ function addMinutesToTimeString(timeStr: string, minutesToAdd: number): string {
 
   const totalMin = hour * 60 + min + minutesToAdd;
   let finalHour = Math.floor(totalMin / 60) % 24;
-  let finalMin = totalMin % 60;
+  const finalMin = totalMin % 60;
 
   let finalAmPm = 'AM';
   if (finalHour >= 12) {
@@ -1203,48 +1195,11 @@ async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: 
     }));
   }
 
-  const allZones = await db.select().from(zones);
-  
-  let nearestZoneName = '';
-  let minDist = Infinity;
-
-  for (const zone of allZones) {
-    const hasFb = Object.keys(fallbacksByZone).some(
-      k => k.toLowerCase() === zone.name.toLowerCase()
-    );
-    if (!hasFb) continue;
-
-    const dist = getHaversineDistance({ lat: zoneLat, lng: zoneLng }, { lat: zone.centerLat, lng: zone.centerLng });
-    if (dist < minDist) {
-      minDist = dist;
-      nearestZoneName = zone.name;
-    }
-  }
-
-  const nearestZoneKey = Object.keys(fallbacksByZone).find(
-    k => k.toLowerCase() === nearestZoneName.toLowerCase()
-  );
-  if (nearestZoneKey && fallbacksByZone[nearestZoneKey].length > 0) {
-    console.log(`Zone "${zoneName}" has no fallbacks. Using fallbacks from nearest zone: "${nearestZoneName}" (${minDist.toFixed(1)}km away)`);
-    return fallbacksByZone[nearestZoneKey].map((fb: any) => ({
-      id: fb.id,
-      name: fb.name,
-      category: fb.category,
-      rating: fb.rating || 4.5,
-      lat: fb.lat,
-      lng: fb.lng,
-      estimatedCostPerHead: fb.estimatedCostPerHead,
-      address: fb.address || '',
-      openNow: true,
-      isFallback: true
-    }));
-  }
-
-  // Final safety net: proximity-sort MUMBAI_FALLBACK_CANDIDATES when DB table is empty
-  console.log(`[FALLBACK] zoneFallbacks table is empty for "${zoneName}". Using in-memory candidates sorted by proximity.`);
+  // Final safety net: only use in-memory candidates that resolve to the selected zone.
+  console.log(`[FALLBACK] No zone fallback rows found for "${zoneName}". Checking strict in-memory candidates.`);
   return MUMBAI_FALLBACK_CANDIDATES
     .map(c => ({ ...c, _dist: getHaversineDistance({ lat: zoneLat, lng: zoneLng }, { lat: c.lat, lng: c.lng }) }))
-    .filter(c => c._dist <= 4.5) // Restrict to a tight 4.5km radius to prevent cross-suburb mismatch
+    .filter(c => c._dist <= 4.5 && getVenueZone(c.lat, c.lng, c.name, c.address) === zoneName)
     .sort((a, b) => (a as any)._dist - (b as any)._dist)
     .slice(0, 10)
     .map(({ _dist: _, ...c }) => c as PlaceCandidate);
@@ -1281,31 +1236,34 @@ function scorePlaceCandidateRefactored(
 
   const ratingScore = Math.min(1.0, Math.max(0.0, (place.rating || 4.0) / 5.0));
 
-  // Calculate freshness using decay formula Math.exp(-daysSinceDiscovery / 14) based on firstSeen
+  // Freshness: reduce weight to 2% because seed venues get heavily decay-penalized
   const firstSeenDate = place.firstSeen ? new Date(place.firstSeen).getTime() : Date.now() - 60 * 24 * 60 * 60 * 1000;
   const daysSinceDiscovery = Math.max(0, (Date.now() - firstSeenDate) / (24 * 60 * 60 * 1000));
   const freshness = Math.exp(-daysSinceDiscovery / 14);
 
+  // Group Type Suitability Score (30% weight)
+  let suitabilityScore = 0.5;
+  const gType = (groupType || '').toUpperCase();
+  if (gType === 'DATE') {
+    const dateSuit = place.dateSuitability ?? 0.5;
+    const convoSuit = place.conversation ?? 0.5;
+    suitabilityScore = dateSuit * 0.7 + convoSuit * 0.3;
+  } else if (gType === 'FRIENDS') {
+    suitabilityScore = place.friendsSuitability ?? 0.5;
+  } else if (gType === 'FAMILY') {
+    suitabilityScore = place.familySuitability ?? 0.5;
+  } else if (gType === 'WORK') {
+    suitabilityScore = place.groupSuitability ?? 0.5;
+  } else {
+    suitabilityScore = place.overallScore ?? 0.5;
+  }
+
   // Calculate uniqueness score (Interestingness)
   const nameLower = (place.name || '').toLowerCase();
   const chains = [
-    'mcdonald',
-    'starbucks',
-    'subway',
-    'domino',
-    'kfc',
-    'burger king',
-    'pizza hut',
-    'baskin robbins',
-    'dunkin',
-    'cafe coffee day',
-    'ccd',
-    'pizza express',
-    'barbeque nation',
-    'taco bell',
-    'coffee bean',
-    'third wave',
-    'blue tokai'
+    'mcdonald', 'starbucks', 'subway', 'domino', 'kfc', 'burger king', 'pizza hut',
+    'baskin robbins', 'dunkin', 'cafe coffee day', 'ccd', 'pizza express',
+    'barbeque nation', 'taco bell', 'coffee bean', 'third wave', 'blue tokai'
   ];
 
   const isChain = chains.some(chain => nameLower.includes(chain));
@@ -1331,17 +1289,23 @@ function scorePlaceCandidateRefactored(
     popularityComponent = (popularity + uniquenessScore) / 2.0;
   }
 
-  // Adjusted weights totaling 1.0 (35% Category, 20% Budget, 15% Popularity component, 15% Freshness, 10% Travel, 5% Rating)
-  let score = 0.35 * categoryMatch +
+  // Adjust weights: 30% Group Type Suitability, 25% Category Match, 20% Budget Match, 15% Popularity/Uniqueness, 8% Travel, 2% Freshness
+  let score = 0.30 * suitabilityScore +
+              0.25 * categoryMatch +
               0.20 * budgetMatch +
               0.15 * popularityComponent +
-              0.15 * freshness +
-              0.10 * travelFairness +
-              0.05 * ratingScore;
+              0.08 * travelFairness +
+              0.02 * freshness;
   
   // Apply direct penalty to chain places to prioritize local favorites
   if (isChain) {
-    score = score - 0.20;
+    score = score - 0.35;
+  }
+
+  // Apply generation frequency penalty to encourage diversity
+  if (metrics && metrics.timesGenerated > 0) {
+    const generationPenalty = Math.min(0.25, metrics.timesGenerated * 0.02);
+    score = score - generationPenalty;
   }
 
   // Apply boostFactor
@@ -1354,6 +1318,85 @@ function scorePlaceCandidateRefactored(
   }
 
   return score;
+}
+
+const ADJACENT_ZONES: Record<string, string[]> = {
+  'Colaba': ['Fort', 'Churchgate'],
+  'Fort': ['Colaba', 'Churchgate', 'Marine Lines'],
+  'Churchgate': ['Marine Lines', 'Fort', 'Colaba'],
+  'Marine Lines': ['Churchgate', 'Fort', 'Mahalakshmi', 'Dadar'],
+  'Mahalakshmi': ['Worli', 'Lower Parel', 'Prabhadevi'],
+  'Worli': ['Prabhadevi', 'Lower Parel', 'Mahalakshmi'],
+  'Lower Parel': ['Worli', 'Prabhadevi', 'Dadar', 'Mahalakshmi'],
+  'Prabhadevi': ['Worli', 'Lower Parel', 'Dadar'],
+  'Dadar': ['Prabhadevi', 'Matunga', 'Wadala', 'Lower Parel', 'Sewri', 'Mahim'],
+  'Matunga': ['Dadar', 'Sion', 'Wadala'],
+  'Sewri': ['Wadala', 'Dadar'],
+  'Wadala': ['Matunga', 'Sewri', 'Sion', 'Dadar'],
+  'Sion': ['Matunga', 'Wadala', 'Kurla', 'Chunabhatti', 'BKC'],
+  'Mahim': ['Dadar', 'Bandra'],
+  'Bandra': ['BKC', 'Khar', 'Mahim', 'Santacruz'],
+  'BKC': ['Bandra', 'Kurla', 'Santacruz', 'Sion', 'Chunabhatti'],
+  'Khar': ['Bandra', 'Santacruz'],
+  'Santacruz': ['Khar', 'Juhu', 'Vile Parle', 'BKC', 'Bandra'],
+  'Juhu': ['Santacruz', 'Vile Parle', 'Andheri'],
+  'Vile Parle': ['Juhu', 'Santacruz', 'Andheri'],
+  'Andheri': ['Vile Parle', 'Versova', 'Jogeshwari', 'Powai'],
+  'Versova': ['Andheri', 'Jogeshwari'],
+  'Jogeshwari': ['Andheri', 'Versova', 'Goregaon'],
+  'Goregaon': ['Jogeshwari', 'Malad'],
+  'Malad': ['Goregaon', 'Kandivali'],
+  'Kandivali': ['Malad', 'Borivali'],
+  'Borivali': ['Kandivali', 'Dahisar'],
+  'Dahisar': ['Borivali'],
+  'Kurla': ['BKC', 'Chunabhatti', 'Chembur', 'Ghatkopar', 'Sion'],
+  'Chunabhatti': ['Kurla', 'Chembur', 'Sion', 'BKC'],
+  'Chembur': ['Kurla', 'Chunabhatti', 'Ghatkopar', 'Mankhurd'],
+  'Ghatkopar': ['Kurla', 'Chembur', 'Vikhroli'],
+  'Vikhroli': ['Ghatkopar', 'Powai', 'Bhandup'],
+  'Powai': ['Vikhroli', 'Andheri', 'Bhandup'],
+  'Bhandup': ['Vikhroli', 'Powai', 'Mulund'],
+  'Mulund': ['Bhandup', 'Thane'],
+  'Thane': ['Mulund'],
+  'Dombivli': [],
+  'Mankhurd': ['Chembur', 'Vashi'],
+  'Vashi': ['Mankhurd', 'Sanpada', 'Airoli'],
+  'Sanpada': ['Vashi', 'Nerul'],
+  'Nerul': ['Sanpada', 'Seawoods'],
+  'Seawoods': ['Nerul', 'Belapur'],
+  'Belapur': ['Seawoods', 'Kharghar'],
+  'Kharghar': ['Belapur', 'Panvel'],
+  'Airoli': ['Vashi', 'Thane'],
+  'Panvel': ['Kharghar']
+};
+
+export function getVenueZone(lat: number, lng: number, name: string, address: string): string {
+  const addr = (address || '').toLowerCase();
+  const n = name.toLowerCase();
+  
+  const sortedZones = [...MUMBAI_ZONES].sort((a, b) => b.name.length - a.name.length);
+  for (const zone of sortedZones) {
+    const zName = zone.name.toLowerCase();
+    if (zName === 'bkc') {
+      if (addr.includes('bkc') || addr.includes('bandra kurla complex')) {
+        return 'BKC';
+      }
+    }
+    if (addr.includes(zName) || n.includes(zName)) {
+      return zone.name;
+    }
+  }
+
+  let closestZone = MUMBAI_ZONES[0];
+  let minDist = Infinity;
+  for (const zone of MUMBAI_ZONES) {
+    const d = getHaversineDistance({ lat, lng }, { lat: zone.lat, lng: zone.lng });
+    if (d < minDist) {
+      minDist = d;
+      closestZone = zone;
+    }
+  }
+  return closestZone.name;
 }
 
 export async function executePlanningEngineForEval(
@@ -1392,8 +1435,11 @@ async function executePlanningEngine(
   const avgLng = memberCoords.reduce((sum, c) => sum + c.lng, 0) / memberCoords.length;
   const avgMemberCoords = { lat: avgLat, lng: avgLng };
 
+  const engineRejections: string[] = [];
   const logRejection = (name: string, reason: string) => {
-    console.log(`[VENUE REJECTED] "${name}" | Reason: ${reason}`);
+    const msg = `[REJECTED] "${name}" | Reason: ${reason}`;
+    console.log(msg);
+    engineRejections.push(msg);
   };
 
   const isCheaper = options.includes('Cheaper');
@@ -1407,7 +1453,7 @@ async function executePlanningEngine(
     (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie')) ||
     (vibes && vibes.some(v => String(v).toLowerCase().includes('movie')));
 
-  let activeVibes = [...vibes];
+  const activeVibes = [...vibes];
   if (options.includes('More Romantic') && !activeVibes.some(v => v.toUpperCase() === 'ROMANTIC')) {
     activeVibes.push('ROMANTIC');
   }
@@ -1444,7 +1490,7 @@ async function executePlanningEngine(
 
     const zoneLowestBudget = Math.min(...memberAvailableBudgets.map(m => m.availableBudget));
 
-    const radiusKm = 3.0;
+    const radiusKm = 6.0;
     const latDiff = radiusKm / 111.0;
     const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
 
@@ -1466,11 +1512,23 @@ async function executePlanningEngine(
         isHidden: places.isHidden,
         boostFactor: places.boostFactor,
         firstSeen: places.firstSeen,
-        imageUrl: places.imageUrl
+        imageUrl: places.imageUrl,
+        popularity: placeScores.popularity,
+        budgetFriendliness: placeScores.budgetFriendliness,
+        conversation: placeScores.conversation,
+        groupSuitability: placeScores.groupSuitability,
+        dateSuitability: placeScores.dateSuitability,
+        friendsSuitability: placeScores.friendsSuitability,
+        familySuitability: placeScores.familySuitability,
+        weatherSuitability: placeScores.weatherSuitability,
+        uniqueness: placeScores.uniqueness,
+        experienceScore: placeScores.experienceScore,
+        overallScore: placeScores.overall
       })
       .from(places)
       .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
       .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
+      .leftJoin(placeScores, eq(placeScores.placeId, places.id))
       .where(
         and(
           between(places.lat, zone.lat - latDiff, zone.lat + latDiff),
@@ -1478,7 +1536,9 @@ async function executePlanningEngine(
         )
       );
 
-    const candidates: PlaceCandidate[] = [];
+    const strictCandidates: any[] = [];
+    const adjacentCandidates: any[] = [];
+    const lowQualityCandidates: any[] = [];
 
     dbPlaces.forEach((p: any) => {
       // Quality Gate: filter hidden places
@@ -1492,40 +1552,26 @@ async function executePlanningEngine(
         return;
       }
 
-      // Quality gate: reject venues with confirmed low ratings
-      if (p.rating && p.rating > 0 && (p.reviewCount ?? 0) > 0 && (p.rating < 4.0 || (p.reviewCount ?? 0) < 20)) {
+      // Check if it passes strict quality or relaxed quality
+      const passedQuality = !(p.rating && p.rating > 0 && (p.reviewCount ?? 0) > 0 && (p.rating < 4.0 || (p.reviewCount ?? 0) < 20));
+      const passedRelaxedQuality = !(p.rating && p.rating > 0 && (p.reviewCount ?? 0) > 0 && (p.rating < 3.8 || (p.reviewCount ?? 0) < 5));
+
+      if (!passedQuality && !passedRelaxedQuality) {
         logRejection(p.name, `Low quality (rating=${p.rating}, reviews=${p.reviewCount ?? 0})`);
         return;
       }
 
-      const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: p.lat, lng: p.lng });
-      
-      // Ensure the venue strictly belongs to the midpoint zone location
-      const nameLower = p.name.toLowerCase();
-      const addrLower = (p.address || '').toLowerCase();
-      const zoneLower = zone.name.toLowerCase();
+      const venueZone = getVenueZone(p.lat, p.lng, p.name, p.address);
+      const isStrictlyInZone = venueZone === zone.name;
+      const adj = ADJACENT_ZONES[zone.name] || [];
+      const isAdjacentZone = adj.includes(venueZone);
 
-      // Normalize BKC and other variations
-      const zoneTerms = [zoneLower];
-      if (zoneLower === 'bkc') {
-        zoneTerms.push('bandra kurla complex');
-      }
-
-      const matchesText = zoneTerms.some(term => nameLower.includes(term) || addrLower.includes(term));
-      
-      let isAllowedInZone = false;
-      if (dist <= 1.5) {
-        isAllowedInZone = true;
-      } else if (dist <= 2.5 && matchesText) {
-        isAllowedInZone = true;
-      }
-
-      if (!isAllowedInZone) {
-        logRejection(p.name, `REJECTED | Reason: Venue not matching midpoint zone "${zone.name}" (dist=${dist.toFixed(1)}km, no name/address match)`);
+      if (!isStrictlyInZone && !isAdjacentZone) {
+        logRejection(p.name, `REJECTED | Reason: Venue not matching midpoint zone "${zone.name}" nor adjacent zones. (zone = ${venueZone})`);
         return;
       }
 
-      candidates.push({
+      const candidateObj = {
         id: p.id,
         name: p.name,
         category: p.category,
@@ -1543,8 +1589,32 @@ async function executePlanningEngine(
         isHidden: p.isHidden,
         boostFactor: p.boostFactor,
         firstSeen: p.firstSeen,
-        imageUrl: p.imageUrl
-      } as any);
+        imageUrl: p.imageUrl,
+        venueZone,
+        
+        // Joined placeScores metrics
+        popularity: p.popularity ?? 0.5,
+        budgetFriendliness: p.budgetFriendliness ?? 0.5,
+        conversation: p.conversation ?? 0.5,
+        groupSuitability: p.groupSuitability ?? 0.5,
+        dateSuitability: p.dateSuitability ?? 0.5,
+        friendsSuitability: p.friendsSuitability ?? 0.5,
+        familySuitability: p.familySuitability ?? 0.5,
+        weatherSuitability: p.weatherSuitability ?? 0.5,
+        uniqueness: p.uniqueness ?? 0.5,
+        experienceScore: p.experienceScore ?? 0.5,
+        overallScore: p.overallScore ?? 0.5
+      };
+
+      if (!passedQuality && isStrictlyInZone) {
+        lowQualityCandidates.push(candidateObj);
+      } else if (!passedQuality) {
+        logRejection(p.name, `Relaxed-quality candidate is in adjacent zone "${venueZone}" and cannot be mixed into "${zone.name}"`);
+      } else if (isStrictlyInZone) {
+        strictCandidates.push(candidateObj);
+      } else {
+        adjacentCandidates.push(candidateObj);
+      }
     });
 
     const dbExperiences = await db
@@ -1594,7 +1664,6 @@ async function executePlanningEngine(
         }
       }
 
-      const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: e.latitude, lng: e.longitude });
       const isFeatured = e.featuredId !== null;
 
       // Workshop/pottery/class experiences are niche — only include them when the group
@@ -1609,26 +1678,19 @@ async function executePlanningEngine(
         }
       }
 
-      // Stricter zone matching for experiences
-      const eNameLower = e.title.toLowerCase();
-      const eZoneLower = zone.name.toLowerCase();
-      const eZoneTerms = [eZoneLower];
-      if (eZoneLower === 'bkc') eZoneTerms.push('bandra kurla complex');
-      const eMatchesText = eZoneTerms.some(term => eNameLower.includes(term));
-      
-      let isExpAllowed = false;
-      if (dist <= 1.8) {
-        isExpAllowed = true;
-      } else if (dist <= 3.5 && (eMatchesText || isFeatured)) {
-        isExpAllowed = true;
-      }
+      // Zone matching for experiences
+      const expZone = getVenueZone(e.latitude, e.longitude, e.title, e.sourceUrl);
+      const isStrictlyInZone = expZone === zone.name;
+      const adj = ADJACENT_ZONES[zone.name] || [];
+      const isAdjacentZone = adj.includes(expZone);
 
-      if (!isExpAllowed && !isFeatured) {
-        logRejection(e.title, `REJECTED | Reason: Experience not matching midpoint zone "${zone.name}" (dist=${dist.toFixed(1)}km)`);
+      if (!isStrictlyInZone && !isAdjacentZone && !isFeatured) {
+        logRejection(e.title, `REJECTED | Reason: Experience not matching midpoint zone "${zone.name}" nor adjacent zones. (zone = ${expZone})`);
         return;
       }
 
-      candidates.push({
+      // Experiences are high-quality by default, so we put them in strict or adjacent pools
+      const candidateObj = {
         id: e.id,
         name: e.title,
         category: e.category,
@@ -1641,6 +1703,7 @@ async function executePlanningEngine(
         isExperience: true,
         imageUrl: e.imageUrl || undefined,
         sourceUrl: e.sourceUrl,
+        venueZone: expZone,
         mandatoryCost: e.ticketPrice,
         optionalCostMin: 0,
         optionalCostMax: 0,
@@ -1648,41 +1711,106 @@ async function executePlanningEngine(
         isFeatured: isFeatured ? 1 : 0,
         isHidden: 0,
         boostFactor: 1.0,
-        firstSeen: e.firstSeen
-      } as any);
+        firstSeen: e.firstSeen,
+        
+        // Curated experiences are naturally very suitable for date/family outings, so default to 0.8
+        popularity: e.popularityScore ?? 0.8,
+        budgetFriendliness: 0.7,
+        conversation: 0.8,
+        groupSuitability: 0.8,
+        dateSuitability: 0.8,
+        friendsSuitability: 0.8,
+        familySuitability: 0.8,
+        weatherSuitability: 0.8,
+        uniqueness: 0.8,
+        experienceScore: 0.8,
+        overallScore: 0.8
+      };
+
+      if (isStrictlyInZone) {
+        strictCandidates.push(candidateObj);
+      } else {
+        adjacentCandidates.push(candidateObj);
+      }
     });
 
-    if (candidates.length < 5) {
-      // 1. Detect which required categories are missing
-      const existingCats = new Set(candidates.map(c => c.category.toUpperCase()));
+    // Handle sparse candidates - apply live fetch or fallbacks first to strictCandidates
+    if (strictCandidates.length < 5) {
+      const existingCats = new Set(strictCandidates.map(c => c.category.toUpperCase()));
       const gaps = PLANNER_REQUIRED_CATEGORIES.filter(cat => !existingCats.has(cat)).slice(0, 3);
 
-      // 2. Reactive live fetch — bounded at 3 categories, 2s per Ola call
       if (gaps.length > 0) {
         try {
           const fetched = await reactiveVenueFetch({ name: zone.name, lat: zone.lat, lng: zone.lng }, gaps);
           if (fetched.length > 0) {
             console.log(`[PLANNER] Reactive fetch added ${fetched.length} venues to ${zone.name}`);
-            candidates.push(...fetched);
+            strictCandidates.push(...fetched
+              .filter(f => getVenueZone(f.lat, f.lng, f.name, f.address) === zone.name)
+              .map(f => ({
+              ...f,
+              isStrictlyInZone: true,
+              venueZone: zone.name,
+              popularity: 0.5,
+              budgetFriendliness: 0.5,
+              conversation: 0.5,
+              groupSuitability: 0.5,
+              dateSuitability: 0.5,
+              friendsSuitability: 0.5,
+              familySuitability: 0.5,
+              weatherSuitability: 0.5,
+              uniqueness: 0.5,
+              experienceScore: 0.5,
+              overallScore: 0.5
+            })));
           }
         } catch (reactiveErr) {
           console.warn('[PLANNER] Reactive fetch failed:', reactiveErr);
         }
-        // Signal background worker to fill this zone — fire-and-forget
         enqueueGapDiscovery({ name: zone.name, lat: zone.lat, lng: zone.lng, radius: radiusKm * 1000 }, gaps);
       }
 
-      // 3. Only use zoneFallbacks if still sparse after live fetch
-      if (candidates.length < 5) {
+      if (strictCandidates.length < 5) {
         const fallbacks = await resolveZoneFallbacks(zone.name, zone.lat, zone.lng);
         const filteredFallbacks = hasMoviePreference ? fallbacks : fallbacks.filter(f => f.category.toUpperCase() !== 'MOVIE');
         if (filteredFallbacks.length > 0) {
-          candidates.push(...filteredFallbacks);
+          strictCandidates.push(...filteredFallbacks
+            .filter(f => getVenueZone(f.lat, f.lng, f.name, f.address) === zone.name)
+            .map(f => ({
+            ...f,
+            isStrictlyInZone: true,
+            venueZone: zone.name,
+            isFallback: true,
+            popularity: 0.5,
+            budgetFriendliness: 0.5,
+            conversation: 0.5,
+            groupSuitability: 0.5,
+            dateSuitability: 0.5,
+            friendsSuitability: 0.5,
+            familySuitability: 0.5,
+            weatherSuitability: 0.5,
+            uniqueness: 0.5,
+            experienceScore: 0.5,
+            overallScore: 0.5
+          })));
         }
       }
     }
 
-    const openCandidates = candidates.filter(c => {
+    // Assemble final pool. Strict zone integrity is non-negotiable: no adjacent-zone
+    // candidates are mixed into a plan labeled as the selected zone.
+    const candidatesPool: any[] = [...strictCandidates];
+
+    if (candidatesPool.length < 5 && adjacentCandidates.length > 0) {
+      const adjNames = ADJACENT_ZONES[zone.name] || [];
+      console.log(`[ZONE EXPANSION SKIPPED] Zone "${zone.name}" has only ${candidatesPool.length} strict candidates. Adjacent venues available (${adjNames.join(', ')}) but not mixed into a single-zone itinerary.`);
+    }
+
+    if (candidatesPool.length < 5 && lowQualityCandidates.length > 0) {
+      console.log(`[QUALITY RELAXATION] Zone "${zone.name}" has only ${candidatesPool.length} candidates. Relaxing quality gates to satisfy requirements...`);
+      candidatesPool.push(...lowQualityCandidates);
+    }
+
+    const openCandidates = candidatesPool.filter(c => {
       const isOpen = isVenueOpenAtTime(c.category, groupData.outingTime);
       if (!isOpen) {
         logRejection(c.name, `Closed at outing time (${groupData.outingTime})`);
@@ -1705,7 +1833,9 @@ async function executePlanningEngine(
       }
 
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: c.lat, lng: c.lng });
-      const maxDistance = isLessTravel ? 5 : 8;
+      // If the venue is in an adjacent zone, allow up to 8km travel, otherwise standard bounds
+      const isAdj = !strictCandidates.find(sc => sc.id === c.id);
+      const maxDistance = isAdj ? 8.0 : (isLessTravel ? 5.0 : 8.0);
       if (dist > maxDistance && !c.isFallback) {
         logRejection(c.name, `REJECTED | Reason: Too far (${dist.toFixed(1)}km exceeds allowed ${maxDistance}km from zone center)`);
         return false;
@@ -1791,8 +1921,8 @@ async function executePlanningEngine(
 
       if (draftItineraries.some(it => it.planIndex === planIndex)) continue;
 
-      let zoneObj = shuffledZones[i % shuffledZones.length];
-      let zoneData = zonesData.find(zd => zd.zone.name === zoneObj.name) || zonesData[0];
+      const zoneObj = shuffledZones[i % shuffledZones.length];
+      const zoneData = zonesData.find(zd => zd.zone.name === zoneObj.name) || zonesData[0];
 
       const filterAndUnused = (list: any[]) => allowSharedVenues ? list : list.filter(c => !usedPlaceIds.has(c.id));
       let candidatesPool = filterAndUnused(zoneData.candidates);
@@ -1808,70 +1938,6 @@ async function executePlanningEngine(
       // Track categories already picked in this plan to avoid e.g. CAFE+CAFE in same plan
       const selectedPlanCats = new Set<string>();
       let chainCount = 0;
-
-      const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean) => {
-        let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
-        if (chainCount >= 1) {
-          matches = matches.filter(c => !isChain(c.name));
-        }
-
-        if (matches.length === 0) {
-          if (isActivity) {
-            matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
-          } else {
-            const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
-            // Prefer a food category not already used in this plan (avoids café+café)
-            matches = candidatesPool.filter(c =>
-              FOOD_CATS.includes(c.category.toUpperCase()) && !selectedPlanCats.has(c.category.toUpperCase())
-            );
-            if (matches.length === 0) {
-              matches = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
-            }
-          }
-          if (chainCount >= 1) {
-            matches = matches.filter(c => !isChain(c.name));
-          }
-        }
-        if (matches.length === 0) return null;
-
-        const top3 = matches.slice(0, 3);
-        const rand = Math.random();
-        let selected: PlaceCandidate;
-        if (top3.length === 1) {
-          selected = top3[0];
-        } else if (top3.length === 2) {
-          selected = rand < 0.6 ? top3[0] : top3[1];
-        } else {
-          if (rand < 0.5) selected = top3[0];
-          else if (rand < 0.85) selected = top3[1];
-          else selected = top3[2];
-        }
-
-        if (isChain(selected.name)) {
-          chainCount++;
-        }
-        return selected;
-      };
-
-      const isTwoSlots = zoneData.zoneLowestBudget < 750;
-
-      const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity);
-      if (!slot1Place) continue;
-      selectedPlanCats.add(slot1Place.category.toUpperCase());
-      candidatesPool = candidatesPool.filter(c => c.id !== slot1Place.id);
-
-      const slot2Place = selectPlaceForSlot(slot2Cats, slot2IsActivity);
-      if (!slot2Place) continue;
-      selectedPlanCats.add(slot2Place.category.toUpperCase());
-      candidatesPool = candidatesPool.filter(c => c.id !== slot2Place.id);
-
-      let slot3Place: PlaceCandidate | null = null;
-      if (!isTwoSlots) {
-        slot3Place = selectPlaceForSlot(slot3Cats, slot3IsActivity);
-        if (!slot3Place) continue;
-        selectedPlanCats.add(slot3Place.category.toUpperCase());
-        candidatesPool = candidatesPool.filter(c => c.id !== slot3Place!.id);
-      }
 
       const getMandatoryCost = (place: PlaceCandidate) => {
         if ((place as any).mandatoryCost !== undefined) {
@@ -1911,6 +1977,83 @@ async function executePlanningEngine(
           return Math.round(place.estimatedCostPerHead * 1.0);
         }
       };
+
+      const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean, remainingBudget: number) => {
+        let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
+        if (chainCount >= 1) {
+          matches = matches.filter(c => !isChain(c.name));
+        }
+
+        const getSlotCost = (place: PlaceCandidate) => {
+          return getMandatoryCost(place) + getOptionalCostMin(place);
+        };
+
+        // Filter by remaining budget constraint
+        matches = matches.filter(c => getSlotCost(c) <= remainingBudget);
+
+        if (matches.length === 0) {
+          if (isActivity) {
+            matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+          } else {
+            const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
+            matches = candidatesPool.filter(c =>
+              FOOD_CATS.includes(c.category.toUpperCase()) && !selectedPlanCats.has(c.category.toUpperCase())
+            );
+            if (matches.length === 0) {
+              matches = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
+            }
+          }
+          if (chainCount >= 1) {
+            matches = matches.filter(c => !isChain(c.name));
+          }
+          matches = matches.filter(c => getSlotCost(c) <= remainingBudget);
+        }
+        if (matches.length === 0) return null;
+
+        const top3 = matches.slice(0, 3);
+        const rand = Math.random();
+        let selected: PlaceCandidate;
+        if (top3.length === 1) {
+          selected = top3[0];
+        } else if (top3.length === 2) {
+          selected = rand < 0.6 ? top3[0] : top3[1];
+        } else {
+          if (rand < 0.5) selected = top3[0];
+          else if (rand < 0.85) selected = top3[1];
+          else selected = top3[2];
+        }
+
+        if (isChain(selected.name)) {
+          chainCount++;
+        }
+        return selected;
+      };
+
+      let isTwoSlots = zoneData.zoneLowestBudget < 750;
+      let remainingBudget = zoneData.zoneLowestBudget;
+
+      const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity, remainingBudget);
+      if (!slot1Place) continue;
+      selectedPlanCats.add(slot1Place.category.toUpperCase());
+      candidatesPool = candidatesPool.filter(c => c.id !== slot1Place.id);
+      remainingBudget -= (getMandatoryCost(slot1Place) + getOptionalCostMin(slot1Place));
+
+      const slot2Place = selectPlaceForSlot(slot2Cats, slot2IsActivity, remainingBudget);
+      if (!slot2Place) continue;
+      selectedPlanCats.add(slot2Place.category.toUpperCase());
+      candidatesPool = candidatesPool.filter(c => c.id !== slot2Place.id);
+      remainingBudget -= (getMandatoryCost(slot2Place) + getOptionalCostMin(slot2Place));
+
+      let slot3Place: PlaceCandidate | null = null;
+      if (!isTwoSlots) {
+        slot3Place = selectPlaceForSlot(slot3Cats, slot3IsActivity, remainingBudget);
+        if (!slot3Place) {
+          isTwoSlots = true;
+        } else {
+          selectedPlanCats.add(slot3Place.category.toUpperCase());
+          candidatesPool = candidatesPool.filter(c => c.id !== slot3Place!.id);
+        }
+      }
 
       const m1 = getMandatoryCost(slot1Place);
       const m2 = getMandatoryCost(slot2Place);
@@ -1966,18 +2109,17 @@ async function executePlanningEngine(
           } catch (err) {}
         }
 
-        const isUnsplashImg = !finalImg || finalImg.includes('unsplash.com') || finalImg.includes('placehold.co');
-        if (isUnsplashImg) {
+        if (isDisallowedItineraryImage(finalImg)) {
           const googleImg = await getVenueImageUrl(place.name, city, place.category);
-          if (googleImg && !googleImg.includes('unsplash.com') && !googleImg.includes('placehold.co')) {
+          if (!isDisallowedItineraryImage(googleImg)) {
             finalImg = googleImg;
             if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience && finalImg !== place.imageUrl) {
               needsDbUpdate = true;
             }
           }
         }
-        // Final fallback: always have a category-based Unsplash image if still null
-        if (!finalImg) {
+        // Final fallback: never show third-party stock imagery for real itinerary cards.
+        if (isDisallowedItineraryImage(finalImg)) {
           finalImg = getFallbackImageUrl(place.category);
         }
         if (!finalLink) {
@@ -2081,7 +2223,7 @@ async function executePlanningEngine(
 
         const variance = totalTimes.reduce((sum, t) => sum + Math.pow(t - avgTotalTime, 2), 0) / totalTimes.length;
         const stdDev = Math.sqrt(variance);
-        let travelFairnessScore = stdDev <= 10 ? 1.0 : Math.max(0.0, 1.0 - (stdDev - 10) / 30.0);
+        const travelFairnessScore = stdDev <= 10 ? 1.0 : Math.max(0.0, 1.0 - (stdDev - 10) / 30.0);
 
         const slotsMandatoryCost = slots.reduce((sum, s) => sum + s.mandatoryCost, 0);
         const slotsOptionalMin = slots.reduce((sum, s) => sum + s.optionalCostMin, 0);
@@ -2137,7 +2279,7 @@ async function executePlanningEngine(
           ? Math.round(memberTravelsForPlan.reduce((s, m) => s + (m.walkingTime || 0), 0) / memberTravelsForPlan.length)
           : 0;
 
-        let planName = zoneObj.name;
+        const planName = zoneObj.name;
         let tagline = `A wonderful day out in ${zoneObj.name}.`;
 
         if (planIndex === 1) {
@@ -2218,6 +2360,10 @@ async function executePlanningEngine(
     it.planIndex = idx + 1;
   });
 
+  if (draftItineraries.length < 4) {
+    console.warn(`[PLANNER ENGINE DIAGNOSTICS] Only ${draftItineraries.length} database plans generated for group ${groupData.id}. Rejections:`, engineRejections.slice(0, 30));
+  }
+
   return draftItineraries;
 }
 
@@ -2256,7 +2402,7 @@ export const plannerService = {
       // Collect present members and their locations, with resilient fallbacks
       const presentMembers = members;
       const presentUserIds = presentMembers.map((m: any) => m.userId);
-      let presentLocations = locations.filter((loc: any) => presentUserIds.includes(loc.userId));
+      const presentLocations = locations.filter((loc: any) => presentUserIds.includes(loc.userId));
 
       // If some members have no locations, assign the calculated group midpoint/centroid of members who have locations, or Mumbai centroid if none.
       const submittedLocations = presentLocations.filter((loc: any) => loc.lat !== 19.0760 || loc.lng !== 72.8777);
@@ -2370,6 +2516,7 @@ export const plannerService = {
 
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
+            console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of ₹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
             const fallbackPlan = buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
@@ -2723,6 +2870,7 @@ export const plannerService = {
 
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
+            console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of ₹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
             const fallbackPlan = buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
