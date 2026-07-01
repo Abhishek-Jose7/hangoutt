@@ -9,6 +9,7 @@ export interface SlotMetrics {
   durationMinutes: number;
   isFallback: boolean;
   rating: number | null;
+  address?: string;
 }
 
 export interface PlanMetrics {
@@ -41,6 +42,51 @@ export interface ItineraryMetrics {
   preferenceMatchRatio: number;
   plans: PlanMetrics[];
   error?: string;
+}
+
+const ROLE_ONLY_CATEGORIES = new Set(['FOOD_STOP', 'PRIMARY_EXPERIENCE', 'OPTIONAL_STOP']);
+const STRONG_HANGOUT_PATTERNS = [
+  'social', 'cafe', 'café', 'coffee', 'bistro', 'bakery', 'patisserie', 'dessert',
+  'creamery', 'ice cream', 'gelato', 'waffle', 'theobroma', 'le15', 'taproom',
+  'bar', 'brew', 'brewery', 'diner', 'kitchen', 'restaurant', 'pizza', 'sushi',
+  'ramen', 'bbq', 'barbeque', 'arcade', 'game', 'gaming', 'timezone', 'smaaash',
+  'bowling', 'escape', 'museum', 'gallery', 'art', 'studio', 'pottery', 'workshop',
+  'promenade', 'beach', 'lake', 'garden', 'fort', 'national park', 'nature park',
+  'waterfront', 'viewpoint', 'cinema', 'pvr', 'inox', 'cinepolis', 'theatre', 'mall'
+];
+const WEAK_PLACE_PATTERNS = [
+  'family restaurant', 'veg restaurant', 'pure veg', 'hotel ', 'fast food',
+  'snacks corner', 'sweets', 'caterers', 'biryani', 'chinese foods',
+  'juice centre', 'cold drinks', 'tea stall', 'dhaba', 'mess', 'enterprises',
+  'services', 'store', 'shop', 'mart', 'supermarket', 'medical', 'pharma',
+  'pharmacy', 'school', 'college', 'classes', 'hostel', 'gymkhana',
+  'club house', 'ground', 'maidan', 'kridangan', 'football turf', 'cricket ground',
+  'mandir', 'temple', 'masjid', 'church', 'vihar'
+];
+const LOW_INTENT_CHAIN_PATTERNS = [
+  'mcdonald', 'domino', 'kfc', 'subway', 'burger king', 'pizza hut',
+  'barbeque nation', 'bbq nation', 'monginis', 'ribbons and balloons',
+  'cafe coffee day', 'café coffee day', 'ccd', 'mad over donuts',
+  'belgian waffle', 'naturals ice cream'
+];
+const DATE_BAD_CATEGORIES = new Set(['ARCADE', 'BOWLING', 'SPORTS', 'MALL']);
+const DATE_GOOD_CATEGORIES = new Set(['CAFE', 'RESTAURANT', 'DESSERT', 'PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING']);
+
+function includesAny(text: string, patterns: string[]) {
+  return patterns.some(pattern => text.includes(pattern));
+}
+
+function looksLikeHangoutSlot(slot: SlotMetrics) {
+  const category = slot.category.toUpperCase();
+  if (ROLE_ONLY_CATEGORIES.has(category)) return false;
+  const text = `${slot.name} ${slot.address ?? ''}`.toLowerCase();
+  const strongSignal = includesAny(text, STRONG_HANGOUT_PATTERNS);
+  if (includesAny(text, LOW_INTENT_CHAIN_PATTERNS)) return false;
+  if (includesAny(text, WEAK_PLACE_PATTERNS) && !strongSignal) return false;
+  if (category === 'PARK') {
+    return includesAny(text, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden']);
+  }
+  return strongSignal || (slot.rating !== null && slot.rating >= 4.3);
 }
 
 export function computeMetrics(
@@ -84,6 +130,7 @@ export function computeMetrics(
       durationMinutes: s.durationMinutes ?? 0,
       isFallback: (s.venueId ?? '').startsWith('fallback_') || (s.venueId ?? '').startsWith('fb_'),
       rating: s.rating ?? null,
+      address: s.address ?? '',
     }));
     return {
       planId: plan.id,
@@ -137,6 +184,30 @@ export function computeMetrics(
   allSlots.forEach((s, i) => {
     if (s.durationMinutes <= 0) violations.push(`INVALID_DURATION:slot${i + 1}`);
   });
+
+  allSlots.forEach((s) => {
+    if (ROLE_ONLY_CATEGORIES.has(s.category.toUpperCase())) {
+      violations.push(`ROLE_CATEGORY_SELECTED:${s.category}:${s.name}`);
+    }
+    if (!looksLikeHangoutSlot(s)) {
+      violations.push(`WEAK_HANGOUT_SPOT:${s.category}:${s.name}`);
+    }
+  });
+
+  if (scenario.groupType.toUpperCase() === 'DATE') {
+    const badDateSlots = allSlots.filter(s => DATE_BAD_CATEGORIES.has(s.category.toUpperCase()));
+    const goodDateSlots = allSlots.filter(s => DATE_GOOD_CATEGORIES.has(s.category.toUpperCase()));
+    if (badDateSlots.length > 0) {
+      violations.push(`DATE_MISMATCH:${badDateSlots.map(s => s.name).join(',')}`);
+    }
+    if (goodDateSlots.length < Math.min(2, allSlots.length)) {
+      violations.push(`DATE_LOW_INTENT:${goodDateSlots.length}/${allSlots.length}`);
+    }
+  }
+
+  if (preferenceMatchRatio < 0.34 && scenario.preferences.length > 0) {
+    violations.push(`LOW_PREFERENCE_MATCH:${Math.round(preferenceMatchRatio * 100)}%`);
+  }
 
   // === Museum/Park opening hours: night slots ===
   const nightHour = (() => {

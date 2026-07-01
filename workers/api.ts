@@ -1252,6 +1252,97 @@ const CONVERSATION_SCORES_WORKER: Record<string, number> = {
   MALL: 3,
 };
 
+const DISCOVERY_CATEGORY_TYPES = [
+  { type: 'cafe', cat: 'CAFE' },
+  { type: 'restaurant', cat: 'RESTAURANT' },
+  { type: 'amusement_park', cat: 'ARCADE' },
+  { type: 'bowling_alley', cat: 'BOWLING' },
+  { type: 'museum', cat: 'MUSEUM' },
+  { type: 'shopping_mall', cat: 'MALL' },
+  { type: 'park', cat: 'PARK' },
+  { type: 'bakery', cat: 'DESSERT' },
+  { type: 'movie_theater', cat: 'MOVIE' },
+  { type: 'stadium', cat: 'SPORTS' },
+];
+
+const STRONG_HANGOUT_NAME_PATTERNS = [
+  'social', 'cafe', 'café', 'coffee', 'bistro', 'bakery', 'patisserie', 'dessert',
+  'creamery', 'ice cream', 'gelato', 'waffle', 'theobroma', 'le15',
+  'taproom', 'bar', 'brew', 'brewery', 'diner', 'kitchen', 'trattoria',
+  'restaurant', 'pizza', 'sushi', 'ramen', 'bbq', 'barbeque',
+  'arcade', 'game', 'gaming', 'timezone', 'smaaash', 'bowling', 'escape',
+  'museum', 'gallery', 'art', 'studio', 'pottery', 'workshop',
+  'promenade', 'beach', 'lake', 'garden', 'fort', 'national park', 'nature park',
+  'cinema', 'pvr', 'inox', 'cinepolis', 'theatre', 'mall'
+];
+
+const WEAK_OR_NON_HANGOUT_PATTERNS = [
+  ' pvt ltd', ' pvt. ltd', ' limited', ' ltd.', 'corporate', 'office',
+  'apartment', ' housing', ' society', ' co-op', ' chs', 'chs ', 'c.h.s',
+  'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
+  'gate no', ' gate 1', ' gate 2', 'transit', 'compound', 'estate',
+  'marriage hall', 'banquet hall', 'community hall', 'rickshaw', 'auto stand',
+  'parking', 'metro station', 'railway station', 'bus stand', 'bus depot',
+  'bus terminal', 'collection', 'boutique', 'clothing', 'designer', 'couture',
+  'tailor', 'saree', 'fashion', 'textile', 'dulha', 'bridal', 'jewellers',
+  'jewellery', 'jewelers', 'advisory', 'advisor', 'advisors', 'fund ', ' fund',
+  'wealth', 'consultancy', 'consulting', 'associates', 'advocates', 'chambers',
+  'law firm', 'legal', 'finance', 'financial', 'investments', 'venture',
+  'capital', 'foundation', 'trust', 'ngo', 'charity', 'diagnostic', ' clinic',
+  'clinic ', 'hospital', 'nursing home', 'dental', 'eyecare', 'enterprises',
+  'services', 'store', 'shop', 'mart', 'supermarket', 'medical', 'pharma',
+  'pharmacy', 'school', 'college', 'classes', 'tuition', 'hostel', 'pg ',
+  'gymkhana', 'club house', 'ground', 'maidan', 'kridangan', 'football turf',
+  'cricket ground', 'mandir', 'temple', 'masjid', 'church', 'vihar'
+];
+
+const GENERIC_WEAK_FOOD_PATTERNS = [
+  'family restaurant', 'veg restaurant', 'pure veg', 'hotel ', 'fast food',
+  'snacks corner', 'sweets', 'caterers', 'biryani', 'chinese foods',
+  'juice centre', 'cold drinks', 'tea stall', 'dhaba', 'mess'
+];
+
+const LOW_INTENT_CHAIN_PATTERNS = [
+  'mcdonald', 'domino', 'kfc', 'subway', 'burger king', 'pizza hut',
+  'barbeque nation', 'bbq nation', 'monginis', 'ribbons and balloons',
+  'cafe coffee day', 'café coffee day', 'ccd', 'mad over donuts',
+  'belgian waffle', 'naturals ice cream'
+];
+
+function hasAnyPattern(text: string, patterns: string[]) {
+  return patterns.some(pattern => text.includes(pattern));
+}
+
+function isHighIntentHangoutPlace(name: string, cat: string, rating: number | null, reviewCount: number, googleTypes: string[] = []) {
+  const normalized = `${name} ${googleTypes.join(' ')}`.toLowerCase();
+
+  const hasStrongSignal = hasAnyPattern(normalized, STRONG_HANGOUT_NAME_PATTERNS);
+  if (hasAnyPattern(normalized, LOW_INTENT_CHAIN_PATTERNS)) return false;
+  if (hasAnyPattern(normalized, WEAK_OR_NON_HANGOUT_PATTERNS) && !hasStrongSignal) return false;
+  const isHighlyReviewed = reviewCount >= 75;
+  const isVeryHighlyRated = rating !== null && rating >= 4.3 && reviewCount >= 40;
+
+  if (cat === 'RESTAURANT') {
+    if (hasAnyPattern(normalized, GENERIC_WEAK_FOOD_PATTERNS) && !hasStrongSignal) return false;
+    return hasStrongSignal || isHighlyReviewed || isVeryHighlyRated;
+  }
+
+  if (cat === 'PARK') {
+    const scenicSignal = hasAnyPattern(normalized, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden']);
+    return scenicSignal && (reviewCount >= 25 || rating === null || rating >= 4.0);
+  }
+
+  if (cat === 'MALL') {
+    return hasStrongSignal && reviewCount >= 100;
+  }
+
+  if (cat === 'CAFE' || cat === 'DESSERT') {
+    return hasStrongSignal || isHighlyReviewed || isVeryHighlyRated;
+  }
+
+  return hasStrongSignal || isHighlyReviewed || isVeryHighlyRated;
+}
+
 function parseEventLocation(text: string) {
   const t = text.toLowerCase();
   if (t.includes('bandra')) return { lat: 19.0596, lng: 72.8295 };
@@ -1268,7 +1359,7 @@ function parseEventLocation(text: string) {
   return { lat: 19.0178, lng: 72.8478 };
 }
 
-async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string) {
+async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string, onlyCategory?: string) {
   // Perturb the search coordinates slightly (within 40% of search radius) to discover different places on each periodic run
   const maxOffsetDegrees = (radius * 0.4) / 111000;
   const angle = Math.random() * 2 * Math.PI;
@@ -1276,20 +1367,14 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   const searchLat = lat + distance * Math.cos(angle);
   const searchLng = lng + distance * Math.sin(angle);
 
-  const categoriesToSearch = [
-    { type: 'cafe', cat: 'CAFE' },
-    { type: 'restaurant', cat: 'RESTAURANT' },
-    { type: 'amusement_park', cat: 'ARCADE' },
-    { type: 'bowling_alley', cat: 'BOWLING' },
-    { type: 'museum', cat: 'MUSEUM' },
-    { type: 'shopping_mall', cat: 'MALL' },
-    { type: 'park', cat: 'PARK' },
-    { type: 'bakery', cat: 'DESSERT' },
-    { type: 'movie_theater', cat: 'MOVIE' },
-    { type: 'stadium', cat: 'SPORTS' },
-  ];
+  const categoriesToSearch = onlyCategory
+    ? DISCOVERY_CATEGORY_TYPES.filter(c => c.cat === onlyCategory.toUpperCase())
+    : DISCOVERY_CATEGORY_TYPES;
 
   let discoveredCount = 0;
+  let skippedExisting = 0;
+  let skippedWeak = 0;
+  let skippedQuality = 0;
   const seenPlaceIds = new Set<string>();
 
   for (const { type, cat } of categoriesToSearch) {
@@ -1321,7 +1406,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
         try {
           const existing = await db.prepare(`SELECT id FROM places WHERE id = ? LIMIT 1`).bind(id).first();
           if (existing) {
-            console.log(`[DISCOVERY] Skipping existing place: ${name} (${id})`);
+            skippedExisting++;
             continue;
           }
         } catch (e) {
@@ -1334,29 +1419,18 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
           continue;
         }
 
-        // Quality Gate for Google Places (if rated, rating must be >= 4.0 and review count >= 10)
-        if (finalRating !== null && finalRating > 0 && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 10)) {
+        // Quality Gate for Google Places. Unknown ratings are allowed only when the name/type is strongly hangout-coded.
+        if (finalRating !== null && finalRating > 0 && finalReviewCount > 0 && (finalRating < 4.0 || finalReviewCount < 20)) {
+          skippedQuality++;
           continue;
         }
 
         const nameLower = name.toLowerCase();
-
-        // Strict name patterns that are never a hangout venue (societies, apartments, offices, towers)
-        const badPatterns = [
-          ' pvt ltd', ' pvt. ltd', ' limited', ' ltd.', 'corporate', 'office',
-          'apartment', ' housing', ' society', ' co-op', ' chs', 'chs ', 'c.h.s',
-          'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
-          'gate no', ' gate 1', ' gate 2', 'transit', 'compound', 'estate', 'marriage hall',
-          'banquet hall', 'community hall', 'rickshaw', 'auto stand', 'parking', 'metro station',
-          'railway station', 'bus stand', 'bus depot', 'bus terminal',
-          'collection', 'boutique', 'clothing', 'designer', 'couture', 'tailor', 'saree',
-          'fashion', 'textile', 'dulha', 'bridal', 'jewellers', 'jewellery', 'jewelers',
-          'advisory', 'advisor', 'advisors', 'fund ', ' fund', 'wealth', 'consultancy', 'consulting',
-          'associates', 'advocates', 'chambers', 'law firm', 'legal', 'finance', 'financial',
-          'investments', 'venture', 'capital', 'foundation', 'trust', 'ngo', 'charity',
-          'diagnostic', ' clinic', 'clinic ', 'hospital', 'nursing home', 'dental', 'eyecare'
-        ];
-        if (badPatterns.some((p: string) => nameLower.includes(p))) continue;
+        const googleTypes = Array.isArray(item.types) ? item.types : [];
+        if (!isHighIntentHangoutPlace(nameLower, cat, finalRating, finalReviewCount, googleTypes)) {
+          skippedWeak++;
+          continue;
+        }
 
         let imageUrl: string | null = null;
         if (item.photos && item.photos.length > 0 && item.photos[0].photo_reference) {
@@ -1514,6 +1588,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
     }
   }
 
+  console.log(`[DISCOVERY] ${zoneName}${onlyCategory ? `/${onlyCategory}` : ''}: inserted=${discoveredCount}, existing=${skippedExisting}, weak=${skippedWeak}, low_quality=${skippedQuality}`);
   return discoveredCount;
 }
 
@@ -2165,6 +2240,7 @@ export default {
 
     // Nightly 2 AM: seed queue with deficit zones, recompute popularity, dedup pass
     if (cron === '0 2 * * *') {
+      await computeZoneCoverage(env.DB);
       await seedDiscoveryQueue(env.DB);
       await recomputePopularity(env.DB);
       await runDedupePass(env.DB);
@@ -2244,7 +2320,8 @@ async function computeZoneCoverage(db: D1Database): Promise<void> {
            WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
              AND pc.category = ? AND p.is_hidden = 0
              AND p.business_status = 'OPERATIONAL'
-             AND ps.overall >= 0.3`
+             AND ps.overall >= 0.58
+             AND p.review_count >= 20`
         ).bind(
           zone.lat - latDiff, zone.lat + latDiff,
           zone.lng - lngDiff, zone.lng + lngDiff,
@@ -2315,9 +2392,18 @@ async function consumeDiscoveryQueue(db: D1Database, apiKey: string, maxItems: n
   const toProcess = Math.min(maxItems, remaining);
 
   try {
-    const rows = await db.prepare(
+    let rows = await db.prepare(
       `SELECT * FROM discovery_queue WHERE status = 'PENDING' ORDER BY priority_score DESC LIMIT ?`
     ).bind(toProcess).all<any>();
+
+    if (!rows.results || rows.results.length === 0) {
+      console.log('[WORKER] Discovery queue empty; recomputing coverage and seeding deficits');
+      await computeZoneCoverage(db);
+      await seedDiscoveryQueue(db);
+      rows = await db.prepare(
+        `SELECT * FROM discovery_queue WHERE status = 'PENDING' ORDER BY priority_score DESC LIMIT ?`
+      ).bind(toProcess).all<any>();
+    }
 
     for (const item of rows.results ?? []) {
       const now = new Date().toISOString();
@@ -2327,7 +2413,7 @@ async function consumeDiscoveryQueue(db: D1Database, apiKey: string, maxItems: n
           `UPDATE discovery_queue SET status = 'IN_PROGRESS', last_attempted_at = ?, attempt_count = attempt_count + 1, updated_at = ? WHERE id = ?`
         ).bind(now, now, item.id).run();
 
-        const count = await discoverZonePlaces(db, item.zone_name, item.zone_lat, item.zone_lng, item.zone_radius, apiKey);
+        const count = await discoverZonePlaces(db, item.zone_name, item.zone_lat, item.zone_lng, item.zone_radius, apiKey, item.category);
         await incrementApiBudget(db, 'predictive');
 
         await db.prepare(

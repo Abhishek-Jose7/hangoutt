@@ -373,6 +373,103 @@ export const isChain = (name: string): boolean => {
   return POPULAR_CHAINS.some(chain => lower.includes(chain));
 };
 
+const SELECTABLE_PLACE_CATEGORIES = new Set([
+  'CAFE', 'RESTAURANT', 'ARCADE', 'PARK', 'ESCAPE_ROOM', 'DESSERT',
+  'BOWLING', 'MUSEUM', 'ART_GALLERY', 'MALL', 'MOVIE', 'SPORTS',
+  'POTTERY', 'WORKSHOP', 'PAINTING'
+]);
+
+const ROLE_ONLY_PLACE_CATEGORIES = new Set([
+  'FOOD_STOP', 'PRIMARY_EXPERIENCE', 'OPTIONAL_STOP'
+]);
+
+const STRONG_HANGOUT_NAME_PATTERNS = [
+  'social', 'cafe', 'café', 'coffee', 'bistro', 'bakery', 'patisserie',
+  'dessert', 'creamery', 'ice cream', 'gelato', 'waffle', 'theobroma',
+  'le15', 'taproom', 'bar', 'brew', 'brewery', 'diner', 'kitchen',
+  'trattoria', 'restaurant', 'pizza', 'sushi', 'ramen', 'bbq', 'barbeque',
+  'arcade', 'game', 'gaming', 'timezone', 'smaaash', 'bowling', 'escape',
+  'museum', 'gallery', 'art', 'studio', 'pottery', 'workshop',
+  'promenade', 'beach', 'lake', 'garden', 'fort', 'national park',
+  'nature park', 'waterfront', 'viewpoint', 'cinema', 'pvr', 'inox',
+  'cinepolis', 'theatre', 'mall'
+];
+
+const WEAK_OR_NON_HANGOUT_PATTERNS = [
+  ' pvt ltd', ' pvt. ltd', ' limited', ' ltd.', 'corporate', 'office',
+  'apartment', ' housing', ' society', ' co-op', ' chs', 'chs ', 'c.h.s',
+  'residency', 'residences', 'tower', 'villa', 'bungalow', 'building', 'bldg',
+  'gate no', ' gate 1', ' gate 2', 'transit', 'compound', 'estate',
+  'marriage hall', 'banquet hall', 'community hall', 'rickshaw', 'auto stand',
+  'parking', 'metro station', 'railway station', 'bus stand', 'bus depot',
+  'bus terminal', 'collection', 'boutique', 'clothing', 'designer', 'couture',
+  'tailor', 'saree', 'fashion', 'textile', 'dulha', 'bridal', 'jewellers',
+  'jewellery', 'jewelers', 'advisory', 'advisor', 'advisors', 'fund ', ' fund',
+  'wealth', 'consultancy', 'consulting', 'associates', 'advocates', 'chambers',
+  'law firm', 'legal', 'finance', 'financial', 'investments', 'venture',
+  'capital', 'foundation', 'trust', 'ngo', 'charity', 'diagnostic', ' clinic',
+  'clinic ', 'hospital', 'nursing home', 'dental', 'eyecare', 'enterprises',
+  'services', 'store', 'shop', 'mart', 'supermarket', 'medical', 'pharma',
+  'pharmacy', 'school', 'college', 'classes', 'tuition', 'hostel', 'pg ',
+  'gymkhana', 'club house', 'ground', 'maidan', 'kridangan', 'football turf',
+  'cricket ground', 'mandir', 'temple', 'masjid', 'church', 'vihar'
+];
+
+const GENERIC_WEAK_FOOD_PATTERNS = [
+  'family restaurant', 'veg restaurant', 'pure veg', 'hotel ', 'fast food',
+  'snacks corner', 'sweets', 'caterers', 'biryani', 'chinese foods',
+  'juice centre', 'cold drinks', 'tea stall', 'dhaba', 'mess'
+];
+
+const LOW_INTENT_CHAIN_PATTERNS = [
+  'mcdonald', 'domino', 'kfc', 'subway', 'burger king', 'pizza hut',
+  'barbeque nation', 'bbq nation', 'monginis', 'ribbons and balloons',
+  'cafe coffee day', 'café coffee day', 'ccd', 'mad over donuts',
+  'belgian waffle', 'naturals ice cream'
+];
+
+function hasAnyPattern(text: string, patterns: string[]) {
+  return patterns.some(pattern => text.includes(pattern));
+}
+
+function isHangoutWorthyCandidate(candidate: { name: string; category: string; rating?: number | null; reviewCount?: number | null; address?: string | null; isFallback?: boolean; isExperience?: boolean }) {
+  if (candidate.isFallback || candidate.isExperience) return true;
+  const category = candidate.category.toUpperCase();
+  if (ROLE_ONLY_PLACE_CATEGORIES.has(category) || !SELECTABLE_PLACE_CATEGORIES.has(category)) return false;
+
+  const rating = candidate.rating ?? null;
+  const reviewCount = candidate.reviewCount ?? 0;
+  const normalized = `${candidate.name} ${candidate.address ?? ''}`.toLowerCase();
+
+  const strongSignal = hasAnyPattern(normalized, STRONG_HANGOUT_NAME_PATTERNS);
+  if (hasAnyPattern(normalized, LOW_INTENT_CHAIN_PATTERNS)) return false;
+  if (hasAnyPattern(normalized, WEAK_OR_NON_HANGOUT_PATTERNS) && !strongSignal) return false;
+  const highlyReviewed = reviewCount >= 75;
+  const strongRated = rating !== null && rating >= 4.3 && reviewCount >= 40;
+
+  if (category === 'RESTAURANT') {
+    if (hasAnyPattern(normalized, GENERIC_WEAK_FOOD_PATTERNS) && !strongSignal) return false;
+    return strongSignal || highlyReviewed || strongRated;
+  }
+
+  if (category === 'PARK') {
+    const scenicSignal = hasAnyPattern(normalized, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden']);
+    return scenicSignal && (reviewCount >= 25 || rating === null || rating >= 4.0);
+  }
+
+  if (category === 'MALL') return strongSignal && reviewCount >= 100;
+  if (category === 'CAFE' || category === 'DESSERT') return strongSignal || highlyReviewed || strongRated;
+
+  return strongSignal || highlyReviewed || strongRated;
+}
+
+const DATE_ITINERARY_TEMPLATES: ItineraryTemplate[] = [
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP'], slot2Act: true, slot3: ['DESSERT', 'RESTAURANT'], slot3Act: false },
+  { slot1: ['PARK', 'MUSEUM', 'ART_GALLERY'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
+  { slot1: ['CAFE'], slot1Act: false, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT', 'PARK'], slot3Act: false },
+  { slot1: ['MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT', 'DESSERT'], slot3Act: false },
+];
+
 export function generateWhyRecommended(plan: any, groupData: any): string[] {
   const reasons: string[] = [];
 
@@ -560,6 +657,7 @@ function buildFallbackItineraryData(
 
   const rankedPoolSorted = MUMBAI_FALLBACK_CANDIDATES
     .filter(c => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
+    .filter(c => isHangoutWorthyCandidate(c))
     .map(c => ({
       ...c,
       _d: getHaversineDistance({ lat: zoneObj.lat, lng: zoneObj.lng }, { lat: c.lat, lng: c.lng }),
@@ -985,6 +1083,15 @@ async function reactiveVenueFetch(
 
         const rating = item.rating ? Number(item.rating) : null;
         const reviewCount = item.user_ratings_total || 0;
+        if (!isHangoutWorthyCandidate({
+          name,
+          category,
+          rating,
+          reviewCount,
+          address: item.formatted_address || item.vicinity || '',
+        })) {
+          continue;
+        }
         // Only reject if we have enough evidence the venue is genuinely bad.
         if (rating !== null && rating > 0 && reviewCount > 0 && (rating < 4.0 || reviewCount < 20)) continue;
 
@@ -1547,8 +1654,25 @@ async function executePlanningEngine(
         return;
       }
 
-      if (p.category.toUpperCase() === 'MOVIE' && !hasMoviePreference) {
+      const normalizedCategory = String(p.category ?? '').toUpperCase();
+      if (ROLE_ONLY_PLACE_CATEGORIES.has(normalizedCategory) || !SELECTABLE_PLACE_CATEGORIES.has(normalizedCategory)) {
+        logRejection(p.name, `Role-only or unsupported category "${p.category}"`);
+        return;
+      }
+
+      if (normalizedCategory === 'MOVIE' && !hasMoviePreference) {
         logRejection(p.name, 'Excluded because no movie preference was specified');
+        return;
+      }
+
+      if (!isHangoutWorthyCandidate({
+        name: p.name,
+        category: p.category,
+        rating: p.rating,
+        reviewCount: p.reviewCount,
+        address: p.address,
+      })) {
+        logRejection(p.name, `Not a strong hangout candidate (${p.category}, rating=${p.rating ?? 'n/a'}, reviews=${p.reviewCount ?? 0})`);
         return;
       }
 
@@ -1901,6 +2025,9 @@ async function executePlanningEngine(
     }
 
     const getActiveTemplate = (idx: number): ItineraryTemplate => {
+      if (String(groupData.groupType ?? '').toUpperCase() === 'DATE' && !isMoreActivities) {
+        return DATE_ITINERARY_TEMPLATES[idx % DATE_ITINERARY_TEMPLATES.length];
+      }
       if (isMoreActivities) {
         return { slot1: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot3Act: true };
       }

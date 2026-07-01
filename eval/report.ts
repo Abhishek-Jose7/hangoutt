@@ -185,7 +185,7 @@ function planLine(entry: ReportEntry, rank: number): string {
     : 'None';
 
   return [
-    `### ${rank}. ${cleanCell(entry.scenario.locationSetName)} - ${cleanCell(entry.scenario.groupType)} - ${cleanCell(entry.scenario.outingTimeLabel)}`,
+    `### ${rank + 1}. ${cleanCell(entry.scenario.locationSetName)} - ${cleanCell(entry.scenario.groupType)} - ${cleanCell(entry.scenario.outingTimeLabel)}`,
     ``,
     `- Score: ${entry.metrics.overallScore}/100`,
     `- Zone: ${cleanCell(plan?.meetupZone)}`,

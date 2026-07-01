@@ -192,6 +192,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-01T13:43:13.026Z"
+    },
+    {
+      "id": "31d95958-6c4d-42e7-827d-5064e1aecffb",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "hahaha",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"eval/metrics.ts\",\"eval/report.ts\",\"eval/reports/.gitignore\",\"eval/run.ts\",\"scratch/check_db_joins.js\",\"scratch/check_zone_counts.js\",\"scratch/generate_google_fallbacks.js\",\"scratch/inspect_db_images.js\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-01T17:46:32.842Z"
     }
   ]
 }
