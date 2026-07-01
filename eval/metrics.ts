@@ -61,13 +61,18 @@ const WEAK_PLACE_PATTERNS = [
   'services', 'store', 'shop', 'mart', 'supermarket', 'medical', 'pharma',
   'pharmacy', 'school', 'college', 'classes', 'hostel', 'gymkhana',
   'club house', 'ground', 'maidan', 'kridangan', 'football turf', 'cricket ground',
-  'mandir', 'temple', 'masjid', 'church', 'vihar'
+  'mandir', 'temple', 'masjid', 'church', 'vihar', 'holiday', 'holidays',
+  'travel', 'travels', 'tour', 'tours', 'frame', 'frames', 'branding',
+  'conclave', 'dynamic positioning', 'training centre', 'training center',
+  'guest house', 'resturant service', 'hotel ', 'max', 'wholesale',
+  'exhibition centre'
 ];
 const LOW_INTENT_CHAIN_PATTERNS = [
   'mcdonald', 'domino', 'kfc', 'subway', 'burger king', 'pizza hut',
   'barbeque nation', 'bbq nation', 'monginis', 'ribbons and balloons',
   'cafe coffee day', 'café coffee day', 'ccd', 'mad over donuts',
-  'belgian waffle', 'naturals ice cream'
+  'belgian waffle', 'naturals ice cream', 'starbucks', 'barista', 'mccafé',
+  'mccafe', 'coffee day express'
 ];
 const DATE_BAD_CATEGORIES = new Set(['ARCADE', 'BOWLING', 'SPORTS', 'MALL']);
 const DATE_GOOD_CATEGORIES = new Set(['CAFE', 'RESTAURANT', 'DESSERT', 'PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING']);

@@ -18,7 +18,8 @@
     "worker:dry-run": "wrangler deploy --dry-run",
     "eval": "tsx --tsconfig eval/tsconfig.json eval/run.ts",
     "eval:quick": "tsx --tsconfig eval/tsconfig.json eval/run.ts --sample 50",
-    "eval:regression": "tsx --tsconfig eval/tsconfig.json eval/run.ts --regression"
+    "eval:regression": "tsx --tsconfig eval/tsconfig.json eval/run.ts --regression",
+    "places:fetch-missing": "node scripts/fetch_missing_hangout_places.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

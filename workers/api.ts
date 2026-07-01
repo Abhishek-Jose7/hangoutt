@@ -1293,7 +1293,11 @@ const WEAK_OR_NON_HANGOUT_PATTERNS = [
   'services', 'store', 'shop', 'mart', 'supermarket', 'medical', 'pharma',
   'pharmacy', 'school', 'college', 'classes', 'tuition', 'hostel', 'pg ',
   'gymkhana', 'club house', 'ground', 'maidan', 'kridangan', 'football turf',
-  'cricket ground', 'mandir', 'temple', 'masjid', 'church', 'vihar'
+  'cricket ground', 'mandir', 'temple', 'masjid', 'church', 'vihar',
+  'holiday', 'holidays', 'travel', 'travels', 'tour', 'tours', 'frame',
+  'frames', 'branding', 'conclave', 'dynamic positioning', 'training centre',
+  'training center', 'guest house', 'resturant service', 'hotel ', 'max',
+  'wholesale', 'exhibition centre'
 ];
 
 const GENERIC_WEAK_FOOD_PATTERNS = [
@@ -1306,7 +1310,8 @@ const LOW_INTENT_CHAIN_PATTERNS = [
   'mcdonald', 'domino', 'kfc', 'subway', 'burger king', 'pizza hut',
   'barbeque nation', 'bbq nation', 'monginis', 'ribbons and balloons',
   'cafe coffee day', 'café coffee day', 'ccd', 'mad over donuts',
-  'belgian waffle', 'naturals ice cream'
+  'belgian waffle', 'naturals ice cream', 'starbucks', 'barista', 'mccafé',
+  'mccafe', 'coffee day express'
 ];
 
 function hasAnyPattern(text: string, patterns: string[]) {
