@@ -120,8 +120,8 @@ export function selectCandidateZones(memberLocations: LatLng[]): CandidateZone[]
   // Sort by penalty score ascending (most balanced first)
   scoredZones.sort((a, b) => a.penaltyScore - b.penaltyScore);
 
-  // Return top 12 zones to give the planner engine a larger pool to randomly sample from
+  // Return top 20 zones to give the planner engine a larger pool to randomly sample from
   // This ensures regeneration can produce genuinely different zone picks each time
-  const count = Math.min(candidatePool.length, 12);
+  const count = Math.min(candidatePool.length, 20);
   return scoredZones.slice(0, count).map((item) => item.zone);
 }

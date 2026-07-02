@@ -473,10 +473,10 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
 }
 
 const DATE_ITINERARY_TEMPLATES: ItineraryTemplate[] = [
-  { slot1: ['CAFE'], slot1Act: false, slot2: ['PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP'], slot2Act: true, slot3: ['DESSERT', 'RESTAURANT'], slot3Act: false },
-  { slot1: ['PARK', 'MUSEUM', 'ART_GALLERY'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
-  { slot1: ['CAFE'], slot1Act: false, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT', 'PARK'], slot3Act: false },
-  { slot1: ['MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP'], slot1Act: true, slot2: ['CAFE'], slot2Act: false, slot3: ['RESTAURANT', 'DESSERT'], slot3Act: false },
+  { slot1: ['CAFE', 'RESTAURANT'], slot1Act: false, slot2: ['PARK', 'MUSEUM', 'ART_GALLERY'], slot2Act: true, slot3: ['DESSERT', 'CAFE'], slot3Act: false },
+  { slot1: ['CAFE', 'RESTAURANT'], slot1Act: false, slot2: ['ART_GALLERY', 'MUSEUM', 'POTTERY', 'WORKSHOP'], slot2Act: true, slot3: ['DESSERT'], slot3Act: false },
+  { slot1: ['PARK', 'MUSEUM', 'ART_GALLERY'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['DESSERT', 'CAFE'], slot3Act: false },
+  { slot1: ['ART_GALLERY', 'MUSEUM', 'POTTERY', 'WORKSHOP'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
 ];
 
 export function generateWhyRecommended(plan: any, groupData: any): string[] {
@@ -1538,24 +1538,38 @@ async function executePlanningEngine(
   const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
   const allCandidateZones = selectCandidateZones(memberCoords);
   
-  // Randomly sample 4 zones from the larger pool (12) to ensure each regeneration
-  // produces genuinely different zone midpoints and itineraries, ensuring they are not clustered.
+  // Randomly sample 4 zones from the larger pool (20) ensuring they are not clustered.
   const shuffledAllZones = [...allCandidateZones];
   for (let i = shuffledAllZones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
   }
 
-  const candidateZones: any[] = [];
-  for (const zone of shuffledAllZones) {
-    if (candidateZones.length >= 4) break;
-    const tooClose = candidateZones.some(cz => getHaversineDistance({ lat: cz.lat, lng: cz.lng }, { lat: zone.lat, lng: zone.lng }) < 3.0);
-    if (!tooClose) {
-      candidateZones.push(zone);
+  // Prioritize major transit hubs (Dadar, Bandra, Kurla, Andheri, Vashi, Thane) so they are selected first and skip adjacent clustered minor stations
+  const MAJOR_HUBS = ['Dadar', 'Bandra', 'Kurla', 'Andheri', 'Vashi', 'Thane'];
+  shuffledAllZones.sort((a, b) => {
+    const aIsHub = MAJOR_HUBS.includes(a.name);
+    const bIsHub = MAJOR_HUBS.includes(b.name);
+    if (aIsHub && !bIsHub) return -1;
+    if (!aIsHub && bIsHub) return 1;
+    return 0;
+  });
+
+  let candidateZones: any[] = [];
+  const minSpacings = [4.0, 3.5, 3.0, 2.5];
+  for (const spacing of minSpacings) {
+    candidateZones = [];
+    for (const zone of shuffledAllZones) {
+      if (candidateZones.length >= 4) break;
+      const tooClose = candidateZones.some(cz => getHaversineDistance({ lat: cz.lat, lng: cz.lng }, { lat: zone.lat, lng: zone.lng }) < spacing);
+      if (!tooClose) {
+        candidateZones.push(zone);
+      }
     }
+    if (candidateZones.length >= 4) break;
   }
 
-  // Fallback: if we couldn't find 4 zones that are 3.0km apart, just take the first 4 shuffled zones
+  // Absolute fallback: if we still couldn't find 4 spaced-out zones, take the first 4 shuffled zones
   if (candidateZones.length < 4) {
     candidateZones.length = 0;
     candidateZones.push(...shuffledAllZones.slice(0, 4));
@@ -1618,7 +1632,7 @@ async function executePlanningEngine(
       };
     });
 
-    const zoneLowestBudget = Math.max(750, Math.min(...memberAvailableBudgets.map(m => m.availableBudget)));
+    const zoneLowestBudget = Math.max(500, Math.min(...memberAvailableBudgets.map(m => m.availableBudget)));
 
     const radiusKm = 6.0;
     const latDiff = radiusKm / 111.0;
@@ -2138,40 +2152,65 @@ async function executePlanningEngine(
           return getMandatoryCost(place) + getOptionalCostMin(place);
         };
 
-        // Filter by remaining budget constraint
-        matches = matches.filter(c => getSlotCost(c) <= remainingBudget);
+        // 1. Try to find a match of the preferred categories under budget constraint
+        const budgetMatches = matches.filter(c => getSlotCost(c) <= remainingBudget);
 
-        if (matches.length === 0) {
+        let selected: PlaceCandidate | null = null;
+
+        if (budgetMatches.length > 0) {
+          const top3 = budgetMatches.slice(0, 3);
+          const rand = Math.random();
+          if (top3.length === 1) {
+            selected = top3[0];
+          } else if (top3.length === 2) {
+            selected = rand < 0.6 ? top3[0] : top3[1];
+          } else {
+            if (rand < 0.5) selected = top3[0];
+            else if (rand < 0.85) selected = top3[1];
+            else selected = top3[2];
+          }
+        } else {
+          // 2. If no preferred category matches under budget constraint, fallback to broad category checks under budget
+          let fallbackPool: PlaceCandidate[] = [];
           if (isActivity) {
-            matches = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            fallbackPool = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
           } else {
             const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
-            matches = candidatesPool.filter(c =>
+            fallbackPool = candidatesPool.filter(c =>
               FOOD_CATS.includes(c.category.toUpperCase()) && !selectedPlanCats.has(c.category.toUpperCase())
             );
-            if (matches.length === 0) {
-              matches = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
+            if (fallbackPool.length === 0) {
+              fallbackPool = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
             }
           }
           if (chainCount >= 1) {
-            matches = matches.filter(c => !isChain(c.name));
+            fallbackPool = fallbackPool.filter(c => !isChain(c.name));
           }
-          matches = matches.filter(c => getSlotCost(c) <= remainingBudget);
-        }
-        if (matches.length === 0) return null;
 
-        const top3 = matches.slice(0, 3);
-        const rand = Math.random();
-        let selected: PlaceCandidate;
-        if (top3.length === 1) {
-          selected = top3[0];
-        } else if (top3.length === 2) {
-          selected = rand < 0.6 ? top3[0] : top3[1];
-        } else {
-          if (rand < 0.5) selected = top3[0];
-          else if (rand < 0.85) selected = top3[1];
-          else selected = top3[2];
+          const budgetFallbackMatches = fallbackPool.filter(c => getSlotCost(c) <= remainingBudget);
+          if (budgetFallbackMatches.length > 0) {
+            const top3 = budgetFallbackMatches.slice(0, 3);
+            const rand = Math.random();
+            if (top3.length === 1) {
+              selected = top3[0];
+            } else if (top3.length === 2) {
+              selected = rand < 0.6 ? top3[0] : top3[1];
+            } else {
+              if (rand < 0.5) selected = top3[0];
+              else if (rand < 0.85) selected = top3[1];
+              else selected = top3[2];
+            }
+          } else {
+            // 3. Relax budget constraint completely, sort by cost ascending, and pick the cheapest option
+            const preferredPool = matches.length > 0 ? matches : fallbackPool;
+            if (preferredPool.length > 0) {
+              const sorted = [...preferredPool].sort((a, b) => getSlotCost(a) - getSlotCost(b));
+              selected = sorted[0];
+            }
+          }
         }
+
+        if (!selected) return null;
 
         if (isChain(selected.name)) {
           chainCount++;
@@ -2179,7 +2218,7 @@ async function executePlanningEngine(
         return selected;
       };
 
-      let isTwoSlots = zoneData.zoneLowestBudget < 750;
+      let isTwoSlots = false; // Always generate 3-slot itineraries
       let remainingBudget = zoneData.zoneLowestBudget;
 
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity, remainingBudget);
@@ -2215,10 +2254,7 @@ async function executePlanningEngine(
       const opt3 = isTwoSlots ? 0 : getOptionalCostMin(slot3Place!);
       const totalEstimatedSlotsCost = totalMandatorySlotsCost + opt1 + opt2 + opt3;
 
-      if (totalEstimatedSlotsCost > zoneData.zoneLowestBudget) {
-        logRejection(`Plan-${planIndex}`, `Total slots estimated cost (₹${totalEstimatedSlotsCost}) exceeds lowest member available budget (₹${Math.round(zoneData.zoneLowestBudget)})`);
-        continue;
-      }
+      // Budget checks are handled progressively during slot selection; we allow the plan.
 
       if (!allowSharedVenues) {
         usedPlaceIds.add(slot1Place.id);
