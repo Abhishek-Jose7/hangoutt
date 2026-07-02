@@ -102,7 +102,7 @@ async function main() {
     const zone = zones[i];
     console.log(`[${i + 1}/${zones.length}] Querying zone: ${zone.name}...`);
     
-    const places = await fetchNearby(zone.lat, zone.lng, zone.radius, type);
+    const places = await fetchNearby(zone.lat, zone.lng, zone.radius * 1000, type);
     if (places === null) {
       console.log('Google Places API quota/rate-limit hit. Saving collected places and exiting...');
       break;

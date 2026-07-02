@@ -63,7 +63,8 @@ const BAD_PATTERNS = [
   'holiday', 'holidays', 'travel', 'travels', 'tour', 'tours', 'frame',
   'frames', 'branding', 'conclave', 'dynamic positioning', 'training centre',
   'training center', 'guest house', 'resturant service', 'hotel ', 'max',
-  'wholesale', 'exhibition centre', 'manufacturing', 'enterprise'
+  'wholesale', 'exhibition centre', 'manufacturing', 'enterprise',
+  'shop', 'shops', 'store', 'stores', 'mart', 'supermarket', 'super market'
 ];
 
 const STRONG_PATTERNS = [
@@ -82,6 +83,37 @@ function argValue(name, fallback) {
 
 function hasFlag(name) {
   return process.argv.includes(name);
+}
+
+function positionalArgs() {
+  const raw = process.argv.slice(2);
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const token = raw[i];
+    if (token.startsWith('--')) {
+      const next = raw[i + 1];
+      if (next && !next.startsWith('--')) i++;
+      continue;
+    }
+    out.push(token);
+  }
+  return out;
+}
+
+function resolveCliOptions() {
+  const positional = positionalArgs();
+  const firstPositional = positional[0] && positional[0].toLowerCase() === 'all' ? null : positional[0];
+  const zone = argValue('--zone', firstPositional || null);
+  const category = argValue('--category', null);
+  const positionalLimit = positional.find(value => /^\d+$/.test(value));
+  const limitPerQuery = Number(argValue('--limit-per-query', positionalLimit || '8'));
+  const explicitDryRun = hasFlag('--dry-run') || positional.includes('dry-run') || process.env.DRY_RUN === '1';
+  const write = hasFlag('--write') || positional.includes('write') || process.env.WRITE === '1';
+  const remote = hasFlag('--remote') || positional.includes('remote') || process.env.REMOTE === '1';
+  const dryRun = explicitDryRun || !write;
+  const allZones = hasFlag('--all') || positional.includes('all') || process.env.ALL_ZONES === '1';
+  const dbPath = path.resolve(process.cwd(), argValue('--db', process.env.DB_LOCAL_PATH || './local.db'));
+  return { zone, category, limitPerQuery, dryRun, remote, allZones, dbPath, write };
 }
 
 function includesAny(text, patterns) {
@@ -137,13 +169,25 @@ function sqlString(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 async function searchText(query, zone, limit) {
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': API_KEY,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.businessStatus'
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.businessStatus,places.photos'
     },
     body: JSON.stringify({
       textQuery: `${query} in ${zone.name}, Mumbai`,
@@ -151,7 +195,7 @@ async function searchText(query, zone, limit) {
       locationBias: {
         circle: {
           center: { latitude: zone.lat, longitude: zone.lng },
-          radius: Math.max(1000, Math.round(zone.radius || 2500))
+          radius: Math.max(1000, Math.round((zone.radius * 1000) || 2500))
         }
       }
     })
@@ -165,12 +209,23 @@ async function searchText(query, zone, limit) {
 }
 
 async function main() {
-  const dbPath = path.resolve(process.cwd(), argValue('--db', process.env.DB_LOCAL_PATH || './local.db'));
-  const zoneFilter = argValue('--zone', null);
-  const categoryFilter = argValue('--category', null);
-  const limit = Number(argValue('--limit-per-query', '8'));
-  const remote = hasFlag('--remote');
-  const dryRun = hasFlag('--dry-run');
+  const options = resolveCliOptions();
+  const dbPath = options.dbPath;
+  const zoneFilter = options.zone;
+  const categoryFilter = options.category;
+  const limit = options.limitPerQuery;
+  const remote = options.remote;
+  const dryRun = options.dryRun;
+
+  if (!zoneFilter && !options.allZones) {
+    throw new Error('Refusing to scan every zone implicitly. Pass --zone <name> for one zone, or --all for every zone.');
+  }
+  if (remote && dryRun) {
+    throw new Error('Remote upload requires explicit write mode. Use positional args like: Bandra 8 write remote');
+  }
+  if (dryRun) {
+    console.log('[DRY RUN] No database writes will be made. Add positional arg "write" to insert.');
+  }
 
   const db = new Database(dbPath);
   const zones = db.prepare('SELECT name, center_lat AS lat, center_lng AS lng, radius FROM zones ORDER BY name').all()
@@ -178,8 +233,8 @@ async function main() {
   if (zones.length === 0) throw new Error(`No zones matched ${zoneFilter || '(all)'}`);
 
   const existing = new Set(db.prepare("SELECT id FROM places WHERE source_name = 'GOOGLE'").all().map(r => r.id));
-  const placeStmt = db.prepare(`INSERT OR IGNORE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, business_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'OPERATIONAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`);
+  const placeStmt = db.prepare(`INSERT OR IGNORE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, image_url, last_verified, verified_at, first_seen, business_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'OPERATIONAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`);
   const catStmt = db.prepare('INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (?, ?, ?)');
   const costStmt = db.prepare(`INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max) VALUES (?, ?, ?, ?)`);
   const scoreStmt = db.prepare(`INSERT OR REPLACE INTO place_scores (place_id, popularity, budget_friendliness, conversation, group_suitability, date_suitability, friends_suitability, family_suitability, weather_suitability, uniqueness, experience_score, overall)
@@ -221,11 +276,18 @@ async function main() {
             continue;
           }
 
+          const lat = p.location.latitude;
+          const lng = p.location.longitude;
+          const dist = getDistance(zone.lat, zone.lng, lat, lng);
+          const maxDistance = zone.radius + 0.5; // allow 0.5km buffer for boundary areas
+          if (dist > maxDistance) {
+            skippedWeak++;
+            continue;
+          }
+
           existing.add(id);
           const name = p.displayName.text;
           const address = p.formattedAddress || '';
-          const lat = p.location.latitude;
-          const lng = p.location.longitude;
           const rating = p.rating || null;
           const reviews = p.userRatingCount || 0;
           const [conversation, budget, experience, date, friends, unique] = categoryScore(category);
@@ -236,14 +298,17 @@ async function main() {
           const [mandatory, min, max] = categoryConfig.cost;
           const catId = `${id}_${category}`;
 
+          const photoRef = p.photos?.[0]?.name ? p.photos[0].name.split('/photos/')[1] || p.photos[0].name.split('/').pop() : null;
+          const imageUrl = photoRef ? `/api/places/photo?ref=${encodeURIComponent(photoRef)}` : null;
+
           rows.push({
-            place: [id, name, address, lat, lng, rating, reviews, p.id],
+            place: [id, name, address, lat, lng, rating, reviews, p.id, imageUrl],
             cat: [catId, id, category],
             cost: [id, mandatory, min, max],
             score: [id, popularity, budget, conversation, 0.8, date, friends, family, weather, unique, experience, overall],
           });
 
-          sqlLines.push(`INSERT OR IGNORE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, last_verified, verified_at, first_seen, business_status, created_at, updated_at) VALUES (${sqlString(id)}, ${sqlString(name)}, ${sqlString(address)}, ${lat}, ${lng}, ${rating === null ? 'NULL' : rating}, ${reviews}, 'GOOGLE', ${sqlString(p.id)}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'OPERATIONAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`);
+          sqlLines.push(`INSERT OR IGNORE INTO places (id, name, address, lat, lng, rating, review_count, source_name, source_place_id, image_url, last_verified, verified_at, first_seen, business_status, created_at, updated_at) VALUES (${sqlString(id)}, ${sqlString(name)}, ${sqlString(address)}, ${lat}, ${lng}, ${rating === null ? 'NULL' : rating}, ${reviews}, 'GOOGLE', ${sqlString(p.id)}, ${sqlString(imageUrl)}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'OPERATIONAL', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`);
           sqlLines.push(`INSERT OR IGNORE INTO place_categories (id, place_id, category) VALUES (${sqlString(catId)}, ${sqlString(id)}, ${sqlString(category)});`);
           sqlLines.push(`INSERT OR REPLACE INTO place_costs (place_id, mandatory_cost, optional_cost_min, optional_cost_max) VALUES (${sqlString(id)}, ${mandatory}, ${min}, ${max});`);
           sqlLines.push(`INSERT OR REPLACE INTO place_scores (place_id, popularity, budget_friendliness, conversation, group_suitability, date_suitability, friends_suitability, family_suitability, weather_suitability, uniqueness, experience_score, overall) VALUES (${sqlString(id)}, ${popularity}, ${budget}, ${conversation}, 0.8, ${date}, ${friends}, ${family}, ${weather}, ${unique}, ${experience}, ${overall});`);

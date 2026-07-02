@@ -7,10 +7,16 @@ export default async function SignUpPage({
 }) {
   const resolvedParams = await searchParams;
   const redirectUrl = resolvedParams.redirect_url || '/groups';
+  const signInUrl = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <SignUp routing="hash" fallbackRedirectUrl={redirectUrl} forceRedirectUrl={redirectUrl} />
+      <SignUp
+        routing="hash"
+        fallbackRedirectUrl={redirectUrl}
+        forceRedirectUrl={redirectUrl}
+        signInUrl={signInUrl}
+      />
     </div>
   );
 }

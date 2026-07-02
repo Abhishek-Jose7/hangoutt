@@ -24,7 +24,7 @@ const hangoutWords = [
   'restaurant', 'hotel', 'pub', 'bar', 'club', 'mall', 'dhaba', 'bistro', 'lounge', 'dining', 'kitchen', 'eatery', 'grill', 'house', 'garden', 'park', 'museum', 'gallery', 'theater', 'cinema', 'stadium', 'ground', 'turf', 'parlour', 'parlor', 'pizza', 'burger', 'momos', 'biryani', 'kitchen', 'food'
 ];
 
-const studioHangoutWords = ['cake', 'dessert', 'pottery', 'art', 'paint', 'clay', 'craft', 'music', 'dance', 'screen', 'acting', 'cooking'];
+const studioHangoutWords = ['cake', 'dessert', 'pottery', 'art', 'paint', 'clay', 'craft', 'music', 'dance', 'screen', 'acting', 'cooking', 'ceramic', 'ceramics', 'cafe', 'café', 'coffee', 'food', 'brew', 'kitchen', 'bakery', 'patisserie', 'dessert'];
 
 const places = db.prepare("SELECT id, name, address, source_name FROM places WHERE source_name = 'GOOGLE'").all();
 console.log(`Loaded ${places.length} Google places.`);
@@ -36,9 +36,10 @@ for (const p of places) {
   
   // 1. Check exact blacklisted words in name
   let matchedKeyword = badNameKeywords.find(kw => {
-    // Avoid false positives like chemistry/smart
+    // Avoid false positives like chemistry/smart/patisserie labs
     if (kw === 'chemist' && nameLower.includes('chemistry')) return false;
     if ((kw === 'mart ' || kw === ' mart') && nameLower.includes('smart')) return false;
+    if (kw === ' lab ' && (nameLower.includes('cafe') || nameLower.includes('café') || nameLower.includes('bakery') || nameLower.includes('patisserie') || nameLower.includes('coffee') || nameLower.includes('bistro') || nameLower.includes('dessert'))) return false;
     return nameLower.includes(kw);
   });
   
