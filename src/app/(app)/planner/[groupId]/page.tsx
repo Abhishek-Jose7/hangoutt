@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { getGroupDetailsAction } from '@/actions/groups';
 import { getPlansForGroupAction, generatePlan } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
-import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award, RefreshCw } from 'lucide-react';
+import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award, RefreshCw, Trees, Coffee, Utensils, Cake, Gamepad2, Coins, ChevronRight, Star } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -37,6 +38,7 @@ export default function PlannerPage() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [expandedPlanTravel, setExpandedPlanTravel] = useState<Record<string, boolean>>({});
   const [expandedItineraries, setExpandedItineraries] = useState<Record<string, boolean>>({});
+  const [activeDetailPlanId, setActiveDetailPlanId] = useState<string | null>(null);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -56,8 +58,32 @@ export default function PlannerPage() {
     'PREMIUM': 'EXPERIENCE FIRST',
   };
 
-  const getFrontendFallbackImage = (_category: string) => {
+  const getFrontendFallbackImage = (category: string) => {
+    const cat = (category ?? '').toUpperCase();
+    if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
+      return '/images/cafe_active.png';
+    }
     return '/images/mumbai_map.png';
+  };
+
+  const getCategoryIcon = (category: string) => {
+    const cat = (category ?? '').toUpperCase();
+    if (['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes(cat)) {
+      return <Trees className="h-3.5 w-3.5 text-[#00E5A0]" />;
+    }
+    if (cat === 'CAFE') {
+      return <Coffee className="h-3.5 w-3.5 text-[#FFD700]" />;
+    }
+    if (cat === 'RESTAURANT') {
+      return <Utensils className="h-3.5 w-3.5 text-[#DC143C]" />;
+    }
+    if (cat === 'DESSERT') {
+      return <Cake className="h-3.5 w-3.5 text-[#FF69B4]" />;
+    }
+    if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MALL'].includes(cat)) {
+      return <Gamepad2 className="h-3.5 w-3.5 text-[#00BFFF]" />;
+    }
+    return <Sparkles className="h-3.5 w-3.5 text-[#A855F7]" />;
   };
 
   function getEndTime(startTimeStr: string, durationMinutes: number): string {
@@ -328,8 +354,8 @@ export default function PlannerPage() {
           const relaxStars = relaxCount >= 2 ? '⭐⭐⭐⭐⭐' : (relaxCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
 
           return (
-            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-full snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-full xl:h-[1220px] flex-shrink-0 xl:flex-shrink">
-              <CardHeader className="pb-3 border-b border-stone-900/60">
+            <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/45 backdrop-blur-md shadow-lg rounded-[12px] flex flex-col justify-between h-auto xl:h-[1220px] snap-center snap-always w-[88vw] sm:w-[540px] md:w-[620px] xl:w-full flex-shrink-0 xl:flex-shrink pb-4 sm:pb-5">
+              <CardHeader className="pb-3 border-b border-stone-900/60 hidden xl:block">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -371,26 +397,127 @@ export default function PlannerPage() {
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-6 space-y-4 flex-grow flex flex-col justify-between">
+              <CardContent className="pt-4 sm:pt-6 space-y-4 flex-grow flex flex-col justify-between">
                 
                 {/* Mobile/Tablet Collapsed View */}
-                <div className={expandedItineraries[plan.id] ? "hidden" : "block xl:hidden space-y-4 font-mono text-xs"}>
-                  {/* Outing Pathway & Transit Chain */}
-                  <div className="space-y-1.5">
-                    <p className="text-[8px] text-neutral-500 uppercase tracking-widest">OUTING PATHWAY & TRANSIT TIME</p>
-                    <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none select-none bg-stone-900/10 border border-stone-900/40 p-2 rounded-[8px]">
+                <div className="block xl:hidden space-y-4 font-mono text-xs">
+                  {/* Custom Row with Cover photo on left, title & tagline on right */}
+                  <div className="flex gap-4 items-start">
+                    {/* Cover image on the left */}
+                    <div className="w-[85px] h-[85px] sm:w-[105px] sm:h-[105px] rounded-[10px] overflow-hidden flex-shrink-0 relative bg-stone-900">
+                      <img
+                        src={plan.slots?.[0]?.imageUrl || getFrontendFallbackImage(plan.slots?.[0]?.category)}
+                        alt={plan.name}
+                        className="w-full h-full object-cover opacity-90"
+                      />
+                    </div>
+                    
+                    {/* Text and badges on the right */}
+                    <div className="flex-grow space-y-1.5 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider font-mono truncate">
+                          {plan.name} {plan.planIndex === 1 && <span className="text-[9px] text-neutral-400 normal-case font-sans font-normal block sm:inline mt-0.5 sm:mt-0 sm:ml-1.5">(Optimal meeting point)</span>}
+                        </h3>
+                        {/* Small vote count badge */}
+                        <span className="bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] flex-shrink-0 flex items-center gap-0.5 whitespace-nowrap">
+                          <Vote className="h-2 w-2" /> {voteCount} votes
+                        </span>
+                      </div>
+                      
+                      <p className="text-[10px] sm:text-[11px] text-neutral-400 leading-normal font-sans line-clamp-2">
+                        {plan.tagline}
+                      </p>
+                      
+                      {/* Tag Badges */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className="bg-[#DC143C]/15 border border-[#DC143C]/30 text-[#DC143C] text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                          {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
+                        </span>
+                        
+                        <span className="bg-purple-500/15 border border-purple-500/30 text-purple-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                          {group.groupType === 'DATE' ? 'DATE FRIENDLY' : 'FRIENDS HANGOUT'}
+                        </span>
+                        
+                        {!plan.slots?.some((s: any) => ['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes(s.category.toUpperCase())) && (
+                          <span className="bg-teal-500/15 border border-teal-500/30 text-teal-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                            INDOOR FRIENDLY
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Redesigned 4-Column Stats Grid */}
+                  <div className="grid grid-cols-4 gap-1.5 bg-[#DC143C]/5 border border-[#DC143C]/10 p-2.5 rounded-[8px] mt-3 font-mono text-[9px]">
+                    {/* Cost Column */}
+                    <div className="flex flex-col items-center justify-center text-center p-0.5 border-r border-stone-900/60">
+                      <Coins className="h-3.5 w-3.5 text-[#DC143C] mb-1" />
+                      <span className="text-[7.5px] text-neutral-400 uppercase tracking-wider">Cost / Head</span>
+                      <span className="text-[10px] font-bold text-white mt-0.5">₹{Math.round(plan.totalEstimatedCostPerHead)}</span>
+                      <span className="text-[6.5px] text-neutral-500 truncate mt-0.5 max-w-[70px]">
+                        ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
+                      </span>
+                    </div>
+
+                    {/* Commute Column */}
+                    <div className="flex flex-col items-center justify-center text-center p-0.5 border-r border-stone-900/60">
+                      <Clock className="h-3.5 w-3.5 text-[#DC143C] mb-1" />
+                      <span className="text-[7.5px] text-neutral-400 uppercase tracking-wider">Avg Commute</span>
+                      <span className="text-[10px] font-bold text-white mt-0.5">{plan.avgTotalTime} mins</span>
+                      <span className="text-[6.5px] text-neutral-500 truncate mt-0.5 max-w-[70px]">
+                        ({plan.shortestTravelTime}–{plan.longestTravelTime}m) range
+                      </span>
+                    </div>
+
+                    {/* Duration Column */}
+                    <div className="flex flex-col items-center justify-center text-center p-0.5 border-r border-stone-900/60">
+                      <Clock className="h-3.5 w-3.5 text-[#DC143C] mb-1" />
+                      <span className="text-[7.5px] text-neutral-400 uppercase tracking-wider">Duration</span>
+                      <span className="text-[10px] font-bold text-white mt-0.5">
+                        {Math.floor(plan.totalDurationMinutes / 60)}h {plan.totalDurationMinutes % 60}m
+                      </span>
+                      <span className="text-[6.5px] text-neutral-500 mt-0.5">(with travel)</span>
+                    </div>
+
+                    {/* Score Column */}
+                    <div className="flex flex-col items-center justify-center text-center p-0.5">
+                      <Star className="h-3.5 w-3.5 text-[#FFD700] mb-1 fill-[#FFD700]/10" />
+                      <span className="text-[7.5px] text-neutral-400 uppercase tracking-wider">Plan Score</span>
+                      <span className="text-[10px] font-bold text-white mt-0.5">{(plan.score * 10).toFixed(1)}/10</span>
+                      <span className="text-[6.5px] text-[#00E5A0] mt-0.5 font-bold">{(plan.score * 100).toFixed(0)}% match</span>
+                    </div>
+                  </div>
+
+                  {/* Clean Horizontal Timeline pathway */}
+                  <div className="bg-stone-900/25 border border-stone-900/60 p-2.5 rounded-[8px] mt-3 font-mono">
+                    <div className="flex items-center justify-between w-full">
                       {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => {
                         const transitMin = slot.travelToNextMinutes;
                         return (
                           <React.Fragment key={sIdx}>
-                            <div className="flex flex-col bg-stone-900/60 border border-stone-850 px-2.5 py-1.5 rounded-[6px] flex-shrink-0 min-w-[100px] max-w-[130px]">
-                              <span className="text-[9.5px] font-bold text-white truncate uppercase">{slot.name}</span>
-                              <span className="text-[7.5px] text-neutral-400 truncate mt-0.5">{slot.category} • ₹{slot.estimatedCostPerHead}</span>
+                            {/* Slot Item */}
+                            <div className="flex flex-col items-center justify-center text-center min-w-[65px] max-w-[90px] flex-shrink-0">
+                              {/* Icon + Name row */}
+                              <div className="flex items-center gap-1">
+                                {getCategoryIcon(slot.category)}
+                                <span className="text-[8.5px] font-bold text-white truncate max-w-[60px] uppercase">
+                                  {slot.name}
+                                </span>
+                              </div>
+                              {/* Time */}
+                              <span className="text-[7px] text-neutral-400 mt-1 font-semibold">
+                                {slot.arrivalTime}
+                              </span>
                             </div>
+                            
+                            {/* Transit Transition Arrow */}
                             {sIdx < plan.slots.length - 1 && (
-                              <div className="flex flex-col items-center justify-center flex-shrink-0 px-0.5">
-                                <span className="text-neutral-500 text-[10px] font-bold">➔</span>
-                                <span className="text-[7.5px] text-[#DC143C] font-semibold mt-0.5">{transitMin || 15}m</span>
+                              <div className="flex-grow flex flex-col items-center justify-center min-w-[15px] px-0.5 relative">
+                                <div className="w-full border-t border-dashed border-stone-800 absolute top-1/2 -translate-y-1/2 left-0 z-0"></div>
+                                <div className="bg-[#0A0A0C] px-1 rounded-[4px] border border-stone-900 text-[6.5px] text-[#DC143C] font-bold z-10 flex items-center gap-0.5 whitespace-nowrap">
+                                  <span>➔</span>
+                                  <span>{transitMin || 15}m</span>
+                                </div>
                               </div>
                             )}
                           </React.Fragment>
@@ -399,56 +526,45 @@ export default function PlannerPage() {
                     </div>
                   </div>
 
-                  {/* Compact Stats Row */}
-                  <div className="grid grid-cols-3 gap-2 bg-[#DC143C]/5 border border-[#DC143C]/10 p-3 rounded-[8px] text-center">
-                    <div>
-                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Cost Range</p>
-                      <p className="text-[11px] font-bold text-white mt-0.5">
-                        ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Avg Commute</p>
-                      <p className="text-[11px] font-bold text-white mt-0.5">{plan.avgTotalTime} mins</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Match Fit</p>
-                      <p className="text-[11px] font-bold text-[#00E5A0] mt-0.5">{(plan.score * 100).toFixed(0)}%</p>
-                    </div>
-                  </div>
-
-                  {/* Strategy badge & expand button */}
-                  <div className="flex justify-between items-center bg-stone-900/30 px-3 py-2 rounded-[6px] border border-stone-900/60">
-                    <Badge variant="outline" className="bg-stone-950 border border-stone-850 uppercase text-[7.5px] font-bold text-[#DC143C] py-0.5 px-2 rounded-[3px]">
-                      {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
-                    </Badge>
+                  {/* Mobile Action Buttons */}
+                  <div className="flex gap-2.5 mt-4 pt-1">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={() => setExpandedItineraries(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                      className="text-[8.5px] font-bold text-[#00E5A0] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2 cursor-pointer flex items-center gap-1 transition-all"
+                      onClick={() => setActiveDetailPlanId(plan.id)}
+                      className="border-stone-850 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[8.5px] font-mono font-bold uppercase tracking-widest rounded-[6px] px-3 py-2.5 transition-all flex items-center justify-center gap-1 cursor-pointer flex-1"
                     >
-                      EXPAND DETAILS ▼
+                      VIEW HIGHLIGHTS
                     </Button>
+                    {votingStatus === 'OPEN' && (
+                      <Button
+                        size="sm"
+                        disabled={isCasting || userVotedPlanId === plan.id}
+                        onClick={() => handleVoteCast(plan.id)}
+                        className={`font-mono font-bold rounded-[6px] uppercase tracking-widest text-[8.5px] px-4 py-2.5 transition-all flex items-center justify-center gap-1 cursor-pointer flex-[1.4] shadow-md ${
+                          userVotedPlanId === plan.id
+                            ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
+                            : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
+                        }`}
+                      >
+                        {userVotedPlanId === plan.id ? (
+                          <>
+                            <Check className="h-3 w-3 text-[#00E5A0]" /> VOTED
+                          </>
+                        ) : (
+                          <>
+                            <Vote className="h-3 w-3" /> VOTE FOR THIS PLAN
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
-                {/* Always-Expanded Desktop View or Mobile/Tablet Expanded View */}
-                <div className={expandedItineraries[plan.id] ? "block space-y-6 w-full flex-grow flex flex-col justify-between" : "hidden xl:block xl:space-y-6 w-full flex-grow xl:flex xl:flex-col xl:justify-between"}>
+                {/* Always-Expanded Desktop View */}
+                <div className="hidden xl:block xl:space-y-6 w-full flex-grow xl:flex xl:flex-col xl:justify-between">
                   <div className="space-y-6 flex-grow flex flex-col justify-between w-full">
                     <div className="space-y-6">
-                      {/* Header collapse shortcut button (mobile only) */}
-                      <div className="flex justify-between items-center bg-stone-900/30 border border-stone-900/60 px-3 py-2 rounded-[6px] font-mono text-[9px] xl:hidden">
-                        <span className="text-[#00E5A0] font-bold uppercase tracking-wider">🎯 Match Fit: {(plan.score * 100).toFixed(0)}%</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setExpandedItineraries(prev => ({ ...prev, [plan.id]: !prev[plan.id] }))}
-                          className="text-[8.5px] font-bold text-[#DC143C] hover:bg-stone-900 hover:text-white rounded-[4px] h-6 px-2.5 cursor-pointer flex items-center gap-1 transition-all"
-                        >
-                          COLLAPSE DETAILS ▲
-                        </Button>
-                      </div>
 
                       {/* Monsoon active warning */}
                       {isRainySeason && (
@@ -1001,6 +1117,314 @@ export default function PlannerPage() {
           </Card>
         </div>
       )}
+
+      {/* Detailed Plan Highlights Dialog Modal */}
+      {activeDetailPlanId && (() => {
+        const plan = plans.find(p => p.id === activeDetailPlanId);
+        if (!plan) return null;
+
+        const isWinningPlan = group.winningPlanId === plan.id;
+        const voteCount = votes[plan.id] || 0;
+
+        const isRainySeason = (() => {
+          if (!group?.outingDate) return true;
+          const parts = group.outingDate.split('-');
+          if (parts.length < 2) return true;
+          const month = parseInt(parts[1]);
+          return [6, 7, 8].includes(month); // June, July, August
+        })();
+
+        const myTravel = plan.memberTravelMetrics?.find((mt: any) => mt.userId === currentUserId);
+
+        const foodCount = plan.slots?.filter((s: any) => ['CAFE', 'RESTAURANT', 'DESSERT'].includes(s.category.toUpperCase())).length || 0;
+        const foodStars = foodCount >= 3 ? '⭐⭐⭐⭐⭐' : (foodCount === 2 ? '⭐⭐⭐⭐☆' : '⭐⭐⭐☆☆');
+        
+        const funCount = plan.slots?.filter((s: any) => ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(s.category.toUpperCase())).length || 0;
+        const funStars = funCount >= 2 ? '⭐⭐⭐⭐★' : (funCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
+        
+        const relaxCount = plan.slots?.filter((s: any) => s.category.toUpperCase() === 'PARK').length || 0;
+        const relaxStars = relaxCount >= 2 ? '⭐⭐⭐⭐⭐' : (relaxCount === 1 ? '⭐⭐⭐⭐☆' : '⭐⭐☆☆☆');
+
+        return (
+          <Dialog open={activeDetailPlanId !== null} onOpenChange={(open) => !open && setActiveDetailPlanId(null)}>
+            <DialogContent className="sm:max-w-xl md:max-w-2xl max-h-[85vh] overflow-y-auto scrollbar-none border border-stone-900 bg-stone-950/98 text-white rounded-[12px] p-5 sm:p-6 backdrop-blur-md font-mono text-xs">
+              <DialogHeader className="border-b border-stone-900 pb-3 mb-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="space-y-1">
+                    <DialogTitle className="text-sm font-bold text-white uppercase tracking-widest">{plan.name}</DialogTitle>
+                    <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed mt-1">{plan.tagline}</p>
+                  </div>
+                  {isWinningPlan ? (
+                    <Badge className="bg-[#00E5A0]/10 text-[#00E5A0] border border-[#00E5A0]/20 text-[9px] font-bold py-0.5 px-2 rounded-[4px] flex-shrink-0">
+                      WINNING PLAN LOCKED
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 text-[9px] py-0.5 px-2 rounded-[4px] flex-shrink-0">
+                      {voteCount} votes
+                    </Badge>
+                  )}
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Monsoon active warning */}
+                {isRainySeason && (
+                  <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 flex items-start gap-1.5 leading-snug">
+                    <span className="text-[11px] leading-none">☔</span>
+                    <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
+                  </div>
+                )}
+
+                {/* Cost & Duration Banner */}
+                <div className="grid grid-cols-3 gap-3 bg-[#DC143C]/10 border border-[#DC143C]/20 p-3.5 rounded-[8px] text-center">
+                  <div>
+                    <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Expected Spend</p>
+                    <p className="text-[11px] font-bold text-white mt-1">
+                      ₹{Math.max(0, Math.round((plan.totalEstimatedCostPerHead * 0.85)/50)*50)}–{Math.round((plan.totalEstimatedCostPerHead * 1.15)/50)*50}
+                      <span className="text-[7.5px] text-neutral-500 font-normal block mt-0.5">/ HEAD</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Total Duration</p>
+                    <p className="text-[11px] font-bold text-white mt-1">
+                      {Math.floor(plan.totalDurationMinutes / 60)}H {plan.totalDurationMinutes % 60}M
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] text-neutral-400 uppercase tracking-widest">Budget Strategy</p>
+                    <Badge variant="outline" className="mt-1 bg-stone-950 border border-stone-850 uppercase text-[7.5px] font-bold text-[#DC143C] py-0.5 px-1.5 rounded-[4px] font-mono">
+                      {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Why Recommended */}
+                {plan.whyRecommended && (() => {
+                  let recList = [];
+                  try {
+                    recList = typeof plan.whyRecommended === 'string' ? JSON.parse(plan.whyRecommended) : plan.whyRecommended;
+                  } catch {
+                    recList = plan.whyRecommended;
+                  }
+                  if (!Array.isArray(recList) || recList.length === 0) return null;
+                  return (
+                    <div className="bg-stone-900/40 border border-stone-850 p-3.5 rounded-[8px] space-y-2">
+                      <h4 className="text-[9px] font-bold uppercase tracking-widest text-[#DC143C]">Why This Outing?</h4>
+                      <div className="grid grid-cols-1 gap-2 mt-1">
+                        {recList.slice(0, 4).map((reason: string, rIdx: number) => (
+                          <div key={rIdx} className="flex items-center gap-2 text-[9px] text-neutral-300">
+                            <Check className="h-3 w-3 text-[#00E5A0] flex-shrink-0 font-bold" />
+                            <span>{reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Personalized Commute summary */}
+                {myTravel && (
+                  <div className="bg-stone-900/40 border border-stone-900/60 p-3 rounded-[8px] text-[9px] space-y-1.5">
+                    <div className="flex justify-between items-center text-neutral-300">
+                      <span className="text-[#00E5A0] font-bold uppercase tracking-wider">👤 YOUR PERSONAL COMMUTE:</span>
+                      <span className="font-bold text-white">Total: {myTravel.totalTime}m (₹{myTravel.totalCost})</span>
+                    </div>
+                    <div className="text-[8px] text-neutral-400 flex flex-wrap gap-2.5">
+                      {myTravel.trainTime > 0 && <span className="flex items-center gap-0.5">🚆 Train: {myTravel.trainTime}m</span>}
+                      {(myTravel.cabTime > 0 || myTravel.autoTime > 0) && <span className="flex items-center gap-0.5">🚕 Cab/Auto: {myTravel.cabTime || myTravel.autoTime}m</span>}
+                      {myTravel.walkTime > 0 && <span className="flex items-center gap-0.5">🚶 Walk: {myTravel.walkTime}m</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vibe Meter */}
+                <div className="grid grid-cols-3 gap-2 text-[8px] text-neutral-400 bg-stone-900/20 border border-stone-900/60 p-3 rounded-[8px]">
+                  <div className="flex flex-col gap-0.5">
+                    <span>🍔 Food Vibe:</span>
+                    <span className="text-white font-bold">{foodStars}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span>🕹️ Fun/Arcade:</span>
+                    <span className="text-white font-bold">{funStars}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span>🚶 Relax Vibe:</span>
+                    <span className="text-white font-bold">{relaxStars}</span>
+                  </div>
+                </div>
+
+                {/* Match metrics & Tradeoffs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-stone-900/20 border border-stone-900/60 p-4 rounded-[8px] text-[9px]">
+                  <div className="space-y-2.5 border-r border-stone-900/60 pr-2">
+                    <h5 className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest">Match Metrics</h5>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[9px]">
+                        <span className="text-neutral-400 font-semibold">Overall Match:</span>
+                        <span className="font-bold text-[#00E5A0]">{(plan.score * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="w-full bg-stone-900 h-1 rounded-full overflow-hidden">
+                        <div className="bg-[#00E5A0] h-full" style={{ width: `${plan.score * 100}%` }}></div>
+                      </div>
+                    </div>
+                    
+                    <div className="pt-2 border-t border-stone-900/40 space-y-1.5 text-[8px] text-neutral-400">
+                      <div className="flex justify-between items-center">
+                        <span>✈ Travel (35% weight):</span>
+                        <span className="font-semibold text-white">{(plan.travelScore * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>💵 Budget (25% weight):</span>
+                        <span className="font-semibold text-white">{(plan.budgetScore * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>🎯 Preferences (20% weight):</span>
+                        <span className="font-semibold text-white">{(plan.groupTypeMatchScore * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>★ Venue Quality (15% weight):</span>
+                        <span className="font-semibold text-white">{(plan.popularityScore * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>☔ Weather (5% weight):</span>
+                        <span className="font-semibold text-white">{(plan.vibeMatchScore * 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pl-2 flex flex-col justify-between">
+                    <h5 className="text-[8px] font-bold text-[#DC143C] uppercase tracking-widest">Insights</h5>
+                    <ul className="space-y-1 text-[8px] leading-tight text-neutral-300">
+                      {plan.budgetTier === 'TRAVEL_FRIENDLY' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Lowest travel time</li>
+                          <li className="text-neutral-400">− Fewer arcade choices</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'BUDGET_FRIENDLY' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Extremely pocket-friendly</li>
+                          <li className="text-neutral-400">− Longer commutes for some</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'BALANCED' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Great rating/commute split</li>
+                          <li className="text-neutral-400">− Popular spots get crowded</li>
+                        </>
+                      )}
+                      {plan.budgetTier === 'EXPERIENCE_FIRST' && (
+                        <>
+                          <li className="text-[#00E5A0]">+ Premium gaming & food</li>
+                          <li className="text-neutral-400">− Higher budget required</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Timeline slots */}
+                <div className="relative border-l border-stone-900/60 pl-6 ml-3 space-y-6 text-[10px]">
+                  {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, index: number) => (
+                    <div key={index} className="relative">
+                      <span className="absolute -left-[35px] top-1.5 flex h-5 w-5 items-center justify-center rounded-[4px] bg-[#DC143C] text-[#0A0A0C] text-[9px] font-bold shadow-md">
+                        {slot.slotOrder}
+                      </span>
+                      
+                      <div className="bg-stone-950/80 border border-stone-900 rounded-[10px] overflow-hidden shadow-lg p-3 hover:border-[#DC143C]/20 transition-all duration-200">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <h4 className="text-[10.5px] font-bold text-white uppercase tracking-widest">{slot.name}</h4>
+                            <span className="inline-block mt-1 px-1.5 py-0.5 bg-stone-900 text-neutral-400 border border-stone-850 rounded-[4px] text-[7.5px] font-bold uppercase tracking-widest">
+                              {slot.category}
+                            </span>
+                          </div>
+                          <span className="text-[8px] font-bold text-[#DC143C] bg-[#DC143C]/10 border border-[#DC143C]/20 px-1.5 py-0.5 rounded-[4px] whitespace-nowrap">
+                            {slot.arrivalTime} – {getEndTime(slot.arrivalTime, slot.durationMinutes)} ({slot.durationMinutes}m)
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed mt-2">
+                          {slot.note}
+                        </p>
+                        <div className="pt-2 border-t border-stone-900/60 flex justify-between items-center text-[8px] text-neutral-400 font-bold mt-2">
+                          <span className="flex items-center gap-0.5">
+                            <DollarSign className="h-2.5 w-2.5 text-[#DC143C]" />
+                            EXPECTED SPEND: ₹{slot.estimatedCostPerHead === 0 ? '0 (Free)' : `${Math.max(0, Math.round((slot.estimatedCostPerHead * 0.75)/50)*50)} – ₹${Math.round((slot.estimatedCostPerHead * 1.25)/50)*50}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Transit transition connector */}
+                      {index < plan.slots.length - 1 && slot.travelToNextMinutes !== null && (
+                        <div className="my-4 relative pl-4 border-l border-dashed border-stone-700/80 text-[9px] text-neutral-400 flex flex-col justify-center gap-0.5 min-h-[40px] -ml-6">
+                          <span className="absolute -left-[4px] h-1.5 w-1.5 rounded-full bg-stone-700 border border-stone-600" />
+                          <div className="flex items-center gap-2">
+                            <span>⏱️ TRANSIT TRANSITION:</span>
+                            <span className="text-white font-bold">{slot.travelToNextMinutes} mins</span>
+                          </div>
+                          {slot.travelToNextMinutes > 15 ? (
+                            <span className="text-neutral-500 font-bold uppercase text-[8px] mt-0.5">
+                              🚕 AUTO/CAB: ₹{slot.travelToNextCost || Math.ceil((30 + (slot.travelToNextMinutes / 3) * 15) / 2)} • 🚶 WALK: 5 mins
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500 font-bold uppercase text-[8px] mt-0.5">
+                              🚶 WALK ONLY: {slot.travelToNextMinutes} mins
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Return commute */}
+                <div className="bg-stone-950 border border-dashed border-stone-850/60 p-2.5 flex justify-between items-center text-[8.5px] text-neutral-400 rounded-[8px]">
+                  <span>🏠 ESTIMATED RETURN COMMUTE</span>
+                  <span className="text-white font-bold">~{plan.avgTotalTime} mins | ₹{plan.avgTotalCost} avg</span>
+                </div>
+
+                {/* Member travel table */}
+                {plan.memberTravelMetrics && plan.memberTravelMetrics.length > 0 && (
+                  <div className="border-t border-stone-900/60 pt-4">
+                    <h4 className="text-[9px] font-bold text-white uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      YOUR TRAVEL BREAKDOWN
+                    </h4>
+                    <div className="bg-stone-950 border border-stone-900 rounded-[8px] overflow-hidden">
+                      <table className="w-full text-left text-[8px] leading-normal">
+                        <thead>
+                          <tr className="border-b border-stone-900 bg-stone-900/20 text-neutral-500 uppercase tracking-wider font-bold">
+                            <th className="py-2 px-2.5">Participant</th>
+                            <th className="py-2 px-2">Transit Breakdown</th>
+                            <th className="py-2 px-2.5 text-right">Total Commute</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-900">
+                          {plan.memberTravelMetrics.map((mt: any, mtIdx: number) => {
+                            const memberObj = members.find((m: any) => m.userId === mt.userId);
+                            return (
+                              <tr key={mtIdx} className="hover:bg-stone-900/20 text-neutral-300">
+                                <td className="py-1.5 px-2.5 font-bold text-white">
+                                  {memberObj?.name || 'Participant'}
+                                </td>
+                                <td className="py-1.5 px-2 font-mono text-[7.5px] text-neutral-400">
+                                  {mt.trainTime > 0 && <span>🚆 {mt.trainTime}m </span>}
+                                  {mt.cabTime > 0 && <span>🚕 {mt.cabTime}m </span>}
+                                  {mt.walkTime > 0 && <span>🚶 {mt.walkTime}m</span>}
+                                </td>
+                                <td className="py-1.5 px-2.5 text-right font-bold text-white">
+                                  {mt.totalTime}m <span className="text-[#DC143C] font-semibold">(₹{mt.totalCost})</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </PageContainer>
   );
 }

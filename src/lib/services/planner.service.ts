@@ -173,7 +173,11 @@ const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; 
   MOVIE:       { mandatory: 350, min: 0,   max: 100  },
 };
 
-function getFallbackImageUrl(_category: string): string {
+function getFallbackImageUrl(category: string): string {
+  const cat = (category ?? '').toUpperCase();
+  if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
+    return '/images/cafe_active.png';
+  }
   return '/images/mumbai_map.png';
 }
 
@@ -1534,14 +1538,28 @@ async function executePlanningEngine(
   const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
   const allCandidateZones = selectCandidateZones(memberCoords);
   
-  // Randomly sample 4 zones from the larger pool (8) to ensure each regeneration
-  // produces genuinely different zone midpoints and itineraries
+  // Randomly sample 4 zones from the larger pool (12) to ensure each regeneration
+  // produces genuinely different zone midpoints and itineraries, ensuring they are not clustered.
   const shuffledAllZones = [...allCandidateZones];
   for (let i = shuffledAllZones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
   }
-  const candidateZones = shuffledAllZones.slice(0, 4);
+
+  const candidateZones: any[] = [];
+  for (const zone of shuffledAllZones) {
+    if (candidateZones.length >= 4) break;
+    const tooClose = candidateZones.some(cz => getHaversineDistance({ lat: cz.lat, lng: cz.lng }, { lat: zone.lat, lng: zone.lng }) < 3.0);
+    if (!tooClose) {
+      candidateZones.push(zone);
+    }
+  }
+
+  // Fallback: if we couldn't find 4 zones that are 3.0km apart, just take the first 4 shuffled zones
+  if (candidateZones.length < 4) {
+    candidateZones.length = 0;
+    candidateZones.push(...shuffledAllZones.slice(0, 4));
+  }
 
   const avgLat = memberCoords.reduce((sum, c) => sum + c.lat, 0) / memberCoords.length;
   const avgLng = memberCoords.reduce((sum, c) => sum + c.lng, 0) / memberCoords.length;
@@ -1600,7 +1618,7 @@ async function executePlanningEngine(
       };
     });
 
-    const zoneLowestBudget = Math.min(...memberAvailableBudgets.map(m => m.availableBudget));
+    const zoneLowestBudget = Math.max(750, Math.min(...memberAvailableBudgets.map(m => m.availableBudget)));
 
     const radiusKm = 6.0;
     const latDiff = radiusKm / 111.0;

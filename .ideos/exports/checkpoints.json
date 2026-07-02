@@ -228,6 +228,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-01T19:12:53.133Z"
+    },
+    {
+      "id": "6c03eb09-86eb-487b-93d4-468e624779e8",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "haha",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scratch/audit_database.js\",\"scratch/check_zone_counts.js\",\"scratch/fetch_all_zones.log\",\"scripts/fetch_google_places.js\",\"scripts/fetch_missing_hangout_places.js\",\"scripts/repair_missing_images.js\",\"scripts/sync_local_to_remote.js\",\"src/app/(auth)/sign-in/page.tsx\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-02T09:08:22.146Z"
     }
   ]
 }
