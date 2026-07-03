@@ -176,6 +176,15 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
 
     const budgets = await budgetRepository.getGroupBudgets(groupId);
     const presentBudgetsList = budgets.filter(b => presentUserIds.includes(b.userId));
+
+    const cleanMembers = members.map((m) => {
+      const budgetRec = presentBudgetsList.find((b) => b.userId === m.userId);
+      return {
+        ...m,
+        budget: budgetRec ? budgetRec.maxBudget : null
+      };
+    });
+
     const presentBudgets = presentBudgetsList.map(b => b.maxBudget);
     const budgetSummary = {
       min: presentBudgets.length > 0 ? Math.min(...presentBudgets) : 0,
@@ -212,7 +221,7 @@ export async function getGroupDetailsAction(groupId: string): ActionResponse<any
         ...group,
         isReady,
       },
-      members,
+      members: cleanMembers,
       budgetSummary,
       submittedBudgetUserIds: presentBudgetsList.map((b) => b.userId),
       locations: cleanLocations,

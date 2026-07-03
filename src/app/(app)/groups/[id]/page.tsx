@@ -208,6 +208,11 @@ export default function GroupDetailsPage() {
     e.preventDefault();
     setIsSubmittingBudget(true);
     const amount = parseInt(budgetVal);
+    if (isNaN(amount) || amount < 200) {
+      alert("The budget you entered is too less. Kindly reconsider for a better experience.");
+      setIsSubmittingBudget(false);
+      return;
+    }
     
     try {
       const res = await submitBudget({
@@ -347,6 +352,11 @@ export default function GroupDetailsPage() {
     
     try {
       const budgetAmount = parseInt(budgetVal) || 2000;
+      if (budgetAmount < 200) {
+        alert("The budget you entered is too less. Kindly reconsider for a better experience.");
+        setIsSubmittingDetails(false);
+        return;
+      }
       const budgetRes = await submitBudget({
         groupId: groupId,
         maxBudget: budgetAmount,
@@ -1232,15 +1242,41 @@ export default function GroupDetailsPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-mono font-bold text-[11px] text-white uppercase truncate flex items-center gap-1.5">
-                            {member.name}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isSynced ? 'bg-[#00E1AB] animate-pulse shadow-[0_0_6px_#00E1AB]' : 'bg-stone-850'}`} />
-                            <span className={`text-[8.5px] font-mono font-bold uppercase flex items-center gap-1 ${isSynced ? 'text-[#00E1AB]' : 'text-neutral-500'}`}>
-                              {isSynced ? 'ACCEPTED' : 'Pending'}
-                              {isSynced && <Check className="h-3 w-3 text-[#00E1AB]" />}
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="font-mono font-bold text-[11px] text-white uppercase truncate">
+                              {member.name}
+                            </p>
+                            {member.userId === currentUser.id && (
+                              <span className="text-[7px] font-mono font-bold bg-[#DC143C]/10 text-[#DC143C] px-1 border border-[#DC143C]/20 rounded-[2px]">YOU</span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 font-mono text-[8px]">
+                            <span className="flex items-center gap-0.5">
+                              <span className="text-neutral-500">BUDGET:</span>
+                              {hasBudget && member.budget !== undefined && member.budget !== null ? (
+                                <span className="text-white font-bold">₹{member.budget}</span>
+                              ) : (
+                                <span className="text-neutral-600 font-medium italic">PENDING</span>
+                              )}
                             </span>
+                            <span className="w-1 h-1 rounded-full bg-neutral-850" />
+                            <span className="flex items-center gap-0.5">
+                              <span className="text-neutral-500">LOC:</span>
+                              {hasLocation ? (
+                                <span className="text-[#00E1AB] font-bold">SYNCED</span>
+                              ) : (
+                                <span className="text-neutral-600 font-medium italic">PENDING</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center border ${isSynced ? 'border-[#00E1AB]/30 bg-[#00E1AB]/5 text-[#00E1AB]' : 'border-[#353534] bg-stone-950 text-neutral-700'}`}>
+                            {isSynced ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full bg-neutral-750" />
+                            )}
                           </div>
                         </div>
                       </li>

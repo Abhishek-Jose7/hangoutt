@@ -375,6 +375,14 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
     location_name: string | null;
   }>).filter(l => presentUserIds.includes(l.user_id));
 
+  const cleanMembers = members.map((m) => {
+    const budgetRec = budgets.find((b) => b.user_id === m.userId);
+    return {
+      ...m,
+      budget: budgetRec ? budgetRec.max_budget : null
+    };
+  });
+
   const isAdmin = caller.role === 'ADMIN';
   const cleanLocations = locations.map((location) => {
     const member = members.find((item) => item.userId === location.user_id);
@@ -415,7 +423,7 @@ async function getGroupDetails(request: Request, env: Env, groupId: string) {
       success: true,
       data: {
         group: { ...group, isReady },
-        members,
+        members: cleanMembers,
         budgetSummary,
         submittedBudgetUserIds: budgets.map((budget) => budget.user_id),
         locations: cleanLocations,

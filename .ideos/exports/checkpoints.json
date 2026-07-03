@@ -252,6 +252,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-02T16:55:08.364Z"
+    },
+    {
+      "id": "e82b510f-5ad8-4235-908b-51df63b00c9e",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "hehe",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scratch/run_local_planner.ts\",\"scratch/test_groq_key.ts\",\"src/lib/algorithms/zoneSelection.ts\",\"src/lib/services/planner.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-02T19:24:13.929Z"
     }
   ]
 }

@@ -75,9 +75,10 @@ export async function runScenario(scenario: Scenario): Promise<RunResult> {
       const fallbackPlans: any[] = [];
       for (let fi = 1; fi <= 3; fi++) {
         try {
-          fallbackPlans.push(buildFallbackItineraryDataForEval(
+          const p = await buildFallbackItineraryDataForEval(
             fi, groupData, presentMembers, presentLocations, memberLocations, scenario.budget
-          ));
+          );
+          fallbackPlans.push(p);
         } catch {
           // If fallback also fails, leave plan count at what we have
         }
