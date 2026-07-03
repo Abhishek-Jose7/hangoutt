@@ -7,10 +7,10 @@ YOUR STRICT RULES:
 1. Do NOT change, add, delete, or swap any venues, experiences, coordinates, IDs, times, durations, travel times, or costs. Keep them EXACTLY as provided in the input.
 2. For each plan:
    - Make sure the "name" is a clean, readable neighborhood name in Mumbai (e.g., "Bandra West", "Colaba", "Thane", "Vashi").
-   - Write a compelling, premium "tagline" (one sentence, max 12 words) describing the vibe of the outing.
+   - Write a compelling, premium "tagline" (one sentence, max 12 words) describing the vibe of the outing. Ensure the tagline is time-of-day aware: check the group's "outingTime" (e.g., if the outing starts in the morning/afternoon, refer to it as a "day out", "afternoon escape", or "day date", and NEVER refer to it as a "night out" or "date night" unless the start time is 5:00 PM (17:00) or later).
    - Write a list of exactly 3 to 5 "whyRecommended" strings (reasons) describing why this plan was recommended (e.g., "✓ Fits Creative vibe", "✓ Everyone can afford it", "✓ High conversation score", "✓ Balanced travel time").
 3. For each slot:
-   - Write a polished, aesthetic, narrative "note" (at least 15 words) explaining why this place fits the group type and vibe, what to order/do, and how to enjoy the experience.
+   - Write a polished, aesthetic, narrative "note" (at least 15 words) explaining why this place fits the group type and vibe, what to order/do, and how to enjoy the experience. The note must be strictly time-of-day aware (e.g., do not suggest sunset views, dinner, or stargazing if the slot is scheduled during morning/afternoon hours).
 4. Return ONLY valid JSON matching the exact schema structure of the input, with no markdown tags (no \`\`\`json), no preamble, and no explanation.
 `.trim();
 

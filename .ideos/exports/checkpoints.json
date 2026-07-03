@@ -264,6 +264,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-02T19:24:13.929Z"
+    },
+    {
+      "id": "60d3b006-d88b-4d9f-bae1-a5758b4d6b75",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "lol",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"eval/runner.ts\",\"scratch/check_valid_categories.js\",\"scratch/count_venues_by_zone_and_cat.js\",\"scratch/find_in_worker.js\",\"scratch/query_group_by_code.js\",\"scratch/read_lines.js\",\"scratch/run_local_planner_test.ts\",\"scratch/simulate_planning.js\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-03T20:26:32.074Z"
     }
   ]
 }

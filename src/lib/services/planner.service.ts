@@ -458,9 +458,10 @@ export async function buildFallbackItineraryDataForEval(
   presentMembers: any[],
   presentLocations: any[],
   memberLocations?: LatLng[],
-  groupBudget?: number
+  groupBudget?: number,
+  options: string[] = []
 ) {
-  return await buildFallbackItineraryData(planIndex, groupData, presentMembers, presentLocations, memberLocations, groupBudget);
+  return await buildFallbackItineraryData(planIndex, groupData, presentMembers, presentLocations, memberLocations, groupBudget, undefined, options);
 }
 
 function getDurationForCategory(category: string): number {
@@ -486,7 +487,8 @@ async function buildFallbackItineraryData(
   presentLocations: any[],
   memberLocations?: LatLng[],
   groupBudget?: number,
-  globalUsedPlaceIds?: Set<string>
+  globalUsedPlaceIds?: Set<string>,
+  options: string[] = []
 ) {
   const budgetTiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
@@ -625,6 +627,26 @@ async function buildFallbackItineraryData(
 
   const globalUsed = globalUsedPlaceIds || new Set<string>();
 
+  let parsedOptions: string[] = options || [];
+  if (parsedOptions.length === 0 && groupData && groupData.generationOptions) {
+    try {
+      const parsed = JSON.parse(groupData.generationOptions);
+      if (Array.isArray(parsed)) {
+        parsedOptions = parsed;
+      }
+    } catch {
+      try {
+        parsedOptions = String(groupData.generationOptions).split(',').map(o => o.trim());
+      } catch {}
+    }
+  }
+
+  const isMoreAct = parsedOptions.includes('More Activities');
+  const isMoreCr = parsedOptions.includes('More Creative');
+  const isMoreFd = parsedOptions.includes('More Food');
+  const isLarge = presentMembers.length >= 5;
+  const isDate = String(groupData.groupType ?? '').toUpperCase() === 'DATE';
+
   function pickAffordableSlots(): PlaceCandidate[] {
     const used = new Set<string>();
     const picks: PlaceCandidate[] = [];
@@ -632,7 +654,25 @@ async function buildFallbackItineraryData(
     let requiredCats: string[] = [];
     let maxCosts: number[] = [Infinity, Infinity, Infinity];
 
-    if (budgetTier === 'BUDGET_FRIENDLY') {
+    if (isDate) {
+      if (isMoreAct) {
+        requiredCats = ['ARCADE', 'RESTAURANT', 'DESSERT'];
+      } else if (isMoreCr) {
+        requiredCats = ['POTTERY', 'CAFE', 'DESSERT'];
+      } else if (isMoreFd) {
+        requiredCats = ['CAFE', 'RESTAURANT', 'DESSERT'];
+      } else {
+        requiredCats = ['CAFE', 'PARK', 'DESSERT'];
+      }
+    } else if (isMoreAct) {
+      requiredCats = ['ARCADE', 'RESTAURANT', 'BOWLING'];
+    } else if (isMoreCr) {
+      requiredCats = ['POTTERY', 'CAFE', 'WORKSHOP'];
+    } else if (isMoreFd) {
+      requiredCats = ['CAFE', 'RESTAURANT', 'DESSERT'];
+    } else if (isLarge) {
+      requiredCats = ['BOWLING', 'RESTAURANT', 'ARCADE'];
+    } else if (budgetTier === 'BUDGET_FRIENDLY') {
       requiredCats = ['MALL', 'CAFE', 'PARK'];
       maxCosts = [0, 250, 0];
     } else if (budgetTier === 'TRAVEL_FRIENDLY') {
@@ -2001,19 +2041,158 @@ async function executePlanningEngine(
     }
 
     const getActiveTemplate = (idx: number): ItineraryTemplate => {
-      if (String(groupData.groupType ?? '').toUpperCase() === 'DATE' && !isMoreActivities) {
+      const groupSize = presentMembers.length;
+      const isLargeGroup = groupSize >= 5;
+
+      const groupPreferredCats = (preferredCategories || []).map(c => c.toUpperCase()).filter(c => SELECTABLE_PLACE_CATEGORIES.has(c));
+
+      const isDate = String(groupData.groupType ?? '').toUpperCase() === 'DATE';
+      if (isDate) {
+        if (isMoreActivities) {
+          const actCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MUSEUM'];
+          const preferredActCats = groupPreferredCats.filter(c => actCats.includes(c));
+          const finalActCats = preferredActCats.length > 0 ? preferredActCats : actCats;
+          return {
+            slot1: finalActCats,
+            slot1Act: true,
+            slot2: ['RESTAURANT', 'CAFE'],
+            slot2Act: false,
+            slot3: ['DESSERT', 'CAFE'],
+            slot3Act: false
+          };
+        }
+        if (isMoreCreative) {
+          const creativeCats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING', 'MUSEUM'];
+          const preferredCreative = groupPreferredCats.filter(c => creativeCats.includes(c));
+          const finalCreative = preferredCreative.length > 0 ? preferredCreative : creativeCats;
+          return {
+            slot1: finalCreative,
+            slot1Act: true,
+            slot2: ['CAFE', 'RESTAURANT'],
+            slot2Act: false,
+            slot3: ['DESSERT'],
+            slot3Act: false
+          };
+        }
+        if (isMoreFood) {
+          return {
+            slot1: ['CAFE'],
+            slot1Act: false,
+            slot2: ['RESTAURANT'],
+            slot2Act: false,
+            slot3: ['DESSERT', 'CAFE'],
+            slot3Act: false
+          };
+        }
         return DATE_ITINERARY_TEMPLATES[idx % DATE_ITINERARY_TEMPLATES.length];
       }
       if (isMoreActivities) {
-        return { slot1: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING'], slot3Act: true };
+        const actCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MUSEUM'];
+        const preferredActCats = groupPreferredCats.filter(c => actCats.includes(c));
+        const finalActCats = preferredActCats.length > 0 ? preferredActCats : actCats;
+
+        return {
+          slot1: finalActCats,
+          slot1Act: true,
+          slot2: ['RESTAURANT', 'CAFE'],
+          slot2Act: false,
+          slot3: finalActCats,
+          slot3Act: true
+        };
       }
       if (isMoreCreative) {
-        return { slot1: ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING'], slot3Act: true };
+        const creativeCats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING', 'MUSEUM'];
+        const preferredCreative = groupPreferredCats.filter(c => creativeCats.includes(c));
+        const finalCreative = preferredCreative.length > 0 ? preferredCreative : creativeCats;
+
+        return {
+          slot1: finalCreative,
+          slot1Act: true,
+          slot2: ['CAFE', 'RESTAURANT'],
+          slot2Act: false,
+          slot3: finalCreative,
+          slot3Act: true
+        };
       }
       if (isMoreFood) {
-        return { slot1: ['CAFE'], slot1Act: false, slot2: ['RESTAURANT'], slot2Act: false, slot3: ['DESSERT', 'CAFE'], slot3Act: false };
+        return {
+          slot1: ['CAFE'],
+          slot1Act: false,
+          slot2: ['RESTAURANT'],
+          slot2Act: false,
+          slot3: ['DESSERT', 'CAFE'],
+          slot3Act: false
+        };
       }
-      return templatesPool[idx % templatesPool.length];
+      if (isLargeGroup) {
+        const groupInteractiveCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'WORKSHOP', 'POTTERY', 'PAINTING'];
+        const preferredInteractive = groupPreferredCats.filter(c => groupInteractiveCats.includes(c));
+        const actCats = preferredInteractive.length > 0 ? preferredInteractive : groupInteractiveCats;
+
+        if (idx % 2 === 0) {
+          return {
+            slot1: actCats,
+            slot1Act: true,
+            slot2: ['RESTAURANT', 'MALL'],
+            slot2Act: false,
+            slot3: ['DESSERT', 'PARK', 'MALL'],
+            slot3Act: false
+          };
+        } else {
+          return {
+            slot1: ['CAFE', 'MALL'],
+            slot1Act: false,
+            slot2: actCats,
+            slot2Act: true,
+            slot3: ['RESTAURANT'],
+            slot3Act: false
+          };
+        }
+      }
+      if (groupPreferredCats.length > 0) {
+        const baseTemplate = templatesPool[idx % templatesPool.length];
+        const newTemplate = { ...baseTemplate };
+        const activityCats = ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MOVIE', 'ART_GALLERY'];
+        const preferredActivities = groupPreferredCats.filter(c => activityCats.includes(c));
+        const preferredFood = groupPreferredCats.filter(c => !activityCats.includes(c));
+
+        if (newTemplate.slot1Act && preferredActivities.length > 0) {
+          newTemplate.slot1 = preferredActivities;
+        } else if (!newTemplate.slot1Act && preferredFood.length > 0) {
+          newTemplate.slot1 = preferredFood;
+        }
+
+        if (newTemplate.slot2Act && preferredActivities.length > 0) {
+          newTemplate.slot2 = preferredActivities;
+        } else if (!newTemplate.slot2Act && preferredFood.length > 0) {
+          newTemplate.slot2 = preferredFood;
+        }
+
+        if (newTemplate.slot3Act && preferredActivities.length > 0) {
+          newTemplate.slot3 = preferredActivities;
+        } else if (!newTemplate.slot3Act && preferredFood.length > 0) {
+          newTemplate.slot3 = preferredFood;
+        }
+
+        return newTemplate;
+      }
+
+      const isChillVibe = vibes && vibes.some(v => String(v).toUpperCase() === 'CHILL');
+      const baseTemplate = templatesPool[idx % templatesPool.length];
+      const isBoring = !baseTemplate.slot1Act && !baseTemplate.slot2Act && !baseTemplate.slot3Act;
+
+      if (isBoring && !isChillVibe) {
+        return {
+          slot1: ['ARCADE', 'BOWLING', 'MUSEUM', 'PARK'],
+          slot1Act: true,
+          slot2: ['RESTAURANT', 'CAFE'],
+          slot2Act: false,
+          slot3: ['DESSERT', 'CAFE'],
+          slot3Act: false
+        };
+      }
+
+      return baseTemplate;
     };
 
     for (let i = 0; i < 4; i++) {
@@ -2642,7 +2821,7 @@ export const plannerService = {
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
             console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of â‚¹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
-            const fallbackPlan = await buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
+            const fallbackPlan = await buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
           }
@@ -2996,7 +3175,7 @@ export const plannerService = {
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
             console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of â‚¹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
-            const fallbackPlan = await buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds);
+            const fallbackPlan = await buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
             fallbackPlan.planIndex = fi;
             draftPlans.push(fallbackPlan);
           }
