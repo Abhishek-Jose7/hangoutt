@@ -1,5 +1,5 @@
 import type { Scenario } from './scenarios';
-import { getVenueZone } from '../src/lib/services/planner.service';
+import { getVenueZone, familyFromSlotCategories } from '../src/lib/services/planner.service';
 
 export interface SlotMetrics {
   name: string;
@@ -21,6 +21,7 @@ export interface PlanMetrics {
   budgetTier: string;
   avgTravelTime: number;
   slots: SlotMetrics[];
+  archetypeFamily: string;   // e.g. ACTIVITY_FIRST, derived from slot 1
 }
 
 export interface ItineraryMetrics {
@@ -41,6 +42,9 @@ export interface ItineraryMetrics {
   avgTravelTimeMinutes: number;
   preferenceMatchRatio: number;
   plans: PlanMetrics[];
+  archetypeFamilies: string[];      // family per plan, ordered
+  distinctFamilyCount: number;      // how many distinct families among the plans
+  structuralEntropy: number;        // distinctFamilyCount / planCount (0..1)
   error?: string;
 }
 
@@ -120,6 +124,9 @@ export function computeMetrics(
       avgTravelTimeMinutes: 0,
       preferenceMatchRatio: 0,
       plans: [],
+      archetypeFamilies: [],
+      distinctFamilyCount: 0,
+      structuralEntropy: 0,
       error,
     };
   }
@@ -137,6 +144,7 @@ export function computeMetrics(
       rating: s.rating ?? null,
       address: s.address ?? '',
     }));
+    const leadCategory = (slots[0]?.category ?? '').toUpperCase();
     return {
       planId: plan.id,
       score: plan.score ?? 0,
@@ -146,6 +154,7 @@ export function computeMetrics(
       budgetTier: plan.budgetTier ?? 'BALANCED',
       avgTravelTime: plan.avgTotalTime ?? plan.avgCabTime ?? 0,
       slots,
+      archetypeFamily: leadCategory ? familyFromSlotCategories(leadCategory) : 'UNKNOWN',
     };
   });
 
@@ -250,6 +259,13 @@ export function computeMetrics(
     Math.min(100, budgetScore + ratingNorm + diversityNorm + travelNorm + prefNorm + constraintScore)
   );
 
+  const archetypeFamilies = planMetrics.map(p => p.archetypeFamily);
+  const distinctFamilySet = new Set(archetypeFamilies.filter(f => f && f !== 'UNKNOWN'));
+  const distinctFamilyCount = distinctFamilySet.size;
+  const structuralEntropy = planMetrics.length > 0
+    ? +(distinctFamilyCount / planMetrics.length).toFixed(3)
+    : 0;
+
   return {
     scenarioId: scenario.id,
     durationMs,
@@ -268,6 +284,9 @@ export function computeMetrics(
     avgTravelTimeMinutes,
     preferenceMatchRatio,
     plans: planMetrics,
+    archetypeFamilies,
+    distinctFamilyCount,
+    structuralEntropy,
     error: undefined,
   };
 }

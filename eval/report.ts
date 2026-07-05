@@ -26,6 +26,13 @@ export interface ReportSummary {
   avgDiversityScore: number;
   avgBudgetUtilization: number;
   constraintViolRate: number;
+  avgStructuralEntropy: number;                              // avg distinct families / plans, 0..1
+  fullyDiverseRate: number;                                  // % of scenarios where all 4 plans have distinct families
+  familyDistribution: Record<string, number>;                // count of plans per archetype family
+  preferenceMatchAvg: number;                                // avg preference-match ratio across scenarios
+  groupTypeFamilyMatrix: Record<string, Record<string, number>>;  // rows: group type, cols: family
+  timeBucketFamilyMatrix: Record<string, Record<string, number>>; // rows: time bucket, cols: family
+  sizeBucketFamilyMatrix: Record<string, Record<string, number>>; // rows: size bucket, cols: family
   bestScenario: ReportEntry | null;
   worstScenario: ReportEntry | null;
   mostCommonVenues: { name: string; count: number }[];
@@ -57,7 +64,11 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
       failureRate: 0, fallbackRate: 0, engineFallbackRate: 0, liveFetchRate: 0, budgetRespectRate: 0,
       avgOverallScore: 0, medianOverallScore: 0, p10OverallScore: 0, p90OverallScore: 0,
       avgVenueRating: 0, avgTravelTime: 0, avgDiversityScore: 0, avgBudgetUtilization: 0,
-      constraintViolRate: 0, bestScenario: null, worstScenario: null,
+      constraintViolRate: 0,
+      avgStructuralEntropy: 0, fullyDiverseRate: 0, familyDistribution: {},
+      preferenceMatchAvg: 0,
+      groupTypeFamilyMatrix: {}, timeBucketFamilyMatrix: {}, sizeBucketFamilyMatrix: {},
+      bestScenario: null, worstScenario: null,
       mostCommonVenues: [], unusedZones: [], categoryAppearanceRate: {}, budgetPerformance: {}, violationBreakdown: {},
     };
   }
@@ -113,6 +124,53 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
   const allZones = ['Bandra', 'Dadar', 'Andheri', 'Kurla', 'Ghatkopar', 'Borivali', 'Lower Parel', 'Worli', 'Thane', 'Vashi', 'Belapur'];
   const unusedZones = allZones.filter(z => !usedZones.has(z));
 
+  // Archetype family diversity aggregates
+  const familyDistribution: Record<string, number> = {};
+  const groupTypeFamilyMatrix: Record<string, Record<string, number>> = {};
+  const timeBucketFamilyMatrix: Record<string, Record<string, number>> = {};
+  const sizeBucketFamilyMatrix: Record<string, Record<string, number>> = {};
+  const timeBucketFrom = (t?: string): string => {
+    if (!t) return 'AFTERNOON';
+    const m = t.match(/^(\d{1,2}):/); const h = m ? parseInt(m[1]) : 12;
+    if (h < 12) return 'MORNING';
+    if (h < 17) return 'AFTERNOON';
+    if (h < 21) return 'EVENING';
+    return 'NIGHT';
+  };
+  const sizeBucketFrom = (n: number): string => {
+    if (n <= 2) return 'PAIR';
+    if (n <= 4) return 'SMALL';
+    if (n <= 6) return 'MEDIUM';
+    return 'LARGE';
+  };
+  let entropySum = 0;
+  let fullyDiverseCount = 0;
+  let prefMatchSum = 0;
+  for (const entry of entries) {
+    const fams = entry.metrics.archetypeFamilies ?? [];
+    for (const f of fams) {
+      if (!f) continue;
+      familyDistribution[f] = (familyDistribution[f] ?? 0) + 1;
+      const gt = entry.scenario.groupType;
+      const tb = timeBucketFrom(entry.scenario.outingTime);
+      const sb = sizeBucketFrom(entry.scenario.groupSize);
+      groupTypeFamilyMatrix[gt] = groupTypeFamilyMatrix[gt] ?? {};
+      groupTypeFamilyMatrix[gt][f] = (groupTypeFamilyMatrix[gt][f] ?? 0) + 1;
+      timeBucketFamilyMatrix[tb] = timeBucketFamilyMatrix[tb] ?? {};
+      timeBucketFamilyMatrix[tb][f] = (timeBucketFamilyMatrix[tb][f] ?? 0) + 1;
+      sizeBucketFamilyMatrix[sb] = sizeBucketFamilyMatrix[sb] ?? {};
+      sizeBucketFamilyMatrix[sb][f] = (sizeBucketFamilyMatrix[sb][f] ?? 0) + 1;
+    }
+    entropySum += entry.metrics.structuralEntropy ?? 0;
+    if ((entry.metrics.distinctFamilyCount ?? 0) >= 4 && (entry.metrics.planCount ?? 0) >= 4) {
+      fullyDiverseCount++;
+    }
+    prefMatchSum += entry.metrics.preferenceMatchRatio ?? 0;
+  }
+  const avgStructuralEntropy = +(entropySum / total).toFixed(3);
+  const fullyDiverseRate = +((fullyDiverseCount / total) * 100).toFixed(1);
+  const preferenceMatchAvg = +((prefMatchSum / total) * 100).toFixed(1);
+
   return {
     runAt: now,
     totalScenarios: total,
@@ -131,6 +189,13 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
     avgDiversityScore: +(entries.reduce((s, e) => s + (e.metrics.uniqueVenueCount / Math.max(1, (e.metrics.plans[0]?.slots?.length ?? 3))), 0) / total).toFixed(2),
     avgBudgetUtilization: +(entries.reduce((s, e) => s + e.metrics.budgetUtilization, 0) / total * 100).toFixed(1),
     constraintViolRate: +(withViol.length / total * 100).toFixed(1),
+    avgStructuralEntropy,
+    fullyDiverseRate,
+    familyDistribution,
+    preferenceMatchAvg,
+    groupTypeFamilyMatrix,
+    timeBucketFamilyMatrix,
+    sizeBucketFamilyMatrix,
     bestScenario: sortedByScore[0] ?? null,
     worstScenario: sortedByScore[sortedByScore.length - 1] ?? null,
     mostCommonVenues: Object.entries(venueCounts).sort(([, a], [, b]) => b - a).slice(0, 20).map(([name, count]) => ({ name, count })),
@@ -405,6 +470,33 @@ function generateHtml(summary: ReportSummary, entries: ReportEntry[], regression
 <div style="max-width:500px">${histBars}</div>
 <p style="color:#666;font-size:11px;margin-top:8px">p10: ${summary.p10OverallScore} · median: ${summary.medianOverallScore} · p90: ${summary.p90OverallScore}</p>
 
+<h2>Archetype Diversity</h2>
+<div class="grid">
+  <div class="kpi ${summary.avgStructuralEntropy < 0.7 ? 'warn' : ''}">
+    <div class="kpi-val">${(summary.avgStructuralEntropy * 100).toFixed(0)}%</div>
+    <div class="kpi-lab">Avg Structural Entropy</div>
+  </div>
+  <div class="kpi ${summary.fullyDiverseRate < 60 ? 'warn' : ''}">
+    <div class="kpi-val">${summary.fullyDiverseRate}%</div>
+    <div class="kpi-lab">Fully Diverse (4 distinct families)</div>
+  </div>
+  <div class="kpi ${summary.preferenceMatchAvg < 60 ? 'warn' : ''}">
+    <div class="kpi-val">${summary.preferenceMatchAvg}%</div>
+    <div class="kpi-lab">Avg Preference-Match Ratio</div>
+  </div>
+</div>
+<p style="color:#666;font-size:11px;margin-top:8px">Family distribution across all generated plans:</p>
+<table><thead><tr><th>Family</th><th>Count</th></tr></thead><tbody>${
+  Object.entries(summary.familyDistribution).sort(([, a], [, b]) => b - a).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')
+}</tbody></table>
+
+<h3 style="color:#DC143C;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:16px">Family × Group Type</h3>
+${familyMatrixHtml(summary.groupTypeFamilyMatrix)}
+<h3 style="color:#DC143C;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:16px">Family × Time Bucket</h3>
+${familyMatrixHtml(summary.timeBucketFamilyMatrix)}
+<h3 style="color:#DC143C;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:16px">Family × Group Size</h3>
+${familyMatrixHtml(summary.sizeBucketFamilyMatrix)}
+
 ${regression ? `<h2>Regression vs Previous Run</h2><pre>${regression}</pre>` : ''}
 
 <h2>Worst 10 Itineraries</h2>
@@ -452,6 +544,24 @@ ${summary.avgTravelTime > 45 ? '<li>Average travel time is high — consider tig
 <p style="color:#333;font-size:10px;margin-top:32px">Generated by Hangout eval framework · ${summary.runAt}</p>
 </body>
 </html>`;
+}
+
+function familyMatrixHtml(matrix: Record<string, Record<string, number>>): string {
+  const rows = Object.keys(matrix);
+  if (rows.length === 0) return '<p style="color:#666;font-size:11px">No data.</p>';
+  const cols = Array.from(new Set(rows.flatMap(r => Object.keys(matrix[r])))).sort();
+  const head = ['<tr><th></th>', ...cols.map(c => `<th>${c}</th>`), '</tr>'].join('');
+  const body = rows.map(r => {
+    const total = cols.reduce((s, c) => s + (matrix[r][c] ?? 0), 0);
+    const cells = cols.map(c => {
+      const v = matrix[r][c] ?? 0;
+      const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+      const color = pct >= 30 ? '#00E1AB' : pct >= 15 ? '#e0e0e0' : '#666';
+      return `<td style="color:${color}">${v} <span style="color:#555;font-size:9px">(${pct}%)</span></td>`;
+    }).join('');
+    return `<tr><td style="color:#999;font-weight:bold">${r}</td>${cells}</tr>`;
+  }).join('');
+  return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
 function buildHistogram(values: number[], buckets: number, min: number, max: number) {

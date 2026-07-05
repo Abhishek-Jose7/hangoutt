@@ -375,6 +375,433 @@ const DATE_ITINERARY_TEMPLATES: ItineraryTemplate[] = [
   { slot1: ['ART_GALLERY', 'MUSEUM', 'POTTERY', 'WORKSHOP'], slot1Act: true, slot2: ['CAFE', 'RESTAURANT'], slot2Act: false, slot3: ['DESSERT'], slot3Act: false },
 ];
 
+// ---------------------------------------------------------------------------
+// Archetype dispatch: hierarchical context -> archetype -> venue selection.
+// The planner first decides *what kind of day* to plan from the outing context
+// (group size, group type, time of day, weather, preferences), then fills the
+// chosen archetype's slots with the best DB venues. This replaces the earlier
+// pick-a-random-template-then-hope approach.
+// ---------------------------------------------------------------------------
+
+export type TimeBucket = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'NIGHT';
+export type SizeBucket = 'PAIR' | 'SMALL' | 'MEDIUM' | 'LARGE';
+export type WeatherBucket = 'DRY' | 'MONSOON';
+export type ArchetypeFamily =
+  | 'ACTIVITY_FIRST'
+  | 'CAFE_FIRST'
+  | 'CULTURE_FIRST'
+  | 'SCENIC_FIRST'
+  | 'CREATIVE_FIRST'
+  | 'SHOPPING_FIRST'
+  | 'ENTERTAINMENT_FIRST';
+
+export interface PlanningContext {
+  groupType: 'DATE' | 'FRIENDS' | 'FAMILY' | 'WORK' | 'CUSTOM';
+  groupSize: number;
+  sizeBucket: SizeBucket;
+  timeBucket: TimeBucket;
+  weather: WeatherBucket;
+  preferredCategories: string[]; // uppercase
+  vibes: string[]; // uppercase
+  options: string[];
+  isCheaper: boolean;
+  isMoreIndoor: boolean;
+  isLessTravel: boolean;
+  isMoreActivities: boolean;
+  isMoreFood: boolean;
+  isMoreCreative: boolean;
+  isMoreRomantic: boolean;
+  hasMoviePreference: boolean;
+  hasMallPreference: boolean;
+}
+
+interface TemplateMeta {
+  family: ArchetypeFamily;
+  indoor: boolean;
+  timeFit: Set<TimeBucket>;
+  requiresMovie: boolean;
+  requiresMall: boolean;
+  leadCategory: string;
+  allCategories: string[];
+  activityCount: number;
+  hasCreative: boolean;
+  hasCulture: boolean;
+  hasScenic: boolean;
+}
+
+function parseOutingHour(outingTime?: string | null): number {
+  if (!outingTime) return 12;
+  const m24 = outingTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return parseInt(m24[1]);
+  const m12 = outingTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1]);
+    const ampm = m12[3].toUpperCase();
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return h;
+  }
+  return 12;
+}
+
+export function deriveTimeBucket(outingTime?: string | null): TimeBucket {
+  const hour = parseOutingHour(outingTime);
+  if (hour < 12) return 'MORNING';
+  if (hour < 17) return 'AFTERNOON';
+  if (hour < 21) return 'EVENING';
+  return 'NIGHT';
+}
+
+export function deriveSizeBucket(n: number): SizeBucket {
+  if (n <= 2) return 'PAIR';
+  if (n <= 4) return 'SMALL';
+  if (n <= 6) return 'MEDIUM';
+  return 'LARGE';
+}
+
+export function deriveWeather(outingDate?: string | null): WeatherBucket {
+  if (!outingDate) return 'DRY';
+  const parts = outingDate.split('-');
+  if (parts.length < 2) return 'DRY';
+  const month = parseInt(parts[1]);
+  return [6, 7, 8, 9].includes(month) ? 'MONSOON' : 'DRY';
+}
+
+const OUTDOOR_CATS = new Set(['PARK', 'OUTDOOR_EXPERIENCE', 'SCENIC_EXPERIENCE']);
+const CREATIVE_CATS = new Set(['POTTERY', 'WORKSHOP', 'PAINTING']);
+const CULTURE_CATS = new Set(['MUSEUM', 'ART_GALLERY']);
+
+function familyOfLead(cat: string): ArchetypeFamily {
+  const c = (cat || '').toUpperCase();
+  if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(c)) return 'ACTIVITY_FIRST';
+  if (c === 'MOVIE') return 'ENTERTAINMENT_FIRST';
+  if (['MUSEUM', 'ART_GALLERY'].includes(c)) return 'CULTURE_FIRST';
+  if (c === 'PARK') return 'SCENIC_FIRST';
+  if (['POTTERY', 'WORKSHOP', 'PAINTING'].includes(c)) return 'CREATIVE_FIRST';
+  if (c === 'MALL') return 'SHOPPING_FIRST';
+  return 'CAFE_FIRST';
+}
+
+export function familyFromSlotCategories(slot1Cat: string): ArchetypeFamily {
+  return familyOfLead(slot1Cat);
+}
+
+function deriveTemplateMeta(t: ItineraryTemplate): TemplateMeta {
+  const cats = [...t.slot1, ...t.slot2, ...t.slot3].map(c => c.toUpperCase());
+  const uniq = new Set(cats);
+  const leadCategory = (t.slot1[0] || '').toUpperCase();
+  const family = familyOfLead(leadCategory);
+  const indoor = !cats.some(c => OUTDOOR_CATS.has(c));
+  const hasMuseumOrPark = uniq.has('MUSEUM') || uniq.has('ART_GALLERY') || uniq.has('PARK');
+  const timeFit = new Set<TimeBucket>(['MORNING', 'AFTERNOON', 'EVENING']);
+  // Museum (~6pm close) and park (~7pm close) can't anchor a NIGHT plan.
+  if (!hasMuseumOrPark) timeFit.add('NIGHT');
+  // Movie is inherently an evening/night thing.
+  if (uniq.has('MOVIE') && leadCategory === 'MOVIE') {
+    timeFit.delete('MORNING');
+  }
+  const requiresMovie = leadCategory === 'MOVIE';
+  const requiresMall = leadCategory === 'MALL';
+  const activityCount = [t.slot1Act, t.slot2Act, t.slot3Act].filter(Boolean).length;
+  const hasCreative = cats.some(c => CREATIVE_CATS.has(c));
+  const hasCulture = cats.some(c => CULTURE_CATS.has(c));
+  const hasScenic = uniq.has('PARK');
+  return {
+    family,
+    indoor,
+    timeFit,
+    requiresMovie,
+    requiresMall,
+    leadCategory,
+    allCategories: cats,
+    activityCount,
+    hasCreative,
+    hasCulture,
+    hasScenic,
+  };
+}
+
+export function buildPlanningContext(params: {
+  groupType: string | undefined;
+  groupSize: number;
+  outingTime: string | null | undefined;
+  outingDate: string | null | undefined;
+  preferredCategories: string[];
+  vibes: string[];
+  options: string[];
+  extraGroupSignals?: { activity?: string | null; outingType?: string | null };
+}): PlanningContext {
+  const options = params.options || [];
+  const prefsUpper = (params.preferredCategories || []).map(c => c.toUpperCase());
+  const vibesUpper = (params.vibes || []).map(v => v.toUpperCase());
+
+  const hasMoviePreference =
+    prefsUpper.includes('MOVIE') ||
+    (params.extraGroupSignals?.activity && String(params.extraGroupSignals.activity).toLowerCase().includes('movie')) ||
+    (params.extraGroupSignals?.outingType && String(params.extraGroupSignals.outingType).toLowerCase().includes('movie')) ||
+    vibesUpper.some(v => v.toLowerCase().includes('movie'));
+
+  const hasMallPreference = prefsUpper.includes('MALL');
+
+  const rawGroupType = String(params.groupType ?? 'CUSTOM').toUpperCase();
+  const groupType = (['DATE', 'FRIENDS', 'FAMILY', 'WORK'].includes(rawGroupType) ? rawGroupType : 'CUSTOM') as PlanningContext['groupType'];
+
+  return {
+    groupType,
+    groupSize: params.groupSize,
+    sizeBucket: deriveSizeBucket(params.groupSize),
+    timeBucket: deriveTimeBucket(params.outingTime),
+    weather: deriveWeather(params.outingDate),
+    preferredCategories: prefsUpper,
+    vibes: vibesUpper,
+    options,
+    isCheaper: options.includes('Cheaper'),
+    isMoreIndoor: options.includes('More Indoor'),
+    isLessTravel: options.includes('Less Travel'),
+    isMoreActivities: options.includes('More Activities'),
+    isMoreFood: options.includes('More Food'),
+    isMoreCreative: options.includes('More Creative'),
+    isMoreRomantic: options.includes('More Romantic'),
+    hasMoviePreference: Boolean(hasMoviePreference),
+    hasMallPreference,
+  };
+}
+
+function scoreTemplateFit(meta: TemplateMeta, ctx: PlanningContext): number {
+  let s = 0;
+
+  // Time-of-day: strong — the arc has to make sense at the requested time.
+  if (meta.timeFit.has(ctx.timeBucket)) s += 2;
+
+  // Weather
+  if (ctx.weather === 'MONSOON') {
+    if (meta.indoor) s += 2;
+    else s -= 3;
+  } else if (meta.hasScenic) {
+    s += 0.5;
+  }
+
+  // Group size structural fit
+  if (ctx.sizeBucket === 'PAIR') {
+    if (['CAFE_FIRST', 'CREATIVE_FIRST', 'CULTURE_FIRST', 'SCENIC_FIRST'].includes(meta.family)) s += 2;
+    if (meta.family === 'ACTIVITY_FIRST') s -= 1;
+    if (meta.family === 'SHOPPING_FIRST') s -= 1;
+  } else if (ctx.sizeBucket === 'LARGE') {
+    if (['ACTIVITY_FIRST', 'SHOPPING_FIRST', 'ENTERTAINMENT_FIRST'].includes(meta.family)) s += 2;
+    if (meta.family === 'CAFE_FIRST' && meta.activityCount === 0) s -= 1.5;
+    if (meta.family === 'CREATIVE_FIRST') s -= 1; // pottery-for-8 rarely works
+  } else if (ctx.sizeBucket === 'MEDIUM') {
+    if (meta.activityCount === 0) s -= 0.5;
+    if (['ACTIVITY_FIRST', 'ENTERTAINMENT_FIRST'].includes(meta.family)) s += 1;
+  }
+
+  // Group type structural fit
+  if (ctx.groupType === 'DATE') {
+    if (['CAFE_FIRST', 'CREATIVE_FIRST', 'CULTURE_FIRST', 'SCENIC_FIRST'].includes(meta.family)) s += 3;
+    if (meta.family === 'ACTIVITY_FIRST') s -= 2;
+    if (meta.family === 'SHOPPING_FIRST') s -= 3;
+    if (meta.family === 'ENTERTAINMENT_FIRST') s -= 1;
+  } else if (ctx.groupType === 'FAMILY') {
+    if (['SCENIC_FIRST', 'CULTURE_FIRST', 'CAFE_FIRST'].includes(meta.family)) s += 2;
+    if (meta.family === 'ACTIVITY_FIRST') s += 1; // arcade / bowling are family-friendly
+    if (ctx.timeBucket === 'NIGHT') s -= 2;
+  } else if (ctx.groupType === 'WORK') {
+    if (['CREATIVE_FIRST', 'ACTIVITY_FIRST'].includes(meta.family)) s += 2;
+    if (meta.family === 'SCENIC_FIRST') s -= 1;
+  } else if (ctx.groupType === 'FRIENDS') {
+    if (['ACTIVITY_FIRST', 'CAFE_FIRST', 'ENTERTAINMENT_FIRST', 'CREATIVE_FIRST'].includes(meta.family)) s += 1;
+  }
+
+  // Explicit options — user pushed a lever, respect it hard.
+  if (ctx.isMoreActivities && meta.family !== 'ACTIVITY_FIRST' && meta.family !== 'CREATIVE_FIRST' && meta.family !== 'ENTERTAINMENT_FIRST') s -= 4;
+  if (ctx.isMoreCreative && meta.family !== 'CREATIVE_FIRST' && !meta.hasCreative) s -= 4;
+  if (ctx.isMoreFood && meta.activityCount > 1) s -= 3;
+  if (ctx.isMoreIndoor && !meta.indoor) s -= 5;
+  if (ctx.isMoreRomantic && ['CAFE_FIRST', 'SCENIC_FIRST', 'CULTURE_FIRST', 'CREATIVE_FIRST'].includes(meta.family)) s += 1.5;
+
+  // Preference match — heavily weighted. This was the #1 constraint violation
+  // (LOW_PREFERENCE_MATCH in 27 / 50 scenarios of the baseline eval).
+  const prefs = new Set(ctx.preferredCategories);
+  if (prefs.size > 0) {
+    const overlap = meta.allCategories.filter(c => prefs.has(c)).length;
+    s += Math.min(3, overlap);
+    if (overlap === 0) s -= 2;
+  }
+
+  // Vibe fit
+  const vibes = new Set(ctx.vibes);
+  if (vibes.has('CHILL')) {
+    if (['CAFE_FIRST', 'SCENIC_FIRST'].includes(meta.family)) s += 1.5;
+    if (meta.family === 'ACTIVITY_FIRST') s -= 1;
+  }
+  if (vibes.has('ADVENTUROUS') || vibes.has('COMPETITIVE')) {
+    if (meta.family === 'ACTIVITY_FIRST') s += 2;
+  }
+  if (vibes.has('FOODIE') && meta.family === 'CAFE_FIRST') s += 2;
+  if (vibes.has('CULTURAL') && meta.family === 'CULTURE_FIRST') s += 2;
+  if (vibes.has('CREATIVE') && (meta.family === 'CREATIVE_FIRST' || meta.hasCreative)) s += 2;
+  if (vibes.has('ROMANTIC')) {
+    if (['CAFE_FIRST', 'SCENIC_FIRST', 'CREATIVE_FIRST', 'CULTURE_FIRST'].includes(meta.family)) s += 2;
+    if (meta.family === 'ACTIVITY_FIRST') s -= 1;
+  }
+
+  return s;
+}
+
+function templateHardEligible(meta: TemplateMeta, ctx: PlanningContext): boolean {
+  // MOVIE/MALL-lead templates require explicit interest — otherwise they read as random.
+  if (meta.requiresMovie && !ctx.hasMoviePreference) return false;
+  if (meta.requiresMall && !ctx.hasMallPreference) return false;
+  // Time-of-day: hard filter — a museum-first arc at 10 PM makes no sense.
+  if (!meta.timeFit.has(ctx.timeBucket)) return false;
+  return true;
+}
+
+/**
+ * Pick `count` distinct-family archetype templates from `pool` given the
+ * outing context. Hierarchical: context first decides what family fits, then
+ * we greedily assemble a diverse set for the group's 4 output plans.
+ */
+export function pickArchetypeTemplates(
+  ctx: PlanningContext,
+  pool: ItineraryTemplate[],
+  count = 4
+): ItineraryTemplate[] {
+  interface Scored {
+    template: ItineraryTemplate;
+    meta: TemplateMeta;
+    fit: number;
+  }
+
+  const withMeta: Scored[] = pool.map(t => {
+    const meta = deriveTemplateMeta(t);
+    return { template: t, meta, fit: 0 };
+  });
+
+  // Two-tier eligibility so we always return `count` templates, even when
+  // the strict context is very narrow (tiny DATE pool, unusual time bucket, ...).
+  let candidates = withMeta.filter(x => templateHardEligible(x.meta, ctx));
+  let relaxed = false;
+  if (candidates.length < count) {
+    relaxed = true;
+    candidates = withMeta
+      .filter(x => !(x.meta.requiresMovie && !ctx.hasMoviePreference))
+      .filter(x => !(x.meta.requiresMall && !ctx.hasMallPreference));
+  }
+
+  for (const c of candidates) {
+    c.fit = scoreTemplateFit(c.meta, ctx);
+    if (relaxed && !c.meta.timeFit.has(ctx.timeBucket)) c.fit -= 2;
+  }
+
+  candidates.sort((a, b) => (b.fit + Math.random() * 0.4) - (a.fit + Math.random() * 0.4));
+
+  const picked: Scored[] = [];
+  const usedFamilies = new Set<ArchetypeFamily>();
+  const usedLeads = new Set<string>();
+
+  // Pass 1: distinct family AND distinct lead category.
+  for (const c of candidates) {
+    if (picked.length >= count) break;
+    if (!usedFamilies.has(c.meta.family) && !usedLeads.has(c.meta.leadCategory)) {
+      picked.push(c);
+      usedFamilies.add(c.meta.family);
+      usedLeads.add(c.meta.leadCategory);
+    }
+  }
+  // Pass 2: distinct family only (any lead cat).
+  for (const c of candidates) {
+    if (picked.length >= count) break;
+    if (picked.some(p => p.template === c.template)) continue;
+    if (!usedFamilies.has(c.meta.family)) {
+      picked.push(c);
+      usedFamilies.add(c.meta.family);
+      usedLeads.add(c.meta.leadCategory);
+    }
+  }
+  // Pass 3: distinct LEAD CATEGORY (allow family repeat, e.g. arcade + bowling
+  // are both ACTIVITY_FIRST but structurally distinct).
+  for (const c of candidates) {
+    if (picked.length >= count) break;
+    if (picked.some(p => p.template === c.template)) continue;
+    if (!usedLeads.has(c.meta.leadCategory)) {
+      picked.push(c);
+      usedLeads.add(c.meta.leadCategory);
+    }
+  }
+  // Pass 4: absolute fill by fit.
+  for (const c of candidates) {
+    if (picked.length >= count) break;
+    if (picked.some(p => p.template === c.template)) continue;
+    picked.push(c);
+  }
+
+  return picked.map(p => p.template);
+}
+
+const OVERLAY_ACTIVITY_CATS = new Set([
+  'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS',
+  'POTTERY', 'PAINTING', 'WORKSHOP', 'MOVIE', 'ART_GALLERY',
+  'MALL', 'PARK'
+]);
+
+/**
+ * Overlay user preferences onto a template without erasing its archetype
+ * character. Rule: if a slot's original categories ALREADY include a user
+ * preference, leave the slot alone — the template's archetype is intact and
+ * we don't want a MUSEUM-lead arc to be re-labelled as ARCADE just because
+ * the user also mentioned ARCADE. If there is NO overlap, append the prefs
+ * as fallback options so selectPlaceForSlot can pick them when the primary
+ * category has no local venues. This preserves the distinct-family output
+ * that pickArchetypeTemplates worked to produce.
+ */
+export function overlayPreferencesOntoTemplate(
+  t: ItineraryTemplate,
+  preferredCategories: string[]
+): ItineraryTemplate {
+  const prefs = (preferredCategories || [])
+    .map(c => c.toUpperCase())
+    .filter(c => SELECTABLE_PLACE_CATEGORIES.has(c));
+  if (prefs.length === 0) return t;
+
+  const prefActs = prefs.filter(c => OVERLAY_ACTIVITY_CATS.has(c));
+  const prefFood = prefs.filter(c => !OVERLAY_ACTIVITY_CATS.has(c));
+
+  const merge = (slot: string[], isAct: boolean): string[] => {
+    const overlay = isAct ? prefActs : prefFood;
+    if (overlay.length === 0) return slot;
+    const upperSlot = slot.map(s => s.toUpperCase());
+    const hasOverlap = upperSlot.some(s => overlay.includes(s));
+    if (hasOverlap) return slot; // template already lines up with prefs
+    return Array.from(new Set([...upperSlot, ...overlay]));
+  };
+
+  return {
+    slot1: merge(t.slot1, t.slot1Act), slot1Act: t.slot1Act,
+    slot2: merge(t.slot2, t.slot2Act), slot2Act: t.slot2Act,
+    slot3: merge(t.slot3, t.slot3Act), slot3Act: t.slot3Act,
+  };
+}
+
+/**
+ * Test-only accessor so the eval harness / tests can inspect the picker.
+ */
+export function debugPickArchetypeTemplates(
+  ctx: PlanningContext,
+  pool: 'DATE' | 'GENERAL' = 'GENERAL',
+  count = 4
+): { template: ItineraryTemplate; family: ArchetypeFamily; leadCategory: string }[] {
+  const templates = pickArchetypeTemplates(
+    ctx,
+    pool === 'DATE' ? DATE_ITINERARY_TEMPLATES : ITINERARY_TEMPLATES,
+    count
+  );
+  return templates.map(t => {
+    const meta = deriveTemplateMeta(t);
+    return { template: t, family: meta.family, leadCategory: meta.leadCategory };
+  });
+}
+
 export function generateWhyRecommended(plan: any, groupData: any): string[] {
   const reasons: string[] = [];
 
@@ -1524,15 +1951,17 @@ async function executePlanningEngine(
     [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
   }
 
-  // Prioritize major transit hubs (Dadar, Bandra, Kurla, Andheri, Vashi, Thane) so they are selected first and skip adjacent clustered minor stations
+  // Soft hub preference — hubs get a small bump but non-hubs still surface
+  // regularly. The old hard sort meant Ghatkopar/Lower Parel/Worli/Belapur
+  // never got picked across 50 eval scenarios; this fixes that while still
+  // biasing slightly toward known transit hubs.
   const MAJOR_HUBS = ['Dadar', 'Bandra', 'Kurla', 'Andheri', 'Vashi', 'Thane'];
-  shuffledAllZones.sort((a, b) => {
-    const aIsHub = MAJOR_HUBS.includes(a.name);
-    const bIsHub = MAJOR_HUBS.includes(b.name);
-    if (aIsHub && !bIsHub) return -1;
-    if (!aIsHub && bIsHub) return 1;
-    return 0;
+  const zoneRank = new Map<string, number>();
+  shuffledAllZones.forEach(z => {
+    const isHub = MAJOR_HUBS.includes(z.name);
+    zoneRank.set(z.name, (isHub ? 0.35 : 0) + Math.random());
   });
+  shuffledAllZones.sort((a, b) => (zoneRank.get(b.name) ?? 0) - (zoneRank.get(a.name) ?? 0));
 
   let candidateZones: any[] = [];
   const minSpacings = [4.0, 3.5, 3.0, 2.5];
@@ -2026,6 +2455,29 @@ async function executePlanningEngine(
   const draftItineraries: any[] = [];
   const tiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
 
+  // Context first, then archetype, then venues. This is the hierarchical
+  // dispatch requested in the audit: we do NOT start from a shuffled template
+  // and hope the venues fit — we decide what kind of day to plan up front.
+  const planningContext = buildPlanningContext({
+    groupType: groupData.groupType,
+    groupSize: presentMembers.length,
+    outingTime: groupData.outingTime,
+    outingDate: groupData.outingDate,
+    preferredCategories,
+    vibes: activeVibes,
+    options,
+    extraGroupSignals: { activity: groupData.activity, outingType: groupData.outingType },
+  });
+  console.log('[PLANNER] planning context:', JSON.stringify({
+    groupType: planningContext.groupType,
+    sizeBucket: planningContext.sizeBucket,
+    timeBucket: planningContext.timeBucket,
+    weather: planningContext.weather,
+    preferences: planningContext.preferredCategories,
+    vibes: planningContext.vibes,
+    options: planningContext.options,
+  }));
+
   const buildPass = async (allowSharedVenues = false) => {
     const shuffledZones = [...candidateZones];
     for (let idx = shuffledZones.length - 1; idx > 0; idx--) {
@@ -2033,166 +2485,24 @@ async function executePlanningEngine(
       [shuffledZones[idx], shuffledZones[j]] = [shuffledZones[j], shuffledZones[idx]];
     }
 
-    // Shuffle the templates pool to guarantee diversity
-    const templatesPool = [...ITINERARY_TEMPLATES];
-    for (let j = templatesPool.length - 1; j > 0; j--) {
-      const k = Math.floor(Math.random() * (j + 1));
-      [templatesPool[j], templatesPool[k]] = [templatesPool[k], templatesPool[j]];
-    }
+    // Pick 4 diverse archetype templates up front, then overlay user prefs so
+    // the slot-level search prioritises them. The picker guarantees distinct
+    // families across the 4 plans whenever the eligible pool allows it.
+    const isDate = planningContext.groupType === 'DATE';
+    const templatePool = isDate ? DATE_ITINERARY_TEMPLATES : ITINERARY_TEMPLATES;
+    const rawPicks = pickArchetypeTemplates(planningContext, templatePool, 4);
+    const pickedTemplates = rawPicks.map(t =>
+      overlayPreferencesOntoTemplate(t, planningContext.preferredCategories)
+    );
+
+    console.log('[PLANNER] archetype set:', rawPicks.map(t => ({
+      lead: t.slot1[0],
+      family: familyFromSlotCategories(t.slot1[0]),
+      shape: `${t.slot1[0]}->${t.slot2[0]}->${t.slot3[0]}`,
+    })));
 
     const getActiveTemplate = (idx: number): ItineraryTemplate => {
-      const groupSize = presentMembers.length;
-      const isLargeGroup = groupSize >= 5;
-
-      const groupPreferredCats = (preferredCategories || []).map(c => c.toUpperCase()).filter(c => SELECTABLE_PLACE_CATEGORIES.has(c));
-
-      const isDate = String(groupData.groupType ?? '').toUpperCase() === 'DATE';
-      if (isDate) {
-        if (isMoreActivities) {
-          const actCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MUSEUM'];
-          const preferredActCats = groupPreferredCats.filter(c => actCats.includes(c));
-          const finalActCats = preferredActCats.length > 0 ? preferredActCats : actCats;
-          return {
-            slot1: finalActCats,
-            slot1Act: true,
-            slot2: ['RESTAURANT', 'CAFE'],
-            slot2Act: false,
-            slot3: ['DESSERT', 'CAFE'],
-            slot3Act: false
-          };
-        }
-        if (isMoreCreative) {
-          const creativeCats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING', 'MUSEUM'];
-          const preferredCreative = groupPreferredCats.filter(c => creativeCats.includes(c));
-          const finalCreative = preferredCreative.length > 0 ? preferredCreative : creativeCats;
-          return {
-            slot1: finalCreative,
-            slot1Act: true,
-            slot2: ['CAFE', 'RESTAURANT'],
-            slot2Act: false,
-            slot3: ['DESSERT'],
-            slot3Act: false
-          };
-        }
-        if (isMoreFood) {
-          return {
-            slot1: ['CAFE'],
-            slot1Act: false,
-            slot2: ['RESTAURANT'],
-            slot2Act: false,
-            slot3: ['DESSERT', 'CAFE'],
-            slot3Act: false
-          };
-        }
-        return DATE_ITINERARY_TEMPLATES[idx % DATE_ITINERARY_TEMPLATES.length];
-      }
-      if (isMoreActivities) {
-        const actCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MUSEUM'];
-        const preferredActCats = groupPreferredCats.filter(c => actCats.includes(c));
-        const finalActCats = preferredActCats.length > 0 ? preferredActCats : actCats;
-
-        return {
-          slot1: finalActCats,
-          slot1Act: true,
-          slot2: ['RESTAURANT', 'CAFE'],
-          slot2Act: false,
-          slot3: finalActCats,
-          slot3Act: true
-        };
-      }
-      if (isMoreCreative) {
-        const creativeCats = ['POTTERY', 'WORKSHOP', 'ART_GALLERY', 'PAINTING', 'MUSEUM'];
-        const preferredCreative = groupPreferredCats.filter(c => creativeCats.includes(c));
-        const finalCreative = preferredCreative.length > 0 ? preferredCreative : creativeCats;
-
-        return {
-          slot1: finalCreative,
-          slot1Act: true,
-          slot2: ['CAFE', 'RESTAURANT'],
-          slot2Act: false,
-          slot3: finalCreative,
-          slot3Act: true
-        };
-      }
-      if (isMoreFood) {
-        return {
-          slot1: ['CAFE'],
-          slot1Act: false,
-          slot2: ['RESTAURANT'],
-          slot2Act: false,
-          slot3: ['DESSERT', 'CAFE'],
-          slot3Act: false
-        };
-      }
-      if (isLargeGroup) {
-        const groupInteractiveCats = ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS', 'WORKSHOP', 'POTTERY', 'PAINTING'];
-        const preferredInteractive = groupPreferredCats.filter(c => groupInteractiveCats.includes(c));
-        const actCats = preferredInteractive.length > 0 ? preferredInteractive : groupInteractiveCats;
-
-        if (idx % 2 === 0) {
-          return {
-            slot1: actCats,
-            slot1Act: true,
-            slot2: ['RESTAURANT', 'MALL'],
-            slot2Act: false,
-            slot3: ['DESSERT', 'PARK', 'MALL'],
-            slot3Act: false
-          };
-        } else {
-          return {
-            slot1: ['CAFE', 'MALL'],
-            slot1Act: false,
-            slot2: actCats,
-            slot2Act: true,
-            slot3: ['RESTAURANT'],
-            slot3Act: false
-          };
-        }
-      }
-      if (groupPreferredCats.length > 0) {
-        const baseTemplate = templatesPool[idx % templatesPool.length];
-        const newTemplate = { ...baseTemplate };
-        const activityCats = ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS', 'POTTERY', 'PAINTING', 'WORKSHOP', 'MOVIE', 'ART_GALLERY'];
-        const preferredActivities = groupPreferredCats.filter(c => activityCats.includes(c));
-        const preferredFood = groupPreferredCats.filter(c => !activityCats.includes(c));
-
-        if (newTemplate.slot1Act && preferredActivities.length > 0) {
-          newTemplate.slot1 = preferredActivities;
-        } else if (!newTemplate.slot1Act && preferredFood.length > 0) {
-          newTemplate.slot1 = preferredFood;
-        }
-
-        if (newTemplate.slot2Act && preferredActivities.length > 0) {
-          newTemplate.slot2 = preferredActivities;
-        } else if (!newTemplate.slot2Act && preferredFood.length > 0) {
-          newTemplate.slot2 = preferredFood;
-        }
-
-        if (newTemplate.slot3Act && preferredActivities.length > 0) {
-          newTemplate.slot3 = preferredActivities;
-        } else if (!newTemplate.slot3Act && preferredFood.length > 0) {
-          newTemplate.slot3 = preferredFood;
-        }
-
-        return newTemplate;
-      }
-
-      const isChillVibe = vibes && vibes.some(v => String(v).toUpperCase() === 'CHILL');
-      const baseTemplate = templatesPool[idx % templatesPool.length];
-      const isBoring = !baseTemplate.slot1Act && !baseTemplate.slot2Act && !baseTemplate.slot3Act;
-
-      if (isBoring && !isChillVibe) {
-        return {
-          slot1: ['ARCADE', 'BOWLING', 'MUSEUM', 'PARK'],
-          slot1Act: true,
-          slot2: ['RESTAURANT', 'CAFE'],
-          slot2Act: false,
-          slot3: ['DESSERT', 'CAFE'],
-          slot3Act: false
-        };
-      }
-
-      return baseTemplate;
+      return pickedTemplates[idx % pickedTemplates.length];
     };
 
     for (let i = 0; i < 4; i++) {
