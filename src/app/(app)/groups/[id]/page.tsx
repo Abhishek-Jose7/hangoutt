@@ -15,7 +15,7 @@ import { submitMemberVibes, updateMemberPresenceAction } from '@/actions/members
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
 import { OutingFeedback } from '@/components/OutingFeedback';
-import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, X } from 'lucide-react';
+import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, X, Clock, Star, BookOpen, Map, Wallet, Coffee, Utensils, Trees, Cake, Gamepad2, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -23,6 +23,84 @@ import Link from 'next/link';
 const AVAILABLE_VIBES = [
   'CHILL', 'CREATIVE', 'FOODIE', 'CULTURAL', 'COMPETITIVE', 'ROMANTIC', 'LUXURY', 'BUDGET', 'ADVENTUROUS'
 ];
+
+function getFallbackImageUrl(category: string): string {
+  const cat = (category ?? '').toUpperCase();
+  if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
+    return '/images/cafe_active.png';
+  }
+  return '/images/mumbai_map.png';
+}
+
+function getSlotImageUrl(slot: any): string {
+  const name = (slot.name || '').toLowerCase();
+  const cat = (slot.category || '').toLowerCase();
+
+  // Specific place mappings matching Sapna Ki MKC
+  if (name.includes('lake') || name.includes('promenade') || name.includes('carter')) {
+    return 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('social powai')) {
+    return 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('cozy café') || name.includes('cozy cafe')) {
+    return 'https://images.unsplash.com/photo-1507133750040-4a8f57021571?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('vibrant dining')) {
+    return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('pottery') || name.includes('art')) {
+    return 'https://images.unsplash.com/photo-1565192647048-f997ded87abf?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('game') || name.includes('palacio') || name.includes('bowling') || name.includes('arcade')) {
+    return 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&auto=format&fit=crop&q=60';
+  }
+  if (name.includes('cheesecake') || name.includes('dessert') || name.includes('cake') || name.includes('poetry')) {
+    return 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=300&auto=format&fit=crop&q=60';
+  }
+
+  // Category fallbacks
+  if (cat.includes('cafe') || cat.includes('coffee') || cat.includes('tea')) {
+    return 'https://images.unsplash.com/photo-1498804103079-a6351b050096?w=300&auto=format&fit=crop&q=60';
+  }
+  if (cat.includes('restaurant') || cat.includes('dining') || cat.includes('food')) {
+    return 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=300&auto=format&fit=crop&q=60';
+  }
+  if (cat.includes('bar') || cat.includes('pub') || cat.includes('nightlife')) {
+    return 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=300&auto=format&fit=crop&q=60';
+  }
+  if (cat.includes('park') || cat.includes('garden') || cat.includes('outdoor')) {
+    return 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&auto=format&fit=crop&q=60';
+  }
+  if (cat.includes('museum') || cat.includes('art') || cat.includes('gallery') || cat.includes('culture')) {
+    return 'https://images.unsplash.com/photo-1536924940846-227afb31e2a5?w=300&auto=format&fit=crop&q=60';
+  }
+  if (cat.includes('hotel') || cat.includes('stay')) {
+    return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=300&auto=format&fit=crop&q=60';
+  }
+
+  return slot.imageUrl || getFallbackImageUrl(slot.category);
+}
+
+function getCategoryIcon(category: string) {
+  const cat = (category ?? '').toUpperCase();
+  if (['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR', 'NATURE'].includes(cat)) {
+    return <Trees className="h-3.5 w-3.5 text-[#00E5A0]" />;
+  }
+  if (cat === 'CAFE') {
+    return <Coffee className="h-3.5 w-3.5 text-[#FFD700]" />;
+  }
+  if (cat === 'RESTAURANT' || cat === 'DINING') {
+    return <Utensils className="h-3.5 w-3.5 text-[#DC143C]" />;
+  }
+  if (cat === 'DESSERT' || cat === 'BAKERY') {
+    return <Cake className="h-3.5 w-3.5 text-[#FF69B4]" />;
+  }
+  if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MALL', 'ACTIVITY'].includes(cat)) {
+    return <Gamepad2 className="h-3.5 w-3.5 text-[#00BFFF]" />;
+  }
+  return <Sparkles className="h-3.5 w-3.5 text-[#A855F7]" />;
+}
 
 export default function GroupDetailsPage() {
   const params = useParams();
@@ -483,26 +561,24 @@ export default function GroupDetailsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6 relative z-10">
         
         {/* Protocol Header */}
-        <div className="border-l-4 border-[#DC143C] pl-6 py-3 bg-[#0e0e0e]/40 rounded-r-[4px] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="border-l-4 border-[#DC143C] pl-6 py-3 bg-[#0e0e0e]/40 rounded-r-[4px] flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-in fade-in slide-in-from-top-3 duration-300">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 text-[#DC143C] mb-1.5">
-              <Shield className="h-4.5 w-4.5" />
-              <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
-                STATUS: {group.status.replace('_', ' ')}
-              </span>
+            <div className="border border-[#DC143C]/40 bg-[#DC143C]/5 rounded-[4px] px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider text-[#DC143C] flex items-center gap-1.5 w-fit mb-3">
+              <Shield className="h-3.5 w-3.5 text-[#DC143C]" />
+              <span>STATUS: {group.status.replace('_', ' ')}</span>
             </div>
-            <h1 className="font-sans text-3xl font-normal text-white uppercase leading-none tracking-wide">
-              Group: {group.name}
+            <h1 className="font-sans text-2xl md:text-3xl font-extrabold text-white uppercase leading-none tracking-wide">
+              GROUP: {group.name}
             </h1>
-            <p className="font-mono text-[10px] text-neutral-400 mt-2 flex flex-wrap items-center gap-2">
+            <p className="font-mono text-[10px] text-neutral-400 mt-2.5 flex flex-wrap items-center gap-2 uppercase">
               <span>UUID: {group.id.substring(0, 8).toUpperCase()}</span>
-              <span className="text-neutral-600">|</span>
+              <span className="text-neutral-700">|</span>
               <span>INVITE CODE:</span>
-              <code className="bg-stone-900 border border-stone-850 px-2 py-0.5 rounded-[4px] text-[#DC143C] font-mono select-all font-bold text-[11px]">{group.inviteCode}</code>
+              <code className="bg-[#DC143C]/10 border border-[#DC143C]/30 px-2 py-0.5 rounded-[4px] text-[#DC143C] font-mono select-all font-bold text-[11px] tracking-wide">{group.inviteCode}</code>
             </p>
           </div>
           
-          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && group.status !== 'VOTING' && (
+          {group.status !== 'COMPLETED' && group.status !== 'ARCHIVED' && group.status !== 'VOTING' ? (
             <div className="flex gap-2">
               <Button 
                 variant="outline" 
@@ -514,6 +590,26 @@ export default function GroupDetailsPage() {
                 Share Code
               </Button>
             </div>
+          ) : (
+            isVotingOrClosed && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const el = document.getElementById('vote-distribution');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="border-[#DC143C]/40 bg-[#DC143C]/5 text-[#DC143C] hover:bg-[#DC143C]/15 hover:text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] px-4 py-2.5 gap-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md flex items-center"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#DC143C] opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#DC143C]"></span>
+                  </span>
+                  Live Consensus
+                </Button>
+              </div>
+            )
           )}
         </div>
 
@@ -686,154 +782,181 @@ export default function GroupDetailsPage() {
                       }
                     }}
                   >
-                    {plans.map((plan) => {
+                    {plans.map((plan, idx) => {
                       const voteCount = votes[plan.id] || 0;
                       const orderedSlots = [...(plan.slots ?? [])].sort((a: any, b: any) => a.slotOrder - b.slotOrder);
 
                       return (
                         <div key={plan.id} className="w-full shrink-0 snap-center snap-always px-1">
                           <Card 
-                            className="min-h-[430px] bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 cursor-pointer hover:border-[#DC143C]/40 transition-all select-none"
-                            onClick={() => setExpandedPlanId(plan.id)}
+                            className="bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 transition-all select-none relative"
                           >
-                            <div className="space-y-3">
-                              <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-2.5">
+                            {/* Top row: Image & details */}
+                            <div className="flex gap-4 items-start">
+                              {/* Left: Square Thumbnail */}
+                              <div className="w-[110px] h-[90px] rounded-[8px] overflow-hidden border border-neutral-850 bg-neutral-900 shrink-0">
+                                <img
+                                  src={orderedSlots.length > 0 ? getSlotImageUrl(orderedSlots[0]) : getFallbackImageUrl('')}
+                                  alt={plan.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = getFallbackImageUrl('');
+                                  }}
+                                />
+                              </div>
+
+                              {/* Right: Title, tagline, and badges */}
+                              <div className="flex-1 min-w-0 flex flex-col justify-between h-[90px] pr-2 text-left relative">
                                 <div>
-                                  <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono">
-                                    📍 Location
-                                  </span>
-                                  <h3 className="text-base font-bold text-white mt-0.5 uppercase tracking-wide font-mono">
-                                    {plan.meetupZone}
-                                  </h3>
-                                  <p className="text-[10.5px] text-[#DC143C] font-mono font-semibold uppercase tracking-wider mt-1">
-                                    {plan.name}
+                                  <div className="flex justify-between items-start gap-1">
+                                    <h3 className="text-[13.5px] font-sans font-extrabold text-white leading-tight uppercase tracking-wide truncate max-w-[130px]">
+                                      {plan.name} <span className="font-medium text-neutral-400 normal-case">({idx === 0 ? 'Optimal' : plan.meetupZone})</span>
+                                    </h3>
+                                    
+                                    {/* Votes Badge */}
+                                    <div className="bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] rounded-[4px] flex items-center gap-1 text-[8.5px] font-mono font-bold px-1.5 py-0.5 uppercase tracking-widest shrink-0">
+                                      <Vote className="h-3 w-3 text-[#DC143C]" />
+                                      <span>{voteCount} votes</span>
+                                    </div>
+                                  </div>
+                                  
+                                  <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-snug line-clamp-2 mt-1">
+                                    {plan.tagline}
                                   </p>
                                 </div>
-                                <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1 text-[9px] font-mono font-bold py-0.5 px-2 uppercase tracking-widest shrink-0">
-                                  <Vote className="h-3 w-3" />
-                                  {voteCount} VOTES
-                                </Badge>
-                              </div>
 
-                              <div className="space-y-1">
-                                <span className="text-[9px] uppercase font-mono text-neutral-500 tracking-wider font-bold">TAGLINE</span>
-                                <p className="text-xs text-neutral-300 font-sans tracking-wide leading-relaxed">{plan.tagline}</p>
-                              </div>
-
-                              <div className="rounded-[8px] border border-[#353534]/70 bg-black/25 px-4 py-4">
-                                <div className="relative pl-8">
-                                  <div className="absolute left-[10px] top-3 bottom-3 w-px bg-[#DC143C]/35" />
-                                  {orderedSlots.map((slot: any, sIdx: number) => (
-                                    <div key={slot.id || sIdx} className="relative pb-5 last:pb-0">
-                                      <span className="absolute -left-[29px] top-0 flex h-5 w-5 items-center justify-center rounded-full bg-[#DC143C] text-black text-[10px] font-mono font-black">
-                                        {sIdx + 1}
-                                      </span>
-                                      <p className="text-[12px] font-mono font-bold uppercase tracking-wide text-white leading-tight">
-                                        {slot.name}
-                                      </p>
-                                      <p className="mt-0.5 text-[9px] font-mono uppercase tracking-wider text-neutral-500">
-                                        {slot.arrivalTime} / {slot.category}
-                                      </p>
-                                      {sIdx < orderedSlots.length - 1 && (
-                                        <div className="mt-3 space-y-1 text-[9.5px] font-mono font-bold uppercase tracking-wider text-neutral-400">
-                                          <div>| walk {Math.min(slot.travelToNextMinutes || 15, 8)} min</div>
-                                          <div>| cab Rs {slot.travelToNextCost || Math.max(16, Math.round((slot.travelToNextMinutes || 15) * 1.1))}</div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Travel and cost indicators */}
-                              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#353534]/40 text-[10px] font-mono text-neutral-400">
-                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
-                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">ESTIMATED OUTING COST</span>
-                                  <span className="text-white font-bold">₹{plan.totalEstimatedCostPerHead} / Head</span>
-                                </div>
-                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
-                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">AVERAGE TRAVEL TIME</span>
-                                  <span className="text-white font-bold">~{plan.avgCabTime} Mins (Cab)</span>
-                                </div>
-                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
-                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">CAB JOURNEY COST</span>
-                                  <span className="text-white font-bold">₹{plan.avgCabCost} avg</span>
-                                </div>
-                                <div className="bg-[#1c1b1b]/50 p-2 rounded-[6px] border border-[#353534]/30 space-y-0.5">
-                                  <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">TRAIN TIME & COST</span>
-                                  <span className="text-white font-bold">~{plan.avgTrainTime}m / ₹{plan.avgTrainCost}</span>
-                                </div>
-                              </div>
-
-                              {/* Expand Prompt indicator */}
-                              <div className="flex items-center justify-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-neutral-500 pt-1">
-                                TAP TO VIEW DETAILS
-                              </div>
-
-                              {/* Expanded content */}
-                              {expandedPlanId === '__never__' && (
-                                <div className="pt-3.5 border-t border-[#353534] space-y-4 animate-in fade-in slide-in-from-top-2 duration-250 text-left">
-                                  <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono block">
-                                    Itinerary Timeline
-                                  </span>
-                                  <div className="space-y-2.5">
-                                    {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
-                                      <div key={sIdx} className="flex gap-3 items-start bg-black/40 p-3 rounded-[6px] border border-[#353534]">
-                                        <span className="w-5 h-5 flex items-center justify-center bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[10px] font-mono rounded-[4px] shrink-0 mt-0.5">
-                                          {slot.slotOrder}
-                                        </span>
-                                        <div className="space-y-0.5">
-                                          <p className="text-xs font-mono font-bold text-white uppercase">{slot.name}</p>
-                                          <p className="text-[9px] font-mono text-neutral-400">
-                                            {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}m) • ₹{slot.estimatedCostPerHead}/head
-                                          </p>
-                                          {slot.note && <p className="text-[10px] text-neutral-500 font-sans italic mt-1.5">&ldquo;{slot.note}&rdquo;</p>}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-
-                                  <div className="bg-black/25 p-3 rounded-[6px] border border-[#353534]/50 space-y-2">
-                                    <span className="text-[9px] uppercase font-bold text-[#00E1AB] tracking-widest font-mono block">
-                                      Itinerary Score Details
+                                {/* Recommendation Pills */}
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {idx === 0 && (
+                                    <span className="bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[7.5px] font-mono font-bold px-1.5 py-0.5 rounded-[3px] tracking-wide uppercase flex items-center gap-0.5">
+                                      <MapPin className="h-2.5 w-2.5 text-[#DC143C]" />
+                                      Lowest Commute
                                     </span>
-                                    <div className="grid grid-cols-2 gap-2 text-[9.5px] font-mono text-neutral-400">
-                                      <div>Experience: <span className="text-white">{(plan.experienceScore * 10).toFixed(1)}/10</span></div>
-                                      <div>Travel Time: <span className="text-white">{(plan.travelScore * 10).toFixed(1)}/10</span></div>
-                                      <div>Budget fit: <span className="text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span></div>
-                                      <div>Fairness index: <span className="text-white">{(plan.fairnessScore * 10).toFixed(1)}/10</span></div>
-                                    </div>
-                                  </div>
+                                  )}
+                                  <span className="bg-purple-950/40 border border-purple-800/35 text-purple-400 text-[7.5px] font-mono font-bold px-1.5 py-0.5 rounded-[3px] tracking-wide uppercase flex items-center gap-0.5">
+                                    <Heart className="h-2.5 w-2.5 text-purple-400 fill-purple-400" />
+                                    Date Friendly
+                                  </span>
+                                  <span className="bg-cyan-950/40 border border-cyan-800/35 text-cyan-400 text-[7.5px] font-mono font-bold px-1.5 py-0.5 rounded-[3px] tracking-wide uppercase flex items-center gap-0.5">
+                                    <Sparkles className="h-2.5 w-2.5 text-cyan-400" />
+                                    Indoor Friendly
+                                  </span>
                                 </div>
-                              )}
+                              </div>
                             </div>
 
-                            {/* Vote Action */}
-                            {group.votingStatus === 'OPEN' && (
+                            {/* Stats Grid - 4 Columns */}
+                            <div className="border-t border-[#353534]/55 pt-3.5 mt-1 grid grid-cols-4 gap-1 text-center">
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-center gap-1 text-neutral-500">
+                                  <Wallet className="h-3 w-3 text-[#DC143C]" />
+                                  <span className="text-[7.5px] font-mono uppercase tracking-wider block font-bold leading-none">COST/HEAD</span>
+                                </div>
+                                <span className="text-white font-sans font-extrabold text-[12.5px] block leading-tight">₹{plan.totalEstimatedCostPerHead}</span>
+                                <span className="text-[7.5px] text-neutral-500 font-sans block leading-none">within ₹{Math.max(100, Math.round(plan.totalEstimatedCostPerHead * 0.9))}-₹{Math.round(plan.totalEstimatedCostPerHead * 1.25)}</span>
+                              </div>
+                              <div className="space-y-1 border-l border-[#353534]/55">
+                                <div className="flex items-center justify-center gap-1 text-neutral-500">
+                                  <Clock className="h-3 w-3 text-[#DC143C]" />
+                                  <span className="text-[7.5px] font-mono uppercase tracking-wider block font-bold leading-none">AVG COMMUTE</span>
+                                </div>
+                                <span className="text-white font-sans font-extrabold text-[12.5px] block leading-tight">{plan.avgCabTime} mins</span>
+                                <span className="text-[7.5px] text-neutral-500 font-sans block leading-none">({plan.shortestTravelTime || Math.round(plan.avgCabTime * 0.8)}-{plan.longestTravelTime || Math.round(plan.avgCabTime * 1.3)} mins)</span>
+                              </div>
+                              <div className="space-y-1 border-l border-[#353534]/55">
+                                <div className="flex items-center justify-center gap-1 text-neutral-500">
+                                  <Clock className="h-3 w-3 text-[#DC143C]" />
+                                  <span className="text-[7.5px] font-mono uppercase tracking-wider block font-bold leading-none">DURATION</span>
+                                </div>
+                                <span className="text-white font-sans font-extrabold text-[12.5px] block leading-tight">
+                                  {Math.floor((plan.totalDurationMinutes || 240) / 60)}h {Math.round((plan.totalDurationMinutes || 240) % 60)}m
+                                </span>
+                                <span className="text-[7.5px] text-neutral-500 font-sans block leading-none">active time</span>
+                              </div>
+                              <div className="space-y-1 border-l border-[#353534]/55">
+                                <div className="flex items-center justify-center gap-1 text-neutral-500">
+                                  <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                  <span className="text-[7.5px] font-mono uppercase tracking-wider block font-bold leading-none">PLAN SCORE</span>
+                                </div>
+                                <span className="text-[#00E1AB] font-sans font-extrabold text-[12.5px] block leading-tight">{(plan.score * 10).toFixed(1)}/10</span>
+                                <span className="text-[7.5px] text-neutral-500 font-sans block leading-none">high rating</span>
+                              </div>
+                            </div>
+
+                            {/* Horizontal Places Timeline */}
+                            <div className="border-t border-[#353534]/55 pt-3.5 flex items-center justify-start gap-1 bg-black/20 p-2.5 rounded-[6px] border border-[#353534]/30 overflow-x-auto scrollbar-none">
+                              {orderedSlots.map((slot: any, sIdx: number) => (
+                                <React.Fragment key={slot.id || sIdx}>
+                                  {sIdx > 0 && (
+                                    <div className="flex flex-col items-center shrink-0 mx-1.5">
+                                      <span className="text-[#DC143C] font-extrabold text-xs">→</span>
+                                      <span className="text-[8px] font-mono text-neutral-500 font-bold leading-none mt-0.5">
+                                        {orderedSlots[sIdx - 1].travelToNextMinutes || 15}m
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1.5 shrink-0 min-w-0">
+                                    <div className="w-7 h-7 flex items-center justify-center rounded-[6px] border border-[#353534]/60 bg-stone-950 text-white shrink-0">
+                                      {getCategoryIcon(slot.category)}
+                                    </div>
+                                    <div className="min-w-0 text-left">
+                                      <p className="text-[10px] font-sans font-bold text-white truncate max-w-[80px] leading-tight">{slot.name}</p>
+                                      <p className="text-[8px] font-mono text-neutral-500 mt-0.5 leading-none">{slot.arrivalTime}</p>
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              ))}
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-2 gap-3 mt-1.5 shrink-0">
                               <Button
                                 size="sm"
-                                disabled={isCasting || userVotedPlanId === plan.id}
+                                variant="outline"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleVoteCast(plan.id);
+                                  setExpandedPlanId(plan.id);
                                 }}
-                                className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10.5px] py-4.5 shadow-md transition-all duration-200 cursor-pointer ${
-                                  userVotedPlanId === plan.id
-                                    ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                    : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
-                                }`}
+                                className="w-full bg-[#111] hover:bg-[#1c1b1b] border border-[#353534] text-white font-sans font-bold uppercase tracking-widest text-[9.5px] py-3.5 rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                               >
-                                {userVotedPlanId === plan.id ? (
-                                  <>
-                                    <Check className="mr-2 h-4 w-4 text-[#00E1AB]" /> VOTE REGISTERED
-                                  </>
-                                ) : (
-                                  <>
-                                    <Vote className="mr-2 h-4 w-4" /> VOTE FOR THIS
-                                  </>
-                                )}
+                                <List className="h-3.5 w-3.5 text-neutral-400" />
+                                <span>View Highlights</span>
                               </Button>
-                            )}
+
+                              {group.votingStatus === 'OPEN' ? (
+                                <Button
+                                  size="sm"
+                                  disabled={isCasting || userVotedPlanId === plan.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleVoteCast(plan.id);
+                                  }}
+                                  className={`w-full font-sans font-extrabold rounded-[6px] uppercase tracking-widest text-[9.5px] py-3.5 transition-all duration-200 cursor-pointer ${
+                                    userVotedPlanId === plan.id
+                                      ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
+                                      : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-black'
+                                  }`}
+                                >
+                                  {userVotedPlanId === plan.id ? (
+                                    <>
+                                      <Check className="h-3.5 w-3.5 text-[#00E1AB]" /> REGISTERED
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Vote className="h-3.5 w-3.5" /> Vote for plan
+                                    </>
+                                  )}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  disabled
+                                  className="w-full bg-[#222] border border-[#333] text-neutral-500 font-sans font-bold rounded-[6px] uppercase tracking-widest text-[9.5px] py-3.5 cursor-not-allowed"
+                                >
+                                  Voting Closed
+                                </Button>
+                              )}
+                            </div>
                           </Card>
                         </div>
                       );
@@ -881,77 +1004,94 @@ export default function GroupDetailsPage() {
                       if (!activePlan) return null;
                       const detailSlots = [...(activePlan.slots ?? [])].sort((a: any, b: any) => a.slotOrder - b.slotOrder);
                       return (
-                        <div className="fixed inset-0 z-50 bg-black text-white md:hidden overflow-y-auto">
-                          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#353534] bg-black/95 px-4 py-4 backdrop-blur-md">
-                            <div>
-                              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#DC143C]">Itinerary details</p>
-                              <h3 className="mt-1 text-base font-mono font-bold uppercase tracking-wide text-white">{activePlan.name}</h3>
-                            </div>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => setExpandedPlanId(null)}
-                              className="h-10 w-10 rounded-[6px] border border-[#353534] bg-[#111] text-white hover:bg-[#1c1b1b]"
-                            >
-                              <X className="h-5 w-5" />
-                              <span className="sr-only">Close itinerary details</span>
-                            </Button>
-                          </div>
-
-                          <div className="space-y-5 px-4 py-5 pb-24">
-                            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-400">
-                              <div className="rounded-[6px] border border-[#353534] bg-[#0e0e0e] p-3">
-                                <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Cost / head</span>
-                                <strong className="mt-1 block text-sm text-white">Rs {activePlan.totalEstimatedCostPerHead}</strong>
+                        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                          <div className="bg-[#0e0e0e] border border-[#353534] rounded-lg max-w-xl w-full max-h-[90vh] p-6 relative flex flex-col gap-5 text-white shadow-2xl">
+                            
+                            {/* Header */}
+                            <div className="flex items-center justify-between border-b border-[#353534]/50 pb-3 shrink-0">
+                              <div>
+                                <p className="text-[9.5px] font-mono font-bold uppercase tracking-widest text-[#DC143C]">Itinerary details</p>
+                                <h3 className="mt-1 text-base font-mono font-bold uppercase tracking-wide text-white">{activePlan.name}</h3>
                               </div>
-                              <div className="rounded-[6px] border border-[#353534] bg-[#0e0e0e] p-3">
-                                <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Avg commute</span>
-                                <strong className="mt-1 block text-sm text-white">{activePlan.avgTotalTime || activePlan.avgCabTime} mins</strong>
-                              </div>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setExpandedPlanId(null)}
+                                className="h-8 w-8 rounded-[6px] border border-[#353534] bg-[#111] text-white hover:bg-[#1c1b1b] cursor-pointer shrink-0"
+                              >
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">Close itinerary details</span>
+                              </Button>
                             </div>
 
-                            <div className="relative ml-3 border-l border-[#DC143C]/35 pl-6">
-                              {detailSlots.map((slot: any, sIdx: number) => (
-                                <div key={slot.id || sIdx} className="relative pb-7 last:pb-0">
-                                  <span className="absolute -left-[37px] top-0 flex h-6 w-6 items-center justify-center rounded-full bg-[#DC143C] text-black text-[11px] font-mono font-black">
-                                    {sIdx + 1}
-                                  </span>
-                                  <div className="rounded-[8px] border border-[#353534] bg-[#0e0e0e] p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <h4 className="text-sm font-mono font-bold uppercase tracking-wide text-white">{slot.name}</h4>
-                                        <p className="mt-1 text-[9px] font-mono uppercase tracking-wider text-neutral-500">
-                                          {slot.category} / {slot.arrivalTime} / {slot.durationMinutes}m
+                            {/* Body content */}
+                            <div className="space-y-5 overflow-y-auto pr-1 flex-1">
+                              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-400">
+                                <div className="rounded-[6px] border border-[#353534] bg-[#131313]/95 p-3">
+                                  <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Cost / head</span>
+                                  <strong className="mt-1 block text-sm text-white">Rs {activePlan.totalEstimatedCostPerHead}</strong>
+                                </div>
+                                <div className="rounded-[6px] border border-[#353534] bg-[#131313]/95 p-3">
+                                  <span className="block text-[8px] uppercase tracking-widest text-neutral-500">Avg commute</span>
+                                  <strong className="mt-1 block text-sm text-white">{activePlan.avgTotalTime || activePlan.avgCabTime} mins</strong>
+                                </div>
+                              </div>
+
+                              <div className="relative ml-3 border-l border-dashed border-[#DC143C]/35 pl-6 space-y-4">
+                                {detailSlots.map((slot: any, sIdx: number) => (
+                                  <div key={slot.id || sIdx} className="relative pb-5 last:pb-0">
+                                    <span className="absolute -left-[37px] top-0 flex h-6 w-6 items-center justify-center rounded-full border border-[#DC143C] bg-black text-[#DC143C] text-[11px] font-mono font-bold">
+                                      {sIdx + 1}
+                                    </span>
+                                    <div className="rounded-[8px] border border-[#353534] bg-black/45 p-4 flex justify-between gap-4 items-start">
+                                      <div className="space-y-1.5 flex-1 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="bg-[#DC143C] text-black text-[9px] font-mono font-black px-1.5 py-0.5 rounded-[3px] tracking-wide shrink-0">
+                                            {slot.arrivalTime}
+                                          </span>
+                                          <h4 className="text-sm font-mono font-bold uppercase tracking-wide text-white truncate">{slot.name}</h4>
+                                        </div>
+                                        <p className="text-[9.5px] font-mono text-neutral-400">
+                                          {slot.category.toUpperCase()} • ₹{slot.estimatedCostPerHead}/head
                                         </p>
+                                        {slot.note && (
+                                          <p className="text-[11px] text-neutral-400 leading-normal font-sans">
+                                            {slot.note}
+                                          </p>
+                                        )}
                                       </div>
-                                      <span className="shrink-0 rounded-[4px] border border-[#DC143C]/20 bg-[#DC143C]/10 px-2 py-1 text-[9px] font-mono font-bold text-[#DC143C]">
-                                        Rs {slot.estimatedCostPerHead}
-                                      </span>
+                                      
+                                      <div className="shrink-0 w-[84px] h-[48px] relative rounded-[4px] overflow-hidden border border-neutral-850 bg-neutral-900 self-start mt-0.5">
+                                        <img
+                                          src={getSlotImageUrl(slot)}
+                                          alt={slot.name}
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).src = getFallbackImageUrl(slot.category);
+                                          }}
+                                        />
+                                      </div>
                                     </div>
-                                    {slot.note && (
-                                      <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
-                                        {slot.note}
-                                      </p>
+                                    {sIdx < detailSlots.length - 1 && (
+                                      <div className="py-2.5 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 pl-4 border-l border-dashed border-[#DC143C]/20 -ml-6 my-1">
+                                        <div>🚗 commute {Math.min(slot.travelToNextMinutes || 15, 12)} mins (~₹{slot.travelToNextCost || Math.max(20, Math.round((slot.travelToNextMinutes || 15) * 1.5))})</div>
+                                      </div>
                                     )}
                                   </div>
-                                  {sIdx < detailSlots.length - 1 && (
-                                    <div className="py-3 text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-400">
-                                      <div>| walk {Math.min(slot.travelToNextMinutes || 15, 8)} min</div>
-                                      <div>| cab Rs {slot.travelToNextCost || Math.max(16, Math.round((slot.travelToNextMinutes || 15) * 1.1))}</div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
 
-                            <div className="rounded-[8px] border border-[#353534] bg-[#0e0e0e] p-4">
-                              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#00E1AB]">Score details</p>
-                              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono text-neutral-400">
-                                <div>Experience: <span className="text-white">{(activePlan.experienceScore * 10).toFixed(1)}/10</span></div>
-                                <div>Travel: <span className="text-white">{(activePlan.travelScore * 10).toFixed(1)}/10</span></div>
-                                <div>Budget: <span className="text-white">{(activePlan.budgetScore * 10).toFixed(1)}/10</span></div>
-                                <div>Fairness: <span className="text-white">{(activePlan.fairnessScore * 10).toFixed(1)}/10</span></div>
+                              <div className="rounded-[8px] border border-[#353534] bg-[#131313]/95 p-4">
+                                <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#00E1AB]">Detailed Commute & Score Metrics</p>
+                                <div className="mt-3 grid grid-cols-2 gap-y-2 gap-x-4 text-[10.5px] font-mono text-neutral-400">
+                                  <div>Cab Cost: <span className="text-white font-bold">~₹{activePlan.avgCabCost} avg</span></div>
+                                  <div>Train Cost: <span className="text-white font-bold">~₹{activePlan.avgTrainCost} avg</span></div>
+                                  <div>Avg Train time: <span className="text-white font-bold">~{activePlan.avgTrainTime} mins</span></div>
+                                  <div>Fairness Index: <span className="text-white font-bold">{(activePlan.travelFairnessScore * 10).toFixed(1)}/10</span></div>
+                                  <div>Experience: <span className="text-white font-bold">{(activePlan.experienceScore * 10).toFixed(1)}/10</span></div>
+                                  <div>Budget Match: <span className="text-white font-bold">{(activePlan.budgetScore * 10).toFixed(1)}/10</span></div>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -966,7 +1106,6 @@ export default function GroupDetailsPage() {
                   {plans.map((plan, idx) => {
                     const voteCount = votes[plan.id] || 0;
                     const isFeatured = idx === 0;
-                    const isExpanded = true;
                     const placesText = plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((s: any) => s.name).join(' → ') || 'No places specified';
 
                     return (
@@ -978,8 +1117,8 @@ export default function GroupDetailsPage() {
                           <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-3.5">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono">
-                                  📍 Zone: {plan.meetupZone}
+                                <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest font-mono flex items-center gap-1">
+                                  <MapPin className="h-3.5 w-3.5 text-[#DC143C]" /> ZONE: {plan.meetupZone.toUpperCase()}
                                 </span>
                                 {isFeatured && (
                                   <Badge className="bg-[#00E1AB]/10 text-[#00E1AB] border border-[#00E1AB]/20 text-[7.5px] font-mono font-bold py-0 px-1.5 uppercase tracking-widest rounded-[3px]">
@@ -987,87 +1126,125 @@ export default function GroupDetailsPage() {
                                   </Badge>
                                 )}
                               </div>
-                              <h3 className="text-base font-bold text-white mt-1 uppercase tracking-wide font-mono truncate">{plan.name}</h3>
+                              <h3 className="text-[22px] font-sans font-extrabold text-white mt-1.5 uppercase tracking-wide truncate">{plan.name}</h3>
                               <p className="text-[11px] text-neutral-400 font-sans tracking-wide leading-relaxed mt-0.5 line-clamp-1">{plan.tagline}</p>
                             </div>
-                            <Badge variant="secondary" className="bg-[#DC143C]/10 text-[#DC143C] border border-[#DC143C]/20 rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest shrink-0">
+                            <div className="bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] rounded-[4px] flex items-center gap-1.5 text-[9px] font-mono font-bold py-1 px-3 uppercase tracking-widest shrink-0 h-fit">
                               <Vote className="h-3.5 w-3.5" />
                               {voteCount} VOTES
-                            </Badge>
+                            </div>
                           </div>
 
-                          <div className="space-y-1">
-                            <span className="text-[9.5px] uppercase font-mono text-neutral-500 tracking-wider font-bold">PLACES</span>
-                            <p className="text-xs font-mono font-bold text-white tracking-wide leading-snug truncate">{placesText}</p>
+                          <div className="flex justify-between items-center gap-4 bg-black/20 p-2.5 rounded-[6px] border border-[#353534]/30">
+                            <div className="min-w-0">
+                              <span className="text-[8.5px] uppercase font-mono text-neutral-500 tracking-wider font-bold block">PLACES</span>
+                              <p className="text-[11.5px] font-sans font-bold text-white tracking-wide leading-snug truncate mt-0.5">{placesText}</p>
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedPlanId(plan.id);
+                              }}
+                              className="h-7 w-7 rounded-[4px] border border-[#353534] bg-stone-950/60 hover:bg-stone-900 text-neutral-400 hover:text-white shrink-0 cursor-pointer"
+                            >
+                              <BookOpen className="h-3.5 w-3.5 text-[#DC143C]" />
+                            </Button>
                           </div>
 
                           {/* Stats Row */}
-                          <div className="grid grid-cols-3 gap-3 bg-[#131313]/95 border border-[#353534]/40 rounded-[6px] p-3 text-center text-[10px] font-mono text-neutral-400">
-                            <div>
-                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">COST / HEAD</span>
-                              <span className="text-white font-bold text-xs">₹{plan.totalEstimatedCostPerHead}</span>
+                          <div className="grid grid-cols-3 gap-2 bg-[#131313]/95 border border-[#353534]/40 rounded-[8px] p-3 text-[10px] font-mono text-neutral-400">
+                            <div className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4 text-[#DC143C] shrink-0" />
+                              <div>
+                                <span className="text-[8px] text-neutral-500 uppercase tracking-wider block leading-none font-mono">COST/HEAD</span>
+                                <span className="text-white font-sans font-extrabold text-[13px] mt-0.5 block">₹{plan.totalEstimatedCostPerHead}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">AVG CAB TIME</span>
-                              <span className="text-white font-bold text-xs">{plan.avgCabTime} Mins</span>
+                            <div className="flex items-center gap-2 border-l border-[#353534]/50 pl-2">
+                              <Clock className="h-4 w-4 text-[#DC143C] shrink-0" />
+                              <div>
+                                <span className="text-[8px] text-neutral-500 uppercase tracking-wider block leading-none font-mono">AVG CAB TIME</span>
+                                <span className="text-white font-sans font-extrabold text-[13px] mt-0.5 block">{plan.avgCabTime} Mins</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-[8px] text-neutral-500 uppercase tracking-wider block">PLAN SCORE</span>
-                              <span className="text-[#DC143C] font-bold text-xs">{(plan.score * 10).toFixed(1)}/10</span>
+                            <div className="flex items-center gap-2 border-l border-[#353534]/50 pl-2">
+                              <Star className="h-4 w-4 text-[#DC143C] shrink-0" />
+                              <div>
+                                <span className="text-[8px] text-neutral-500 uppercase tracking-wider block leading-none font-mono">PLAN SCORE</span>
+                                <span className="text-[#DC143C] font-sans font-extrabold text-[13px] mt-0.5 block">{(plan.score * 10).toFixed(1)}/10</span>
+                              </div>
                             </div>
                           </div>
 
-                          {/* Collapsible details for non-featured OR default for featured */}
-                          {isExpanded && (
-                            <div className="pt-4 border-t border-[#353534] space-y-4 animate-in fade-in slide-in-from-top-2 duration-250 text-left">
-                              <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-[#DC143C]">ITINERARY TIMELINE</h4>
-                              
-                              <div className="grid grid-cols-1 gap-2.5">
-                                {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, sIdx: number) => (
-                                  <div key={sIdx} className="flex gap-3 items-start bg-black/45 p-3.5 border border-[#353534] rounded-[6px]">
-                                    <span className="w-5 h-5 flex items-center justify-center bg-[#DC143C]/10 border border-[#DC143C]/20 text-[#DC143C] text-[10px] font-mono rounded-[4px] shrink-0 mt-0.5">
-                                      {slot.slotOrder}
-                                    </span>
-                                    <div className="space-y-0.5 flex-1 min-w-0">
-                                      <p className="text-xs font-mono font-bold text-white uppercase truncate">{slot.name}</p>
-                                      <p className="text-[9px] font-mono text-neutral-400">
-                                        {slot.category} • {slot.arrivalTime} ({slot.durationMinutes}m) • ₹{slot.estimatedCostPerHead}/head
-                                      </p>
-                                      {slot.note && <p className="text-[10.5px] text-neutral-500 font-sans italic mt-1">&ldquo;{slot.note}&rdquo;</p>}
+                          {/* Timeline Section */}
+                          <div className="pt-4 border-t border-[#353534]/55 text-left">
+                            <h4 className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#DC143C] mb-3.5">ITINERARY TIMELINE</h4>
+                            
+                            <div className="relative border-l border-dashed border-[#DC143C]/35 pl-4 ml-1.5 space-y-4">
+                              {plan.slots?.sort((a: any, b: any) => a.slotOrder - b.slotOrder).slice(0, 2).map((slot: any, sIdx: number) => (
+                                <div key={sIdx} className="relative flex justify-between items-start gap-2.5">
+                                  <span className="absolute -left-[26px] top-0.5 w-[20px] h-[20px] flex items-center justify-center bg-[#0e0e0e] border border-[#DC143C] text-[#DC143C] text-[9.5px] font-mono rounded-full shrink-0 font-bold">
+                                    {slot.slotOrder}
+                                  </span>
+                                  <div className="space-y-1.5 flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="bg-[#DC143C] text-black text-[9px] font-mono font-black px-1.5 py-0.5 rounded-[3px] tracking-wide shrink-0">
+                                        {slot.arrivalTime}
+                                      </span>
+                                      <h4 className="text-[11.5px] font-sans font-bold text-white uppercase truncate tracking-wide">
+                                        {slot.name}
+                                      </h4>
                                     </div>
+                                    <p className="text-[9.5px] font-sans text-neutral-400 font-medium">
+                                      {slot.category.toUpperCase()} • ₹{slot.estimatedCostPerHead}/head
+                                    </p>
+                                    {slot.note && (
+                                      <p className="text-[10px] text-neutral-400 leading-normal font-sans line-clamp-2">
+                                        {slot.note}
+                                      </p>
+                                    )}
                                   </div>
-                                ))}
-                              </div>
 
-                              {/* Travel breakdown stats */}
-                              <div className="bg-black/20 p-3 rounded-[6px] border border-[#353534]/50 space-y-2 text-[10px] font-mono text-neutral-400">
-                                <h5 className="text-[9px] font-mono font-bold text-[#00E1AB] uppercase tracking-wider">Detailed Commute & Score Metrics</h5>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                                  <div>Cab Cost: <span className="text-white font-bold">~₹{plan.avgCabCost} avg</span></div>
-                                  <div>Train Cost: <span className="text-white font-bold">~₹{plan.avgTrainCost} avg</span></div>
-                                  <div>Avg Train time: <span className="text-white font-bold">~{plan.avgTrainTime} mins</span></div>
-                                  <div>Fairness Index: <span className="text-white font-bold">{(plan.travelFairnessScore * 10).toFixed(1)}/10</span></div>
-                                  <div>Experience: <span className="text-white">{(plan.experienceScore * 10).toFixed(1)}/10</span></div>
-                                  <div>Budget Match: <span className="text-white">{(plan.budgetScore * 10).toFixed(1)}/10</span></div>
+                                  <div className="shrink-0 w-[84px] h-[48px] relative rounded-[4px] overflow-hidden border border-neutral-850 bg-neutral-900 self-start mt-0.5">
+                                    <img
+                                      src={getSlotImageUrl(slot)}
+                                      alt={slot.name}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = getFallbackImageUrl(slot.category);
+                                      }}
+                                    />
+                                  </div>
                                 </div>
-                              </div>
+                              ))}
                             </div>
-                          )}
+
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedPlanId(plan.id);
+                              }}
+                              className="w-full bg-[#111]/80 hover:bg-[#1a1919] border border-[#353534] text-neutral-300 hover:text-white font-sans font-bold uppercase tracking-widest text-[9.5px] py-2.5 rounded-[6px] transition-colors mt-4 cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              View Full Itinerary <ArrowRight className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
 
                         {/* Voting Action */}
                         {group.votingStatus === 'OPEN' && (
                           <Button
-                            size="sm"
                             disabled={isCasting || userVotedPlanId === plan.id}
                             onClick={(e) => {
                                e.stopPropagation();
                                handleVoteCast(plan.id);
                             }}
-                            className={`w-full font-mono font-bold rounded-[8px] uppercase tracking-widest text-[9.5px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
+                            className={`w-full font-sans font-extrabold rounded-[8px] uppercase tracking-widest text-[9.5px] py-3.5 shadow-md transition-all duration-200 cursor-pointer ${
                               userVotedPlanId === plan.id
                                 ? 'bg-[#00E1AB]/10 border border-[#00E1AB]/20 text-[#00E1AB]'
-                                : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-bold'
+                                : 'bg-[#DC143C] hover:bg-[#B80F2E] text-black font-black'
                             }`}
                           >
                             {userVotedPlanId === plan.id ? (
@@ -1086,12 +1263,12 @@ export default function GroupDetailsPage() {
                   })}
 
                   {/* 3. Live Vote Distribution Bento Block */}
-                  <Card className="border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg rounded-[12px] flex flex-col justify-between gap-5 min-h-[300px]">
+                  <Card id="vote-distribution" className="border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg rounded-[12px] flex flex-col justify-between gap-5 min-h-[300px]">
                     <div className="space-y-1">
                       <span className="text-[9px] uppercase font-bold text-[#DC143C] tracking-widest flex items-center gap-1.5 font-mono">
-                        <Vote className="h-3.5 w-3.5" /> Live Consensus
+                        <Vote className="h-3.5 w-3.5 text-[#DC143C]" /> Live Consensus
                       </span>
-                      <h3 className="text-base font-bold text-white uppercase tracking-wider font-mono">Vote Distribution</h3>
+                      <h3 className="text-base font-sans font-extrabold text-white uppercase tracking-wider">Vote Distribution</h3>
                       <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed">
                         Visualizing alignments across proposed routes.
                       </p>
@@ -1104,13 +1281,13 @@ export default function GroupDetailsPage() {
                         const pct = totalVotes > 0 ? (pVotes / totalVotes) * 100 : 0;
                         return (
                           <div key={p.id} className="space-y-1">
-                            <div className="flex justify-between text-[10px] font-mono">
-                              <span className="text-white font-semibold uppercase truncate max-w-[130px]">{p.name}</span>
-                              <span className="text-neutral-400 font-bold">{pVotes} ({pct.toFixed(0)}%)</span>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-white font-sans font-extrabold uppercase truncate max-w-[150px]">{p.name}</span>
+                              <span className="text-neutral-400 font-mono font-bold">{pVotes} ({pct.toFixed(0)}%)</span>
                             </div>
-                            <div className="h-2 bg-black border border-stone-850 rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-neutral-950 rounded-full overflow-hidden">
                               <div 
-                                className="h-full bg-gradient-to-r from-[#DC143C] to-[#B80F2E] transition-all duration-500 rounded-full" 
+                                className="h-full bg-[#DC143C] transition-all duration-500 rounded-full" 
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
