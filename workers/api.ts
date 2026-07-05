@@ -2175,6 +2175,27 @@ export default {
       if (unauthorized) return unauthorized;
 
       if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
+      if (url.pathname === '/api/admin/trigger-cron' && request.method === 'POST') {
+        const cron = url.searchParams.get('cron') || '0 * * * *';
+        const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
+        if (!apiKey) {
+          return json({ error: 'API key not configured' }, { status: 500, headers: corsHeaders(env) });
+        }
+        if (cron === '0 * * * *') {
+          await consumeDiscoveryQueue(env.DB, apiKey, 10);
+        } else if (cron === '15 */3 * * *') {
+          await refreshStalePlaces(env.DB, apiKey, 25);
+          await computeZoneCoverage(env.DB);
+        } else if (cron === '0 2 * * *') {
+          await computeZoneCoverage(env.DB);
+          await seedDiscoveryQueue(env.DB);
+          await recomputePopularity(env.DB);
+          await runDedupePass(env.DB);
+          await discoverExperiences(env.DB);
+          await resetDailyBudget(env.DB);
+        }
+        return json({ success: true, triggered: cron }, { headers: corsHeaders(env) });
+      }
       if (url.pathname === '/api/admin/discover-experiences' && request.method === 'POST') return handleAdminDiscoverExperiences(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'GET') return getAdminPlacesWorker(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'POST') return handleAddPlace(request, env);
@@ -2308,59 +2329,69 @@ async function computeZoneCoverage(db: D1Database): Promise<void> {
   const categories = ['CAFE', 'RESTAURANT', 'ARCADE', 'BOWLING', 'MUSEUM', 'MALL', 'PARK', 'DESSERT', 'SPORTS', 'MOVIE'];
   const now = new Date().toISOString();
 
-  for (const zone of DISCOVERY_ZONES) {
-    for (const cat of categories) {
-      try {
-        const radiusKm = zone.radius / 1000;
-        const latDiff = radiusKm / 111.0;
-        const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
+  try {
+    // Fetch all active places along with their categories and scores in a single query
+    const placesRes = await db.prepare(
+      `SELECT p.lat, p.lng, pc.category, p.business_status, ps.overall, p.review_count
+       FROM places p
+       JOIN place_categories pc ON pc.place_id = p.id
+       LEFT JOIN place_scores ps ON ps.place_id = p.id
+       WHERE p.is_hidden = 0`
+    ).all<{ lat: number; lng: number; category: string; business_status: string; overall: number | null; review_count: number }>();
 
-        const total = await db.prepare(
-          `SELECT COUNT(*) as cnt FROM places p
-           JOIN place_categories pc ON pc.place_id = p.id
-           WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
-             AND pc.category = ? AND p.is_hidden = 0`
-        ).bind(
-          zone.lat - latDiff, zone.lat + latDiff,
-          zone.lng - lngDiff, zone.lng + lngDiff,
-          cat
-        ).first<{ cnt: number }>();
+    const allPlaces = placesRes.results || [];
+    const statements: D1PreparedStatement[] = [];
 
-        const viable = await db.prepare(
-          `SELECT COUNT(*) as cnt FROM places p
-           JOIN place_categories pc ON pc.place_id = p.id
-           JOIN place_scores ps ON ps.place_id = p.id
-           WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
-             AND pc.category = ? AND p.is_hidden = 0
-             AND p.business_status = 'OPERATIONAL'
-             AND ps.overall >= 0.58
-             AND p.review_count >= 20`
-        ).bind(
-          zone.lat - latDiff, zone.lat + latDiff,
-          zone.lng - lngDiff, zone.lng + lngDiff,
-          cat
-        ).first<{ cnt: number }>();
+    for (const zone of DISCOVERY_ZONES) {
+      const radiusKm = zone.radius / 1000;
+      const latDiff = radiusKm / 111.0;
+      const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
 
-        const countTotal = total?.cnt ?? 0;
-        const countViable = viable?.cnt ?? 0;
+      const minLat = zone.lat - latDiff;
+      const maxLat = zone.lat + latDiff;
+      const minLng = zone.lng - lngDiff;
+      const maxLng = zone.lng + lngDiff;
+
+      // Filter places in memory for this zone's bounding box
+      const zonePlaces = allPlaces.filter(
+        p => p.lat >= minLat && p.lat <= maxLat && p.lng >= minLng && p.lng <= maxLng
+      );
+
+      for (const cat of categories) {
+        const catPlaces = zonePlaces.filter(p => p.category === cat);
+        const countTotal = catPlaces.length;
+        const countViable = catPlaces.filter(
+          p => p.business_status === 'OPERATIONAL' && (p.overall ?? 0) >= 0.58 && p.review_count >= 20
+        ).length;
+
         const targetCount = 8;
         const deficitScore = countViable < targetCount ? (targetCount - countViable) / targetCount : 0;
 
-        await db.prepare(
-          `INSERT INTO zone_coverage (id, zone_name, category, count_viable, count_total, deficit_score, last_recomputed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(zone_name, category) DO UPDATE SET
-             count_viable = ?, count_total = ?, deficit_score = ?, last_recomputed_at = ?`
-        ).bind(
-          crypto.randomUUID(), zone.name, cat, countViable, countTotal, deficitScore, now,
-          countViable, countTotal, deficitScore, now
-        ).run();
-      } catch (e) {
-        console.error(`[WORKER] Zone coverage failed for ${zone.name}/${cat}:`, e);
+        statements.push(
+          db.prepare(
+            `INSERT INTO zone_coverage (id, zone_name, category, count_viable, count_total, deficit_score, last_recomputed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(zone_name, category) DO UPDATE SET
+               count_viable = ?, count_total = ?, deficit_score = ?, last_recomputed_at = ?`
+          ).bind(
+            crypto.randomUUID(), zone.name, cat, countViable, countTotal, deficitScore, now,
+            countViable, countTotal, deficitScore, now
+          )
+        );
       }
     }
+
+    // Execute INSERT/UPDATE statements in batches of 100
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+      const chunk = statements.slice(i, i + BATCH_SIZE);
+      await db.batch(chunk);
+    }
+
+    console.log('[WORKER] Zone coverage recomputed for all zones');
+  } catch (e) {
+    console.error('[WORKER] computeZoneCoverage failed:', e);
   }
-  console.log('[WORKER] Zone coverage recomputed for all zones');
 }
 
 async function seedDiscoveryQueue(db: D1Database): Promise<void> {
@@ -2371,25 +2402,45 @@ async function seedDiscoveryQueue(db: D1Database): Promise<void> {
        WHERE deficit_score > 0 ORDER BY deficit_score DESC LIMIT 100`
     ).all<{ zone_name: string; category: string; deficit_score: number }>();
 
-    let seeded = 0;
+    // Fetch all currently pending discovery queue items up-front to prevent N+1 SELECT queries
+    const pendingItems = await db.prepare(
+      `SELECT zone_name, category FROM discovery_queue WHERE status = 'PENDING'`
+    ).all<{ zone_name: string; category: string }>();
+
+    const pendingSet = new Set(
+      (pendingItems.results || []).map(item => `${item.zone_name}:${item.category}`)
+    );
+
+    const statements: D1PreparedStatement[] = [];
+
     for (const row of deficits.results ?? []) {
       // Skip if already pending
-      const existing = await db.prepare(
-        `SELECT id FROM discovery_queue WHERE zone_name = ? AND category = ? AND status = 'PENDING' LIMIT 1`
-      ).bind(row.zone_name, row.category).first();
-      if (existing) continue;
+      if (pendingSet.has(`${row.zone_name}:${row.category}`)) {
+        continue;
+      }
 
       const zone = DISCOVERY_ZONES.find(z => z.name === row.zone_name);
       if (!zone) continue;
 
       const priority = Math.min(1.0, row.deficit_score * 1.2);
-      await db.prepare(
-        `INSERT INTO discovery_queue (id, zone_name, zone_lat, zone_lng, zone_radius, category, priority_score, reason, status, attempt_count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled_refresh', 'PENDING', 0, ?, ?)`
-      ).bind(crypto.randomUUID(), zone.name, zone.lat, zone.lng, zone.radius, row.category, priority, now, now).run();
-      seeded++;
+      statements.push(
+        db.prepare(
+          `INSERT INTO discovery_queue (id, zone_name, zone_lat, zone_lng, zone_radius, category, priority_score, reason, status, attempt_count, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled_refresh', 'PENDING', 0, ?, ?)`
+        ).bind(
+          crypto.randomUUID(), zone.name, zone.lat, zone.lng, zone.radius, row.category, priority, now, now
+        )
+      );
     }
-    console.log(`[WORKER] Seeded ${seeded} items into discovery queue`);
+
+    // Execute INSERT statements in batches of 100
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+      const chunk = statements.slice(i, i + BATCH_SIZE);
+      await db.batch(chunk);
+    }
+
+    console.log(`[WORKER] Seeded ${statements.length} items into discovery queue`);
   } catch (e) {
     console.error('[WORKER] seedDiscoveryQueue failed:', e);
   }
