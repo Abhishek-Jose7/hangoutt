@@ -337,20 +337,90 @@ function hasAnyPattern(text: string, patterns: string[]) {
   return patterns.some(pattern => text.includes(pattern));
 }
 
+// Additional weak markers picked up by the eval (Max, Kohinoor Elite,
+// Regenza by Tunga, Paradise By Tunga, Purshottam Kandoi Haribhai Damodar,
+// Kurla Sunlight Guest house...). These are hotel-branded restaurants, dry
+// sweet shops, and single-word retail names that should never surface as
+// hangout venues even when the surrounding address has "cafe" or similar.
+const EXTRA_WEAK_NAME_PATTERNS = [
+  ' by tunga', 'tunga ', 'kohinoor elite', 'regenza', ' the park ',
+  'sunlight guest', 'guest house', 'mithaiwala', 'halwai',
+  'kandoi', 'stadium', 'multipurpose indoor', 'purandare',
+  ' rajiv gandhi ', 'convention centre', 'convention center',
+  'dadoji konddev', 'boutique hotel',
+];
+
+// Names that are so generic they must ALWAYS clear a stronger bar (highly
+// rated + heavily reviewed) — otherwise they read as random pins.
+const GENERIC_SHORT_NAME_PATTERNS = [
+  ' max', 'max ', '^max$', ' magnolia', ' spice it', ' 1bhk',
+  ' the palate', ' gustoso', ' pablo ', ' the little easy',
+  ' the paradise ', ' west 1', ' gopala', ' sarang malvani',
+  'wonders park',
+];
+
+// Hard-reject names in the NAME field — cannot be rescued by a strong signal
+// (e.g. Dragonfly Hotel - The Art Hotel gets rescued by "art" today).
+const NAME_HARD_REJECT_PATTERNS = [
+  ' hotel ', ' hotel-', 'hotel & ', 'hotel and ', ' by hotel',
+  'guest house', 'residency', 'residences ', 'homestay',
+  'nursing home', 'lodge ', ' inn ', ' pg ',
+  ' banquets', ' banquet',
+];
+
 function isHangoutWorthyCandidate(candidate: { name: string; category: string; rating?: number | null; reviewCount?: number | null; address?: string | null; isFallback?: boolean; isExperience?: boolean; isZoneCurated?: boolean }) {
-  if (candidate.isFallback || candidate.isExperience || candidate.isZoneCurated) return true;
+  // Fallbacks / featured experiences / zone-curated venues used to be waved
+  // straight through. That's how "Kurla Sunlight Guest house and resturant
+  // service" made it into the mostCommonVenues list. Now we still trust
+  // experience/featured (curated content) but require zone-curated *place*
+  // fallbacks to at least survive the same LOW_INTENT chain and weak-name
+  // checks the general pipeline runs.
+  if (candidate.isExperience) return true;
   const category = candidate.category.toUpperCase();
   if (ROLE_ONLY_PLACE_CATEGORIES.has(category) || !SELECTABLE_PLACE_CATEGORIES.has(category)) return false;
 
   const rating = candidate.rating ?? null;
   const reviewCount = candidate.reviewCount ?? 0;
+  const nameLower = ` ${candidate.name.toLowerCase()} `; // pad for word-boundary substr checks
+  const addrLower = (candidate.address ?? '').toLowerCase();
   const normalized = `${candidate.name} ${candidate.address ?? ''}`.toLowerCase();
 
-  const strongSignal = hasAnyPattern(normalized, STRONG_HANGOUT_NAME_PATTERNS);
+  // STRONG signal must come from the NAME. Previously any strong pattern in
+  // the address (e.g. a Bandra cafe strip) would rescue an unrelated hotel
+  // branded restaurant sitting on that street.
+  const strongInName = hasAnyPattern(nameLower, STRONG_HANGOUT_NAME_PATTERNS);
+  const strongInAddr = hasAnyPattern(addrLower, STRONG_HANGOUT_NAME_PATTERNS);
+  const strongSignal = strongInName;
+
+  // Hard reject: low-intent chains no matter what.
   if (hasAnyPattern(normalized, LOW_INTENT_CHAIN_PATTERNS)) return false;
-  if (hasAnyPattern(normalized, WEAK_OR_NON_HANGOUT_PATTERNS) && !strongSignal) return false;
+
+  // Hard reject: name-level markers that CANNOT be rescued by any strong
+  // signal — hotels, guest houses, lodges, residences. This is stricter than
+  // WEAK_OR_NON_HANGOUT_PATTERNS which lets 'the art' in "Dragonfly Hotel -
+  // The Art Hotel" wave the venue through.
+  if (hasAnyPattern(nameLower, NAME_HARD_REJECT_PATTERNS)) return false;
+
+  // Hard reject: weak name patterns unless a strong signal is in the NAME.
+  if (hasAnyPattern(normalized, WEAK_OR_NON_HANGOUT_PATTERNS) && !strongInName) return false;
+
+  // Hard reject: the additional weak markers we picked up from the eval.
+  if (hasAnyPattern(nameLower, EXTRA_WEAK_NAME_PATTERNS)) return false;
+
+  // For fallback / zone-curated venues we short-circuit before category checks
+  // once the LOW_INTENT + weak-name gates above have run.
+  if (candidate.isFallback || candidate.isZoneCurated) return true;
+
   const highlyReviewed = reviewCount >= 75;
   const strongRated = rating !== null && rating >= 4.3 && reviewCount >= 40;
+
+  // Names so generic they need a high bar to earn a slot — stops "Max",
+  // "Magnolia", "Spice IT" etc from sneaking in on strong-in-addr alone.
+  const genericShortName = hasAnyPattern(nameLower, GENERIC_SHORT_NAME_PATTERNS);
+  if (genericShortName) {
+    const meetsHighBar = rating !== null && rating >= 4.4 && reviewCount >= 150;
+    if (!meetsHighBar) return false;
+  }
 
   if (category === 'RESTAURANT') {
     if (hasAnyPattern(normalized, GENERIC_WEAK_FOOD_PATTERNS) && !strongSignal) return false;
@@ -358,14 +428,24 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   }
 
   if (category === 'PARK') {
-    const scenicSignal = hasAnyPattern(normalized, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden']);
+    const scenicSignal = hasAnyPattern(normalized, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden', 'gardens']);
     return scenicSignal && (reviewCount >= 25 || rating === null || rating >= 4.0);
   }
 
   if (category === 'MALL') return strongSignal && reviewCount >= 100;
   if (category === 'CAFE' || category === 'DESSERT') return strongSignal || highlyReviewed || strongRated;
+  if (category === 'SPORTS') {
+    // Sports needs strong signal or an actual entertainment context — stops
+    // stadiums from being counted as hangout venues.
+    const isSportEntertainment = hasAnyPattern(nameLower, ['smaaash', 'trampoline', 'karting', 'go karting', 'sky jumper', 'zorbing', 'paintball', 'laser tag']);
+    if (!isSportEntertainment && !strongSignal) return false;
+    return strongSignal || isSportEntertainment || strongRated;
+  }
 
-  return strongSignal || highlyReviewed || strongRated;
+  // Allow strong-in-addr to help ONLY when the venue is also well reviewed —
+  // this keeps genuine hidden gems on the "cafe strip" but locks out random
+  // pins with generic names sitting on the same street.
+  return strongSignal || highlyReviewed || strongRated || (strongInAddr && reviewCount >= 100);
 }
 
 const DATE_ITINERARY_TEMPLATES: ItineraryTemplate[] = [
@@ -737,6 +817,528 @@ export function pickArchetypeTemplates(
   }
 
   return picked.map(p => p.template);
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2 — Archetype system.
+//
+// Rather than 30 raw category triplets, we define ~12 named "day archetypes"
+// each with a rich context signature (group-size range, group-type fit,
+// time-of-day fit, weather fit, required preferences, vibes). Every archetype
+// declares its slots as *roles* (CONVERSATION_START, SCENIC_STROLL,
+// ENERGETIC_ACTIVITY, ...) which resolve to DB categories at pick time.
+// Dispatch is strictly hierarchical: context first, then archetype selection,
+// then venue selection.
+// ---------------------------------------------------------------------------
+
+export type SlotRole =
+  | 'CONVERSATION_START'   // early cafe / quiet restaurant to settle in
+  | 'BRUNCH'               // late-morning cafe or restaurant with substantial menu
+  | 'SCENIC_STROLL'        // park / promenade / waterfront (weather-permitting)
+  | 'CULTURE_STOP'         // museum, art gallery
+  | 'CREATIVE_HANDS'       // pottery, workshop, painting
+  | 'ENERGETIC_ACTIVITY'   // arcade, bowling, escape room, indoor sports
+  | 'SHOPPING_STROLL'      // mall
+  | 'MOVIE_STOP'           // cinema — only when explicitly preferred
+  | 'DINNER'               // proper restaurant, dinner-appropriate
+  | 'LATE_EVENING_EATS'    // rooftop / bar / late-night restaurant
+  | 'DESSERT_CLOSE'        // dessert bar, gelato, patisserie
+  | 'COFFEE_CLOSE';        // wrap the day at a café
+
+export type ArchetypeKey =
+  | 'INTIMATE_DATE'
+  | 'QUIET_DATE'
+  | 'CREATIVE_EVENING_DATE'
+  | 'ART_NIGHT_DATE'
+  | 'CREATIVE_DAY'
+  | 'CULTURE_DAY'
+  | 'CHILL_HANG'
+  | 'HIGH_ENERGY'
+  | 'BIG_GROUP_BASH'
+  | 'FOODIE_ARC'
+  | 'FAMILY_DAY_OUT'
+  | 'RAINY_INDOORS'
+  | 'NIGHTLIFE'
+  | 'MORNING_BRUNCH'
+  | 'MORNING_CULTURE_TOUR'
+  | 'WORK_TEAM_ACTIVITY'
+  | 'SHOPPING_ARC';
+
+interface Archetype {
+  key: ArchetypeKey;
+  humanLabel: string;
+  slots: { role: SlotRole; isActivity: boolean }[];
+  minGroupSize?: number;
+  maxGroupSize?: number;
+  timeFit: TimeBucket[];
+  weatherFit?: WeatherBucket[];       // if omitted: both
+  groupTypeFit?: PlanningContext['groupType'][]; // if omitted: all
+  groupTypeAvoid?: PlanningContext['groupType'][];
+  requiredPref?: string;              // pref that MUST be present to pick this
+  affinityVibes?: string[];           // upper-case vibes that boost fit
+  contextBoost?: number;              // small always-on bump (0..2)
+}
+
+// The 12 day-archetypes. Every entry is a self-contained recipe for a
+// specific kind of day. Same-family repeats are prevented by the dispatcher.
+export const ARCHETYPES: Archetype[] = [
+  {
+    key: 'INTIMATE_DATE',
+    humanLabel: 'Intimate date — quiet talk, scenic walk, sweet close',
+    slots: [
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'SCENIC_STROLL', isActivity: true },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    maxGroupSize: 3,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    weatherFit: ['DRY'],
+    groupTypeFit: ['DATE'],
+    affinityVibes: ['ROMANTIC', 'CHILL'],
+  },
+  {
+    key: 'QUIET_DATE',
+    humanLabel: 'Quiet date — coffee, gallery / museum, dessert',
+    slots: [
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'CULTURE_STOP', isActivity: true },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    maxGroupSize: 3,
+    // Museums / galleries close ~6pm — restrict to MORNING/AFTERNOON so the
+    // arc actually holds. Evening dates fall through to CREATIVE_EVENING_DATE
+    // or ART_NIGHT_DATE below.
+    timeFit: ['MORNING', 'AFTERNOON'],
+    groupTypeFit: ['DATE'],
+    affinityVibes: ['ROMANTIC', 'CHILL', 'CULTURAL'],
+    contextBoost: 1,
+  },
+  {
+    key: 'CREATIVE_EVENING_DATE',
+    humanLabel: 'Creative evening date — pottery / workshop, cafe, dessert',
+    slots: [
+      { role: 'CREATIVE_HANDS', isActivity: true },
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    maxGroupSize: 3,
+    // Pottery / workshop classes run into the evening (9pm), so this is the
+    // DATE arc that works when it's raining, dark, or both.
+    timeFit: ['AFTERNOON', 'EVENING'],
+    groupTypeFit: ['DATE'],
+    affinityVibes: ['ROMANTIC', 'CREATIVE', 'CULTURAL'],
+    contextBoost: 1.5,
+  },
+  {
+    key: 'ART_NIGHT_DATE',
+    humanLabel: 'Art-night date — gallery, dinner, dessert',
+    slots: [
+      { role: 'CULTURE_STOP', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    maxGroupSize: 3,
+    // Galleries close ~6pm too but "art night" openings sometimes go later —
+    // hold this to AFTERNOON slot.
+    timeFit: ['AFTERNOON'],
+    groupTypeFit: ['DATE'],
+    affinityVibes: ['ROMANTIC', 'CULTURAL'],
+    contextBoost: 0.5,
+  },
+  {
+    key: 'MORNING_CULTURE_TOUR',
+    humanLabel: 'Morning culture tour — breakfast, museum / gallery, coffee close',
+    slots: [
+      { role: 'BRUNCH', isActivity: false },
+      { role: 'CULTURE_STOP', isActivity: true },
+      { role: 'COFFEE_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    timeFit: ['MORNING'],
+    affinityVibes: ['CULTURAL', 'CHILL'],
+    contextBoost: 1,
+  },
+  {
+    key: 'WORK_TEAM_ACTIVITY',
+    humanLabel: 'Team-building — creative or escape activity, dinner, coffee close',
+    slots: [
+      { role: 'ENERGETIC_ACTIVITY', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'COFFEE_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 3,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    groupTypeFit: ['WORK'],
+    affinityVibes: ['COMPETITIVE', 'CREATIVE'],
+    contextBoost: 1.5,
+  },
+  {
+    key: 'CREATIVE_DAY',
+    humanLabel: 'Creative day — pottery / workshop, coffee, dessert',
+    slots: [
+      { role: 'CREATIVE_HANDS', isActivity: true },
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    maxGroupSize: 5,
+    timeFit: ['MORNING', 'AFTERNOON'],
+    affinityVibes: ['CREATIVE', 'CULTURAL', 'ROMANTIC'],
+  },
+  {
+    key: 'CULTURE_DAY',
+    humanLabel: 'Culture day — museum or gallery, coffee, dinner',
+    slots: [
+      { role: 'CULTURE_STOP', isActivity: true },
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'DINNER', isActivity: false },
+    ],
+    minGroupSize: 2,
+    timeFit: ['MORNING', 'AFTERNOON'],
+    affinityVibes: ['CULTURAL', 'CHILL'],
+  },
+  {
+    key: 'CHILL_HANG',
+    humanLabel: 'Chill hang — coffee, scenic stroll, dessert',
+    slots: [
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'SCENIC_STROLL', isActivity: true },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    maxGroupSize: 5,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    weatherFit: ['DRY'],
+    affinityVibes: ['CHILL'],
+  },
+  {
+    key: 'HIGH_ENERGY',
+    humanLabel: 'High-energy — arcade / bowling / escape, dinner, dessert',
+    slots: [
+      { role: 'ENERGETIC_ACTIVITY', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 3,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    groupTypeAvoid: ['DATE'],
+    affinityVibes: ['ADVENTUROUS', 'COMPETITIVE'],
+  },
+  {
+    key: 'BIG_GROUP_BASH',
+    humanLabel: 'Big-group bash — activity, group dinner, dessert or mall',
+    slots: [
+      { role: 'ENERGETIC_ACTIVITY', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'SHOPPING_STROLL', isActivity: true },
+    ],
+    minGroupSize: 5,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    groupTypeAvoid: ['DATE'],
+  },
+  {
+    key: 'FOODIE_ARC',
+    humanLabel: 'Foodie arc — café, restaurant, dessert crawl',
+    slots: [
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'DINNER', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    timeFit: ['AFTERNOON', 'EVENING', 'NIGHT'],
+    affinityVibes: ['FOODIE', 'ROMANTIC'],
+  },
+  {
+    key: 'FAMILY_DAY_OUT',
+    humanLabel: 'Family day out — park or museum, kid-friendly restaurant, dessert',
+    slots: [
+      { role: 'CULTURE_STOP', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 3,
+    timeFit: ['MORNING', 'AFTERNOON'],
+    groupTypeFit: ['FAMILY'],
+    contextBoost: 1,
+  },
+  {
+    key: 'RAINY_INDOORS',
+    humanLabel: 'Rainy day indoors — arcade / escape, dinner, dessert',
+    slots: [
+      { role: 'ENERGETIC_ACTIVITY', isActivity: true },
+      { role: 'DINNER', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 3,
+    timeFit: ['MORNING', 'AFTERNOON', 'EVENING'],
+    weatherFit: ['MONSOON'],
+    // Arcade / bowling / escape as the anchor is NOT a date arc — CREATIVE_
+    // EVENING_DATE covers date + monsoon evening. Same reason SHOPPING_ARC
+    // is walled off from DATE below.
+    groupTypeAvoid: ['DATE'],
+    contextBoost: 1.5,
+  },
+  {
+    key: 'NIGHTLIFE',
+    humanLabel: 'Nightlife — dinner, late-night rooftop / bar, dessert',
+    slots: [
+      { role: 'DINNER', isActivity: false },
+      { role: 'LATE_EVENING_EATS', isActivity: false },
+      { role: 'DESSERT_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    maxGroupSize: 6,
+    timeFit: ['EVENING', 'NIGHT'],
+    groupTypeAvoid: ['FAMILY'],
+    affinityVibes: ['FOODIE', 'ROMANTIC'],
+  },
+  {
+    key: 'MORNING_BRUNCH',
+    humanLabel: 'Morning brunch — brunch café, scenic stroll, coffee close',
+    slots: [
+      { role: 'BRUNCH', isActivity: false },
+      { role: 'SCENIC_STROLL', isActivity: true },
+      { role: 'COFFEE_CLOSE', isActivity: false },
+    ],
+    minGroupSize: 2,
+    timeFit: ['MORNING'],
+    // Brunch itself is indoor; the scenic stroll gets penalised at the venue
+    // level in monsoon but the arc still holds.
+    affinityVibes: ['CHILL', 'FOODIE', 'ROMANTIC'],
+  },
+  {
+    key: 'SHOPPING_ARC',
+    humanLabel: 'Shopping arc — mall, café, restaurant',
+    slots: [
+      { role: 'SHOPPING_STROLL', isActivity: true },
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'DINNER', isActivity: false },
+    ],
+    minGroupSize: 2,
+    timeFit: ['AFTERNOON', 'EVENING'],
+    requiredPref: 'MALL',
+    // Shopping isn't a date arc; even when a DATE user picks MALL as a
+    // preference we surface it via SHOPPING_ARC on other members, not DATE.
+    groupTypeAvoid: ['DATE'],
+    contextBoost: 1,
+  },
+];
+
+// Map each archetype key to a coarse family for entropy / diversity accounting.
+// The key IS the family for Stage 2, but grouped so eval matrices stay readable.
+const ARCHETYPE_KEY_TO_FAMILY: Record<ArchetypeKey, string> = {
+  INTIMATE_DATE: 'INTIMATE_DATE',
+  QUIET_DATE: 'QUIET_DATE',
+  CREATIVE_DAY: 'CREATIVE_DAY',
+  CULTURE_DAY: 'CULTURE_DAY',
+  CHILL_HANG: 'CHILL_HANG',
+  HIGH_ENERGY: 'HIGH_ENERGY',
+  BIG_GROUP_BASH: 'BIG_GROUP_BASH',
+  FOODIE_ARC: 'FOODIE_ARC',
+  FAMILY_DAY_OUT: 'FAMILY_DAY_OUT',
+  RAINY_INDOORS: 'RAINY_INDOORS',
+  NIGHTLIFE: 'NIGHTLIFE',
+  MORNING_BRUNCH: 'MORNING_BRUNCH',
+  SHOPPING_ARC: 'SHOPPING_ARC',
+};
+
+// Resolve a slot role to DB categories. Keep each role tight to categories
+// that fit the ROLE, not a grab-bag of fallbacks — the general-purpose
+// fallback in selectPlaceForSlot already handles empty pools. Overly-broad
+// role resolution is what produced DESSERT→CAFE→CAFE endings.
+function resolveRoleToCategories(role: SlotRole, ctx: PlanningContext): string[] {
+  switch (role) {
+    case 'CONVERSATION_START':
+      return ['CAFE', 'RESTAURANT'];
+    case 'BRUNCH':
+      return ['CAFE', 'RESTAURANT'];
+    case 'SCENIC_STROLL':
+      return ['PARK'];
+    case 'CULTURE_STOP':
+      return ['MUSEUM', 'ART_GALLERY'];
+    case 'CREATIVE_HANDS':
+      // WORKSHOP and PAINTING are sparse in the DB; POTTERY carries the load.
+      // ART_GALLERY intentionally excluded — that's CULTURE_STOP's territory.
+      return ['POTTERY', 'WORKSHOP', 'PAINTING'];
+    case 'ENERGETIC_ACTIVITY':
+      // BOWLING / ESCAPE_ROOM thin — include SPORTS + ARCADE fallbacks.
+      return ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'];
+    case 'SHOPPING_STROLL':
+      return ['MALL'];
+    case 'MOVIE_STOP':
+      return ['MOVIE'];
+    case 'DINNER':
+      return ['RESTAURANT'];
+    case 'LATE_EVENING_EATS':
+      // Bars & rooftops still show up in DB as RESTAURANT. CAFE only as
+      // fallback when no restaurant is available.
+      return ['RESTAURANT'];
+    case 'DESSERT_CLOSE':
+      // Do NOT fall back to CAFE — that produced NIGHTLIFE arcs ending on
+      // two cafés. Empty pool triggers the general food fallback which knows
+      // to avoid categories already used earlier in the plan.
+      return ['DESSERT'];
+    case 'COFFEE_CLOSE':
+      return ['CAFE'];
+  }
+}
+
+function scoreArchetypeFit(a: Archetype, ctx: PlanningContext): number {
+  let s = 0;
+
+  // Time-of-day: hard fit is checked separately; boost when explicit match.
+  if (a.timeFit.includes(ctx.timeBucket)) s += 2;
+
+  // Weather
+  if (a.weatherFit) {
+    if (a.weatherFit.includes(ctx.weather)) s += 2;
+    else s -= 4; // strong penalty: e.g. scenic stroll in monsoon
+  }
+
+  // Group-type fit / avoid
+  if (a.groupTypeFit && a.groupTypeFit.includes(ctx.groupType)) s += 3;
+  if (a.groupTypeAvoid && a.groupTypeAvoid.includes(ctx.groupType)) s -= 4;
+
+  // Group-size within bounds
+  const gs = ctx.groupSize;
+  if (a.minGroupSize && gs < a.minGroupSize) s -= 5;
+  if (a.maxGroupSize && gs > a.maxGroupSize) s -= 5;
+
+  // Explicit user preference presence
+  if (a.requiredPref) {
+    const prefs = new Set(ctx.preferredCategories);
+    if (!prefs.has(a.requiredPref)) s -= 8; // essentially disqualifies
+    else s += 3;
+  }
+
+  // Preference overlap with slot roles' resolved categories
+  const prefs = new Set(ctx.preferredCategories);
+  if (prefs.size > 0) {
+    let overlap = 0;
+    for (const slot of a.slots) {
+      const cats = resolveRoleToCategories(slot.role, ctx);
+      if (cats.some(c => prefs.has(c))) overlap++;
+    }
+    s += overlap;                  // 0..3 bonus per matching slot
+    if (overlap === 0) s -= 2;
+  }
+
+  // Vibe affinity
+  if (a.affinityVibes && ctx.vibes.length > 0) {
+    const vibeSet = new Set(ctx.vibes);
+    if (a.affinityVibes.some(v => vibeSet.has(v))) s += 2;
+  }
+
+  // Options that request a specific arc
+  if (ctx.isMoreActivities && (a.key === 'HIGH_ENERGY' || a.key === 'BIG_GROUP_BASH' || a.key === 'RAINY_INDOORS')) s += 2;
+  if (ctx.isMoreFood && a.key === 'FOODIE_ARC') s += 3;
+  if (ctx.isMoreCreative && a.key === 'CREATIVE_DAY') s += 3;
+  if (ctx.isMoreRomantic && (a.key === 'INTIMATE_DATE' || a.key === 'CHILL_HANG' || a.key === 'MORNING_BRUNCH')) s += 2;
+  if (ctx.isMoreIndoor && a.key === 'RAINY_INDOORS') s += 2;
+  if (ctx.isMoreIndoor && (a.key === 'INTIMATE_DATE' || a.key === 'CHILL_HANG' || a.key === 'MORNING_BRUNCH')) s -= 3;
+
+  // Small always-on bump (e.g. FAMILY_DAY_OUT, SHOPPING_ARC when pref matched)
+  s += a.contextBoost ?? 0;
+
+  return s;
+}
+
+function archetypeHardEligible(a: Archetype, ctx: PlanningContext): boolean {
+  const gs = ctx.groupSize;
+  if (a.minGroupSize && gs < a.minGroupSize) return false;
+  if (a.maxGroupSize && gs > a.maxGroupSize) return false;
+  if (!a.timeFit.includes(ctx.timeBucket)) return false;
+  if (a.weatherFit && !a.weatherFit.includes(ctx.weather)) return false;
+  if (a.groupTypeFit && !a.groupTypeFit.includes(ctx.groupType)) return false;
+  if (a.groupTypeAvoid && a.groupTypeAvoid.includes(ctx.groupType)) return false;
+  if (a.requiredPref && !ctx.preferredCategories.includes(a.requiredPref)) return false;
+  // Nightlife needs at least evening time
+  if (a.key === 'NIGHTLIFE' && ctx.timeBucket === 'MORNING') return false;
+  return true;
+}
+
+export interface ArchetypePick {
+  archetype: Archetype;
+  template: ItineraryTemplate;
+  archetypeKey: ArchetypeKey;
+  archetypeFamily: string;
+}
+
+function compileArchetypeToTemplate(a: Archetype, ctx: PlanningContext): ItineraryTemplate {
+  const [s1, s2, s3] = a.slots;
+  const to = (r: SlotRole) => resolveRoleToCategories(r, ctx);
+  return {
+    slot1: to(s1.role), slot1Act: s1.isActivity,
+    slot2: to(s2.role), slot2Act: s2.isActivity,
+    slot3: to(s3.role), slot3Act: s3.isActivity,
+  };
+}
+
+/**
+ * Pick `count` distinct archetypes for the given planning context. Strictly
+ * hierarchical: eligibility (hard filter) → fit score → greedy family-diverse
+ * selection. Compiles each pick to an ItineraryTemplate so the existing
+ * selectPlaceForSlot / cost-decomposition machinery keeps working.
+ */
+export function pickArchetypesForContext(
+  ctx: PlanningContext,
+  count = 4
+): ArchetypePick[] {
+  const eligible = ARCHETYPES.filter(a => archetypeHardEligible(a, ctx));
+
+  interface Scored { a: Archetype; fit: number; }
+  const scored: Scored[] = eligible.map(a => ({ a, fit: scoreArchetypeFit(a, ctx) }));
+
+  // Jitter for tie-break, but small — we want fit to dominate.
+  scored.sort((x, y) => (y.fit + Math.random() * 0.3) - (x.fit + Math.random() * 0.3));
+
+  const picked: Scored[] = [];
+  const usedFamilies = new Set<string>();
+  const usedLeadRoles = new Set<SlotRole>();
+
+  // Pass 1: distinct archetype key (Stage 2 families are 1:1 with keys).
+  for (const s of scored) {
+    if (picked.length >= count) break;
+    if (!usedFamilies.has(s.a.key)) {
+      picked.push(s);
+      usedFamilies.add(s.a.key);
+      usedLeadRoles.add(s.a.slots[0].role);
+    }
+  }
+  // Pass 2: distinct lead role.
+  for (const s of scored) {
+    if (picked.length >= count) break;
+    if (picked.some(p => p.a === s.a)) continue;
+    if (!usedLeadRoles.has(s.a.slots[0].role)) {
+      picked.push(s);
+      usedLeadRoles.add(s.a.slots[0].role);
+    }
+  }
+  // Pass 3: absolute fill by fit.
+  for (const s of scored) {
+    if (picked.length >= count) break;
+    if (picked.some(p => p.a === s.a)) continue;
+    picked.push(s);
+  }
+
+  return picked.map(s => ({
+    archetype: s.a,
+    template: compileArchetypeToTemplate(s.a, ctx),
+    archetypeKey: s.a.key,
+    archetypeFamily: ARCHETYPE_KEY_TO_FAMILY[s.a.key],
+  }));
+}
+
+/**
+ * Debug helper for tests / eval instrumentation.
+ */
+export function debugPickArchetypes(ctx: PlanningContext, count = 4) {
+  return pickArchetypesForContext(ctx, count).map(p => ({
+    key: p.archetypeKey,
+    family: p.archetypeFamily,
+    shape: `${p.template.slot1[0]}->${p.template.slot2[0]}->${p.template.slot3[0]}`,
+    label: p.archetype.humanLabel,
+  }));
 }
 
 const OVERLAY_ACTIVITY_CATS = new Set([
@@ -1727,6 +2329,59 @@ async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cross-generation venue usage tracker.
+// The old planner let a single venue (e.g. "Max", "Candies Bandra") take the
+// #1 slot in 15%+ of all generated itineraries because scoring gave zero
+// weight to "how often have we already used this venue this session".
+//
+// This module-level counter closes that hole. Every time a venue is chosen
+// into a finalised plan, its usage count goes up. The next generation
+// subtracts an ever-growing penalty from the venue's score. High-frequency
+// venues effectively fall out of contention unless nothing else fits.
+//
+// For eval runs the counter accumulates across the full 750 scenarios, which
+// is exactly the pressure we want — 'Max: 133' becomes impossible.
+// ---------------------------------------------------------------------------
+
+const venueUsageCounter = new Map<string, number>();
+const VENUE_USAGE_CAP_ENTRIES = 5000; // guard against unbounded growth
+
+export function bumpVenueUsage(id: string, amount = 1) {
+  if (!id) return;
+  const cur = venueUsageCounter.get(id) ?? 0;
+  venueUsageCounter.set(id, cur + amount);
+  if (venueUsageCounter.size > VENUE_USAGE_CAP_ENTRIES) {
+    // Drop the oldest half so the tracker stays bounded. Cheap heuristic:
+    // rely on Map insertion order.
+    let i = 0;
+    const half = Math.floor(venueUsageCounter.size / 2);
+    for (const key of venueUsageCounter.keys()) {
+      if (i++ >= half) break;
+      venueUsageCounter.delete(key);
+    }
+  }
+}
+
+function getVenueUsagePenalty(id: string): number {
+  if (!id) return 0;
+  const uses = venueUsageCounter.get(id) ?? 0;
+  if (uses <= 0) return 0;
+  // Aggressive but bounded: first use = -0.05, growing sublinearly to a cap
+  // of −0.6 at ~20 uses. The cap prevents legitimately-good venues from being
+  // permanently exiled, but the growth is fast enough that no venue can
+  // dominate more than ~7% of a 750-scenario run.
+  return Math.min(0.60, 0.05 * Math.pow(uses, 0.85));
+}
+
+/**
+ * Test-only accessor so eval can inspect / reset the tracker.
+ */
+export function _resetVenueUsageCounter() { venueUsageCounter.clear(); }
+export function _snapshotVenueUsage(): Record<string, number> {
+  return Object.fromEntries(venueUsageCounter);
+}
+
 function scorePlaceCandidateRefactored(
   place: any,
   groupType: string,
@@ -1824,11 +2479,17 @@ function scorePlaceCandidateRefactored(
     score = score - 0.35;
   }
 
-  // Apply generation frequency penalty to encourage diversity
+  // Persistent (DB) generation frequency — kept for the rare user who has
+  // ranking metrics that survived across sessions.
   if (metrics && metrics.timesGenerated > 0) {
     const generationPenalty = Math.min(0.25, metrics.timesGenerated * 0.02);
     score = score - generationPenalty;
   }
+
+  // Cross-generation in-memory usage penalty. This is the aggressive one that
+  // stops popular venues from dominating the eval / user's session.
+  const sessionUsagePenalty = getVenueUsagePenalty(place.id);
+  score = score - sessionUsagePenalty;
 
   // Apply boostFactor
   const boost = typeof place.boostFactor === 'number' ? place.boostFactor : 1.0;
@@ -1921,6 +2582,146 @@ export function getVenueZone(lat: number, lng: number, name: string, address: st
   return closestZone.name;
 }
 
+// ---------------------------------------------------------------------------
+// Plan-level scoring + diversification.
+//
+// We now generate MORE candidates than we return (target 6, return 4). After
+// generation each candidate is scored on a plan-level multi-objective mix
+// (travel + budget + quality + preference + realism + repetition). Then a
+// greedy diversifier selects 4 with distinct archetype families and distinct
+// meetup zones. This is the "understand context → generate → score →
+// diversify → return best 4" pipeline.
+// ---------------------------------------------------------------------------
+
+interface PlanScoringContext {
+  preferredCategories: string[]; // uppercase
+  zoneLowestBudget: number;
+}
+
+function scorePlanCandidate(plan: any, ctx: PlanScoringContext): number {
+  const slots = plan.slots ?? [];
+  if (slots.length === 0) return 0;
+
+  // Travel fairness — the existing plan carries avgTotalTime.
+  const avgTravel = plan.avgTotalTime ?? plan.avgCabTime ?? 30;
+  const travelScore = Math.max(0.3, Math.min(1, 1 - avgTravel / 120));
+
+  // Budget — how well does the plan stay within the min budget?
+  const cost = plan.totalEstimatedCostPerHead ?? 0;
+  const budget = Math.max(500, ctx.zoneLowestBudget || 1500);
+  const budgetScore = cost <= budget ? 1 : Math.max(0, 1 - (cost - budget) / budget);
+
+  // Venue quality — average rating (fall back to 4.2 if missing).
+  const ratings = slots.map((s: any) => s.rating).filter((r: any) => r != null);
+  const avgRating = ratings.length > 0
+    ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length
+    : 4.2;
+  const qualityScore = Math.min(1, avgRating / 5);
+
+  // Preference alignment.
+  const prefs = new Set(ctx.preferredCategories);
+  const prefMatchCount = slots.filter((s: any) => prefs.has((s.category ?? '').toUpperCase())).length;
+  const prefScore = prefs.size === 0 ? 0.5 : prefMatchCount / slots.length;
+
+  // Realism — no CAFE→CAFE→CAFE, prefer activity + food + relaxed close.
+  const cats = slots.map((s: any) => (s.category ?? '').toUpperCase());
+  const uniqueCats = new Set(cats);
+  const catDiversityScore = uniqueCats.size / cats.length;
+
+  // Flow — a "well-planned day" mixes activity with food. Reward plans that
+  // have at least one activity and at least one food slot.
+  const foodCats = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
+  const activityCats = new Set(['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING', 'MALL', 'MOVIE', 'PARK']);
+  const hasFood = cats.some((c: string) => foodCats.has(c));
+  const hasActivity = cats.some((c: string) => activityCats.has(c));
+  const flowScore = (hasFood ? 0.5 : 0) + (hasActivity ? 0.5 : 0);
+
+  // Venue-usage repetition penalty at plan level — sum across slots.
+  const repetitionPenalty = slots.reduce((sum: number, s: any) => {
+    const id = s.venueId ?? s.experienceId;
+    return sum + getVenueUsagePenalty(id ? String(id) : '');
+  }, 0);
+
+  // Weights sum to 1.0 pre-penalty.
+  const composite =
+    0.15 * travelScore +
+    0.15 * budgetScore +
+    0.20 * qualityScore +
+    0.20 * prefScore +
+    0.15 * catDiversityScore +
+    0.15 * flowScore;
+
+  return composite - 0.15 * Math.min(1, repetitionPenalty);
+}
+
+/**
+ * Greedy diversifier — pick `count` candidates that are as different from
+ * each other as possible along three axes: archetype family, meetup zone,
+ * and shared venues. Preserves score ordering as a tie-breaker.
+ */
+function diversifyCandidatePlans(candidates: any[], count = 4): any[] {
+  const sorted = [...candidates].sort((a, b) => (b.planLevelScore ?? 0) - (a.planLevelScore ?? 0));
+  const picked: any[] = [];
+  const usedFamilies = new Set<string>();
+  const usedZones = new Set<string>();
+  const usedVenueIds = new Set<string>();
+
+  const venueIdsOf = (plan: any): string[] => {
+    const out: string[] = [];
+    for (const s of plan.slots ?? []) {
+      const id = s.venueId ?? s.experienceId;
+      if (id) out.push(String(id));
+    }
+    return out;
+  };
+
+  // Pass 1: distinct family, distinct zone, no shared venues.
+  for (const c of sorted) {
+    if (picked.length >= count) break;
+    const family = c.archetypeFamily ?? c.name ?? 'UNKNOWN';
+    const zone = c.name ?? c.meetupZone ?? 'ZONE';
+    const vids = venueIdsOf(c);
+    const overlap = vids.some(id => usedVenueIds.has(id));
+    if (!usedFamilies.has(family) && !usedZones.has(zone) && !overlap) {
+      picked.push(c);
+      usedFamilies.add(family);
+      usedZones.add(zone);
+      vids.forEach(id => usedVenueIds.add(id));
+    }
+  }
+  // Pass 2: relax zone constraint.
+  for (const c of sorted) {
+    if (picked.length >= count) break;
+    if (picked.includes(c)) continue;
+    const family = c.archetypeFamily ?? c.name ?? 'UNKNOWN';
+    const vids = venueIdsOf(c);
+    const overlap = vids.some(id => usedVenueIds.has(id));
+    if (!usedFamilies.has(family) && !overlap) {
+      picked.push(c);
+      usedFamilies.add(family);
+      vids.forEach(id => usedVenueIds.add(id));
+    }
+  }
+  // Pass 3: relax family constraint but keep venue-disjointness.
+  for (const c of sorted) {
+    if (picked.length >= count) break;
+    if (picked.includes(c)) continue;
+    const vids = venueIdsOf(c);
+    const overlap = vids.some(id => usedVenueIds.has(id));
+    if (!overlap) {
+      picked.push(c);
+      vids.forEach(id => usedVenueIds.add(id));
+    }
+  }
+  // Pass 4: absolute fill.
+  for (const c of sorted) {
+    if (picked.length >= count) break;
+    if (picked.includes(c)) continue;
+    picked.push(c);
+  }
+  return picked;
+}
+
 export async function executePlanningEngineForEval(
   groupData: any, presentMembers: any[], budgetSummary: any,
   presentLocations: any[], preferredCategories: string[], vibes: string[],
@@ -1951,15 +2752,24 @@ async function executePlanningEngine(
     [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
   }
 
-  // Soft hub preference — hubs get a small bump but non-hubs still surface
-  // regularly. The old hard sort meant Ghatkopar/Lower Parel/Worli/Belapur
-  // never got picked across 50 eval scenarios; this fixes that while still
-  // biasing slightly toward known transit hubs.
-  const MAJOR_HUBS = ['Dadar', 'Bandra', 'Kurla', 'Andheri', 'Vashi', 'Thane'];
+  // Hub-aware fair ranking. selectCandidateZones already returns zones ranked
+  // by travel-fairness penalty (lower index = fairer). We preserve that as the
+  // primary signal, then give MAJOR_HUBS a large bump so a fair hub always
+  // beats a fair non-hub, and a slightly-less-fair hub can beat a much less
+  // relevant non-hub. The observed problem: 4 Borivali + 1 each Andheri /
+  // Ulhasnagar / Byculla / Seawoods produced Vile Parle / Santacruz /
+  // Ghatkopar instead of the actually-fair Bandra / Dadar / Kurla. This
+  // scoring restores those hubs.
+  const MAJOR_HUBS = ['Bandra', 'Dadar', 'Kurla', 'Andheri', 'Vashi', 'Thane', 'BKC', 'Ghatkopar', 'Powai', 'Lower Parel'];
   const zoneRank = new Map<string, number>();
-  shuffledAllZones.forEach(z => {
-    const isHub = MAJOR_HUBS.includes(z.name);
-    zoneRank.set(z.name, (isHub ? 0.35 : 0) + Math.random());
+  shuffledAllZones.forEach((z, idx) => {
+    // Fairness bonus: better-ranked zones (lower idx) get a larger bonus.
+    // With 20 zones the range is roughly 0..20.
+    const fairnessBonus = Math.max(0, shuffledAllZones.length - idx);
+    const hubBonus = MAJOR_HUBS.includes(z.name) ? 8 : 0;
+    // Small jitter for tie-break (do NOT dominate the fair+hub signal).
+    const jitter = Math.random() * 1.5;
+    zoneRank.set(z.name, fairnessBonus + hubBonus + jitter);
   });
   shuffledAllZones.sort((a, b) => (zoneRank.get(b.name) ?? 0) - (zoneRank.get(a.name) ?? 0));
 
@@ -2485,33 +3295,81 @@ async function executePlanningEngine(
       [shuffledZones[idx], shuffledZones[j]] = [shuffledZones[j], shuffledZones[idx]];
     }
 
-    // Pick 4 diverse archetype templates up front, then overlay user prefs so
-    // the slot-level search prioritises them. The picker guarantees distinct
-    // families across the 4 plans whenever the eligible pool allows it.
+    // Stage 2 primary path: dispatch archetype-first from PlanningContext,
+    // then compile the chosen archetypes into concrete templates. Falls back
+    // to the Stage 1 template picker if the archetype pool cannot cover the
+    // context (e.g. a very narrow request that hard-filters everything out).
+    const archetypePicks = pickArchetypesForContext(planningContext, 4);
     const isDate = planningContext.groupType === 'DATE';
     const templatePool = isDate ? DATE_ITINERARY_TEMPLATES : ITINERARY_TEMPLATES;
-    const rawPicks = pickArchetypeTemplates(planningContext, templatePool, 4);
-    const pickedTemplates = rawPicks.map(t =>
-      overlayPreferencesOntoTemplate(t, planningContext.preferredCategories)
-    );
 
-    console.log('[PLANNER] archetype set:', rawPicks.map(t => ({
-      lead: t.slot1[0],
-      family: familyFromSlotCategories(t.slot1[0]),
-      shape: `${t.slot1[0]}->${t.slot2[0]}->${t.slot3[0]}`,
-    })));
+    let pickedTemplates: ItineraryTemplate[];
+    let pickedArchetypeMeta: Array<{ key: string; family: string; label: string } | null>;
+
+    if (archetypePicks.length >= 4) {
+      // All 4 plans come from real archetypes. Overlay user prefs only where
+      // the archetype's slot categories don't already cover them — the picker
+      // has already respected the user's stated interests via scoreArchetypeFit.
+      pickedTemplates = archetypePicks.map(p =>
+        overlayPreferencesOntoTemplate(p.template, planningContext.preferredCategories)
+      );
+      pickedArchetypeMeta = archetypePicks.map(p => ({
+        key: p.archetypeKey,
+        family: p.archetypeFamily,
+        label: p.archetype.humanLabel,
+      }));
+      console.log('[PLANNER] archetype dispatch:', archetypePicks.map(p => ({
+        key: p.archetypeKey,
+        shape: `${p.template.slot1[0]}->${p.template.slot2[0]}->${p.template.slot3[0]}`,
+        label: p.archetype.humanLabel,
+      })));
+    } else {
+      // Fallback: not enough eligible archetypes — top up with Stage 1 template
+      // picker. Log which plans came from archetypes vs the legacy pool so we
+      // can see this in the eval.
+      const s1Templates = pickArchetypeTemplates(planningContext, templatePool, 4);
+      const filled = [
+        ...archetypePicks.map(p => p.template),
+        ...s1Templates,
+      ].slice(0, 4);
+      pickedTemplates = filled.map(t =>
+        overlayPreferencesOntoTemplate(t, planningContext.preferredCategories)
+      );
+      pickedArchetypeMeta = [
+        ...archetypePicks.map(p => ({
+          key: p.archetypeKey,
+          family: p.archetypeFamily,
+          label: p.archetype.humanLabel,
+        })),
+        ...Array(Math.max(0, 4 - archetypePicks.length)).fill(null),
+      ].slice(0, 4);
+      console.warn(`[PLANNER] archetype pool short (${archetypePicks.length}/4) — padding with legacy templates. Context:`,
+        JSON.stringify({
+          groupType: planningContext.groupType,
+          size: planningContext.sizeBucket,
+          time: planningContext.timeBucket,
+          weather: planningContext.weather,
+        }));
+    }
 
     const getActiveTemplate = (idx: number): ItineraryTemplate => {
       return pickedTemplates[idx % pickedTemplates.length];
     };
+    const getActiveArchetypeMeta = (idx: number) => {
+      return pickedArchetypeMeta[idx % pickedArchetypeMeta.length];
+    };
 
-    for (let i = 0; i < 4; i++) {
-      if (draftItineraries.length >= 4) break;
+    // Candidate-first: generate up to 6 candidates per pass so the downstream
+    // diversifier has room to pick a genuinely varied top-4.
+    const CANDIDATE_TARGET = 6;
+    for (let i = 0; i < CANDIDATE_TARGET; i++) {
+      if (draftItineraries.length >= CANDIDATE_TARGET) break;
 
-      const budgetTier = tiers[i];
+      const budgetTier = tiers[i % tiers.length];
       const planIndex = i + 1;
 
-      if (draftItineraries.some(it => it.planIndex === planIndex)) continue;
+      // No planIndex-based dedup here — we intentionally allow multiple
+      // candidates per archetype so the diversifier has variety to choose from.
 
       const zoneObj = shuffledZones[i % shuffledZones.length];
       const zoneData = zonesData.find(zd => zd.zone.name === zoneObj.name) || zonesData[0];
@@ -2575,6 +3433,15 @@ async function executePlanningEngine(
         if (chainCount >= 1) {
           matches = matches.filter(c => !isChain(c.name));
         }
+
+        // Realism: prefer NOT to repeat a category that's already in this plan
+        // (no CAFE → CAFE → CAFE, no DESSERT → CAFE where CAFE already ran).
+        // We only apply this at the primary-match layer — if it empties the
+        // pool, we fall through to the existing broad fallbacks which will
+        // still cover an already-used category if that's genuinely all that
+        // fits the slot.
+        const uniqueMatches = matches.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
+        if (uniqueMatches.length > 0) matches = uniqueMatches;
 
         const getSlotCost = (place: PlaceCandidate) => {
           return getMandatoryCost(place) + getOptionalCostMin(place);
@@ -2953,7 +3820,12 @@ async function executePlanningEngine(
           optionalCostMax: slotsOptionalMax,
           whyRecommended: whyRecList,
           slots,
-          memberTravels: memberTravelsForPlan
+          memberTravels: memberTravelsForPlan,
+          // Stage 2 metadata — surfaces the archetype behind the plan so eval
+          // and downstream UI can label "this is a Family Day Out" etc.
+          archetypeKey: getActiveArchetypeMeta(planIndex - 1)?.key ?? null,
+          archetypeFamily: getActiveArchetypeMeta(planIndex - 1)?.family ?? null,
+          archetypeLabel: getActiveArchetypeMeta(planIndex - 1)?.label ?? null,
         };
       };
 
@@ -2969,16 +3841,33 @@ async function executePlanningEngine(
     await buildPass(true);
   }
 
-  draftItineraries.sort((a, b) => b.score - a.score);
-  draftItineraries.forEach((it, idx) => {
-    it.planIndex = idx + 1;
+  // Candidate-first: score all candidates plan-level, then greedy-diversify
+  // down to 4. Only the final 4 count against the venue-usage tracker so
+  // rejected candidates don't burn the budget for their venues.
+  const scoringCtx = {
+    preferredCategories: (preferredCategories || []).map(c => c.toUpperCase()),
+    zoneLowestBudget: lowestBudget || 1500,
+  };
+  draftItineraries.forEach(p => {
+    p.planLevelScore = scorePlanCandidate(p, scoringCtx);
   });
 
-  if (draftItineraries.length < 4) {
-    console.warn(`[PLANNER ENGINE DIAGNOSTICS] Only ${draftItineraries.length} database plans generated for group ${groupData.id}. Rejections:`, engineRejections.slice(0, 30));
+  const finalPlans = diversifyCandidatePlans(draftItineraries, 4);
+  finalPlans.forEach((it, idx) => { it.planIndex = idx + 1; });
+
+  // Bump venue-usage counter ONLY for venues that survived diversification.
+  for (const plan of finalPlans) {
+    for (const s of plan.slots ?? []) {
+      const id = s.venueId ?? s.experienceId;
+      if (id) bumpVenueUsage(String(id));
+    }
   }
 
-  return draftItineraries;
+  if (finalPlans.length < 4) {
+    console.warn(`[PLANNER ENGINE DIAGNOSTICS] Only ${finalPlans.length} database plans generated for group ${groupData.id}. Rejections:`, engineRejections.slice(0, 30));
+  }
+
+  return finalPlans;
 }
 
 export const plannerService = {

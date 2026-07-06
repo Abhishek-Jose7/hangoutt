@@ -33,6 +33,10 @@ export interface ReportSummary {
   groupTypeFamilyMatrix: Record<string, Record<string, number>>;  // rows: group type, cols: family
   timeBucketFamilyMatrix: Record<string, Record<string, number>>; // rows: time bucket, cols: family
   sizeBucketFamilyMatrix: Record<string, Record<string, number>>; // rows: size bucket, cols: family
+  topVenueShare: number;                                     // % of plans that contain the single most-picked venue
+  top10VenueShare: number;                                   // % of plans containing ANY of the top-10 venues
+  categoryRepeatWithinPlanRate: number;                      // % of plans that repeat a category (CAFE→CAFE)
+  zoneRepetitionAcrossPlans: number;                         // % of scenarios where the 4 plans all use ≤ 2 distinct zones
   bestScenario: ReportEntry | null;
   worstScenario: ReportEntry | null;
   mostCommonVenues: { name: string; count: number }[];
@@ -68,6 +72,7 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
       avgStructuralEntropy: 0, fullyDiverseRate: 0, familyDistribution: {},
       preferenceMatchAvg: 0,
       groupTypeFamilyMatrix: {}, timeBucketFamilyMatrix: {}, sizeBucketFamilyMatrix: {},
+      topVenueShare: 0, top10VenueShare: 0, categoryRepeatWithinPlanRate: 0, zoneRepetitionAcrossPlans: 0,
       bestScenario: null, worstScenario: null,
       mostCommonVenues: [], unusedZones: [], categoryAppearanceRate: {}, budgetPerformance: {}, violationBreakdown: {},
     };
@@ -171,6 +176,35 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
   const fullyDiverseRate = +((fullyDiverseCount / total) * 100).toFixed(1);
   const preferenceMatchAvg = +((prefMatchSum / total) * 100).toFixed(1);
 
+  // Venue-repetition + realism metrics
+  const totalPlansGeneratedCount = entries.reduce((s, e) => s + e.metrics.planCount, 0);
+  const sortedVenueCounts = Object.entries(venueCounts).sort(([, a], [, b]) => b - a);
+  const topVenueCount = sortedVenueCounts[0]?.[1] ?? 0;
+  const top10Names = new Set(sortedVenueCounts.slice(0, 10).map(([n]) => n));
+  const topVenueShare = totalPlansGeneratedCount > 0
+    ? +((topVenueCount / totalPlansGeneratedCount) * 100).toFixed(2)
+    : 0;
+  let plansWithTop10 = 0;
+  let plansTotal = 0;
+  let plansWithCategoryRepeat = 0;
+  let scenariosWithZoneRepeat = 0;
+  for (const entry of entries) {
+    const zonesUsed = new Set<string>();
+    for (const plan of entry.metrics.plans) {
+      plansTotal++;
+      zonesUsed.add(plan.meetupZone);
+      // Category repeat within plan
+      const cats = plan.slots.map(s => (s.category ?? '').toUpperCase()).filter(Boolean);
+      if (cats.length !== new Set(cats).size) plansWithCategoryRepeat++;
+      // Top-10 hit
+      if (plan.slots.some(s => top10Names.has(s.name))) plansWithTop10++;
+    }
+    if (zonesUsed.size <= 2 && entry.metrics.plans.length >= 3) scenariosWithZoneRepeat++;
+  }
+  const top10VenueShare = plansTotal > 0 ? +((plansWithTop10 / plansTotal) * 100).toFixed(1) : 0;
+  const categoryRepeatWithinPlanRate = plansTotal > 0 ? +((plansWithCategoryRepeat / plansTotal) * 100).toFixed(1) : 0;
+  const zoneRepetitionAcrossPlans = +((scenariosWithZoneRepeat / total) * 100).toFixed(1);
+
   return {
     runAt: now,
     totalScenarios: total,
@@ -196,6 +230,10 @@ export function buildSummary(entries: ReportEntry[]): ReportSummary {
     groupTypeFamilyMatrix,
     timeBucketFamilyMatrix,
     sizeBucketFamilyMatrix,
+    topVenueShare,
+    top10VenueShare,
+    categoryRepeatWithinPlanRate,
+    zoneRepetitionAcrossPlans,
     bestScenario: sortedByScore[0] ?? null,
     worstScenario: sortedByScore[sortedByScore.length - 1] ?? null,
     mostCommonVenues: Object.entries(venueCounts).sort(([, a], [, b]) => b - a).slice(0, 20).map(([name, count]) => ({ name, count })),

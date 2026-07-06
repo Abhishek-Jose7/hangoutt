@@ -144,7 +144,13 @@ export function computeMetrics(
       rating: s.rating ?? null,
       address: s.address ?? '',
     }));
+    // Stage 2 attaches archetypeFamily / archetypeKey to the plan. When
+    // present, that's the authoritative label. Fall back to the Stage 1
+    // slot1-derived family so legacy / padded fallback plans still count.
+    const stage2Family = typeof plan.archetypeFamily === 'string' ? plan.archetypeFamily : null;
     const leadCategory = (slots[0]?.category ?? '').toUpperCase();
+    const family = stage2Family
+      || (leadCategory ? familyFromSlotCategories(leadCategory) : 'UNKNOWN');
     return {
       planId: plan.id,
       score: plan.score ?? 0,
@@ -154,7 +160,7 @@ export function computeMetrics(
       budgetTier: plan.budgetTier ?? 'BALANCED',
       avgTravelTime: plan.avgTotalTime ?? plan.avgCabTime ?? 0,
       slots,
-      archetypeFamily: leadCategory ? familyFromSlotCategories(leadCategory) : 'UNKNOWN',
+      archetypeFamily: family,
     };
   });
 
