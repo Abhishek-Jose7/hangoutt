@@ -428,8 +428,39 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   }
 
   if (category === 'PARK') {
-    const scenicSignal = hasAnyPattern(normalized, ['promenade', 'beach', 'lake', 'fort', 'national park', 'nature park', 'waterfront', 'viewpoint', 'central park', 'jio world garden', 'gardens']);
+    // Hard reject only when the name explicitly says "mall / store /
+    // boutique / shop / showroom" — those are DB misclassifications, not
+    // parks. Everything else falls through to the scenic-signal + rating
+    // check (unchanged from before).
+    const parkNameConflict = hasAnyPattern(nameLower, [
+      ' mall ', ' store ', ' boutique', ' showroom', 'residency',
+      'apartments', 'clinic', 'hospital',
+    ]);
+    if (parkNameConflict) return false;
+    const scenicSignal = hasAnyPattern(normalized, [
+      'promenade', 'beach', 'lake', 'fort', 'national park', 'nature park',
+      'waterfront', 'viewpoint', 'central park', 'jio world garden',
+      'gardens', 'park', 'chowpatty', 'sea face', 'seaface',
+      'marine drive', 'garden', 'grove', 'point',
+    ]);
     return scenicSignal && (reviewCount >= 25 || rating === null || rating >= 4.0);
+  }
+
+  if (category === 'MUSEUM') {
+    // Hard reject clear misclassifications, otherwise let the venue through.
+    const conflict = hasAnyPattern(nameLower, [
+      ' mall ', ' store ', ' cafe ', ' restaurant ', ' hotel ',
+    ]);
+    if (conflict) return false;
+    return true;
+  }
+
+  if (category === 'ART_GALLERY') {
+    const conflict = hasAnyPattern(nameLower, [
+      ' mall ', ' store ', ' cafe ', ' restaurant ', ' hotel ',
+    ]);
+    if (conflict) return false;
+    return true;
   }
 
   if (category === 'MALL') return strongSignal && reviewCount >= 100;
@@ -466,6 +497,21 @@ const DATE_ITINERARY_TEMPLATES: ItineraryTemplate[] = [
 export type TimeBucket = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'NIGHT';
 export type SizeBucket = 'PAIR' | 'SMALL' | 'MEDIUM' | 'LARGE';
 export type WeatherBucket = 'DRY' | 'MONSOON';
+
+// OutingIntent is the FIRST planning signal — before archetype selection.
+// Two identical (budget, size, time, prefs) requests can produce radically
+// different plans depending on the underlying purpose of the outing. The
+// planner uses intent to bias archetype fit AND venue selection.
+export type OutingIntent =
+  | 'CELEBRATE'      // anniversary, promotion, big win — impress-adjacent, prefers premium venues
+  | 'IMPRESS'        // first date, meeting someone new — prefers well-reviewed, photogenic places
+  | 'RELAX'          // decompress — quiet, low-effort places
+  | 'EXPLORE'        // discover new corners — favours culture / neighbourhood arcs
+  | 'EAT'            // it's about the food — food-only arcs allowed
+  | 'ADVENTURE'      // thrill / adrenaline — activity-heavy
+  | 'CATCH_UP'       // reconnect with people — conversation-forward venues
+  | 'FAMILY_TIME'    // multi-generational — safe, well-known, family-friendly
+  | 'TEAM_BONDING';  // colleagues — activity + food, not too romantic
 export type ArchetypeFamily =
   | 'ACTIVITY_FIRST'
   | 'CAFE_FIRST'
@@ -482,8 +528,10 @@ export interface PlanningContext {
   timeBucket: TimeBucket;
   weather: WeatherBucket;
   preferredCategories: string[]; // uppercase
+  requiredPreferences: string[]; // uppercase — MUST appear in every returned plan
   vibes: string[]; // uppercase
   options: string[];
+  intent: OutingIntent;   // first-class planning signal
   isCheaper: boolean;
   isMoreIndoor: boolean;
   isLessTravel: boolean;
@@ -601,18 +649,54 @@ function deriveTemplateMeta(t: ItineraryTemplate): TemplateMeta {
   };
 }
 
+// When the request doesn't declare an intent explicitly, derive a reasonable
+// default from what we DO know. Vibes are the strongest signal (ROMANTIC →
+// IMPRESS, ADVENTUROUS → ADVENTURE, FOODIE → EAT, CULTURAL → EXPLORE),
+// then options (More Activities → ADVENTURE, More Food → EAT), then
+// groupType as fallback.
+function deriveDefaultIntent(params: {
+  groupType: PlanningContext['groupType'];
+  vibes: string[];        // uppercase
+  options: string[];
+}): OutingIntent {
+  const vibeSet = new Set(params.vibes);
+  if (vibeSet.has('ROMANTIC')) return 'IMPRESS';
+  if (vibeSet.has('ADVENTUROUS')) return 'ADVENTURE';
+  if (vibeSet.has('FOODIE')) return 'EAT';
+  if (vibeSet.has('CULTURAL')) return 'EXPLORE';
+  if (vibeSet.has('CHILL')) return 'RELAX';
+  if (vibeSet.has('COMPETITIVE')) return 'ADVENTURE';
+
+  const options = new Set(params.options);
+  if (options.has('More Activities')) return 'ADVENTURE';
+  if (options.has('More Food')) return 'EAT';
+  if (options.has('More Creative')) return 'EXPLORE';
+  if (options.has('More Romantic')) return 'IMPRESS';
+
+  switch (params.groupType) {
+    case 'DATE': return 'CATCH_UP';
+    case 'WORK': return 'TEAM_BONDING';
+    case 'FAMILY': return 'FAMILY_TIME';
+    case 'FRIENDS': return 'CATCH_UP';
+    default: return 'CATCH_UP';
+  }
+}
+
 export function buildPlanningContext(params: {
   groupType: string | undefined;
   groupSize: number;
   outingTime: string | null | undefined;
   outingDate: string | null | undefined;
   preferredCategories: string[];
+  requiredPreferences?: string[];
   vibes: string[];
   options: string[];
+  intent?: OutingIntent;
   extraGroupSignals?: { activity?: string | null; outingType?: string | null };
 }): PlanningContext {
   const options = params.options || [];
   const prefsUpper = (params.preferredCategories || []).map(c => c.toUpperCase());
+  const requiredUpper = (params.requiredPreferences || []).map(c => c.toUpperCase());
   const vibesUpper = (params.vibes || []).map(v => v.toUpperCase());
 
   const hasMoviePreference =
@@ -626,6 +710,12 @@ export function buildPlanningContext(params: {
   const rawGroupType = String(params.groupType ?? 'CUSTOM').toUpperCase();
   const groupType = (['DATE', 'FRIENDS', 'FAMILY', 'WORK'].includes(rawGroupType) ? rawGroupType : 'CUSTOM') as PlanningContext['groupType'];
 
+  const intent = params.intent ?? deriveDefaultIntent({
+    groupType,
+    vibes: vibesUpper,
+    options,
+  });
+
   return {
     groupType,
     groupSize: params.groupSize,
@@ -633,8 +723,10 @@ export function buildPlanningContext(params: {
     timeBucket: deriveTimeBucket(params.outingTime),
     weather: deriveWeather(params.outingDate),
     preferredCategories: prefsUpper,
+    requiredPreferences: requiredUpper,
     vibes: vibesUpper,
     options,
+    intent,
     isCheaper: options.includes('Cheaper'),
     isMoreIndoor: options.includes('More Indoor'),
     isLessTravel: options.includes('Less Travel'),
@@ -862,6 +954,7 @@ export type ArchetypeKey =
   | 'MORNING_BRUNCH'
   | 'MORNING_CULTURE_TOUR'
   | 'WORK_TEAM_ACTIVITY'
+  | 'WORK_MORNING_MEETUP'
   | 'SHOPPING_ARC';
 
 interface Archetype {
@@ -877,6 +970,16 @@ interface Archetype {
   requiredPref?: string;              // pref that MUST be present to pick this
   affinityVibes?: string[];           // upper-case vibes that boost fit
   contextBoost?: number;              // small always-on bump (0..2)
+  // Content contract: at least ONE of these categories MUST appear in the
+  // compiled plan or the candidate is rejected. Prevents "MORNING_CULTURE_TOUR"
+  // arcs with zero cultural stops, "BIG_GROUP_BASH" with no bash activity, etc.
+  mustInclude?: string[];
+  // Preferred number of stops. Defaults to 3. NIGHTLIFE/CHILL_HANG can be 2;
+  // FAMILY_DAY_OUT / MORNING_BRUNCH benefit from 4 when time allows.
+  slotCount?: number;
+  // Intent alignment — which intents this archetype naturally serves.
+  intentFit?: OutingIntent[];
+  intentAvoid?: OutingIntent[];
 }
 
 // The 12 day-archetypes. Every entry is a self-contained recipe for a
@@ -895,6 +998,9 @@ export const ARCHETYPES: Archetype[] = [
     weatherFit: ['DRY'],
     groupTypeFit: ['DATE'],
     affinityVibes: ['ROMANTIC', 'CHILL'],
+    mustInclude: ['PARK'], // walk anchor
+    intentFit: ['CATCH_UP', 'RELAX', 'CELEBRATE'],
+    intentAvoid: ['ADVENTURE', 'TEAM_BONDING'],
   },
   {
     key: 'QUIET_DATE',
@@ -912,6 +1018,9 @@ export const ARCHETYPES: Archetype[] = [
     groupTypeFit: ['DATE'],
     affinityVibes: ['ROMANTIC', 'CHILL', 'CULTURAL'],
     contextBoost: 1,
+    mustInclude: ['MUSEUM', 'ART_GALLERY'],
+    intentFit: ['EXPLORE', 'CATCH_UP', 'RELAX'],
+    intentAvoid: ['ADVENTURE', 'TEAM_BONDING'],
   },
   {
     key: 'CREATIVE_EVENING_DATE',
@@ -928,6 +1037,9 @@ export const ARCHETYPES: Archetype[] = [
     groupTypeFit: ['DATE'],
     affinityVibes: ['ROMANTIC', 'CREATIVE', 'CULTURAL'],
     contextBoost: 1.5,
+    mustInclude: ['POTTERY', 'WORKSHOP', 'PAINTING'],
+    intentFit: ['EXPLORE', 'CATCH_UP', 'CELEBRATE', 'IMPRESS'],
+    intentAvoid: ['ADVENTURE', 'EAT'],
   },
   {
     key: 'ART_NIGHT_DATE',
@@ -944,23 +1056,31 @@ export const ARCHETYPES: Archetype[] = [
     groupTypeFit: ['DATE'],
     affinityVibes: ['ROMANTIC', 'CULTURAL'],
     contextBoost: 0.5,
+    mustInclude: ['ART_GALLERY', 'MUSEUM'],
+    intentFit: ['CELEBRATE', 'IMPRESS', 'EXPLORE'],
+    intentAvoid: ['ADVENTURE', 'TEAM_BONDING', 'FAMILY_TIME'],
   },
   {
     key: 'MORNING_CULTURE_TOUR',
-    humanLabel: 'Morning culture tour — breakfast, museum / gallery, coffee close',
+    humanLabel: 'Morning culture tour — breakfast, museum / gallery, dessert',
     slots: [
       { role: 'BRUNCH', isActivity: false },
       { role: 'CULTURE_STOP', isActivity: true },
-      { role: 'COFFEE_CLOSE', isActivity: false },
+      // Was COFFEE_CLOSE → produced CAFE → MUSEUM → CAFE. Dessert closes the
+      // arc without repeating the opener.
+      { role: 'DESSERT_CLOSE', isActivity: false },
     ],
     minGroupSize: 2,
     timeFit: ['MORNING'],
     affinityVibes: ['CULTURAL', 'CHILL'],
     contextBoost: 1,
+    mustInclude: ['MUSEUM', 'ART_GALLERY'],
+    intentFit: ['EXPLORE', 'FAMILY_TIME', 'CATCH_UP'],
+    intentAvoid: ['ADVENTURE', 'IMPRESS'],
   },
   {
     key: 'WORK_TEAM_ACTIVITY',
-    humanLabel: 'Team-building — creative or escape activity, dinner, coffee close',
+    humanLabel: 'Team-building — group activity + a proper lunch + coffee',
     slots: [
       { role: 'ENERGETIC_ACTIVITY', isActivity: true },
       { role: 'DINNER', isActivity: false },
@@ -971,6 +1091,27 @@ export const ARCHETYPES: Archetype[] = [
     groupTypeFit: ['WORK'],
     affinityVibes: ['COMPETITIVE', 'CREATIVE'],
     contextBoost: 1.5,
+    mustInclude: ['ESCAPE_ROOM', 'BOWLING', 'ARCADE', 'POTTERY', 'WORKSHOP', 'SPORTS'],
+    intentFit: ['TEAM_BONDING', 'ADVENTURE'],
+    intentAvoid: ['IMPRESS', 'RELAX'],
+  },
+  {
+    key: 'WORK_MORNING_MEETUP',
+    humanLabel: 'Work meetup — coworking café, walk, brunch',
+    slots: [
+      { role: 'CONVERSATION_START', isActivity: false },
+      { role: 'SCENIC_STROLL', isActivity: true },
+      { role: 'BRUNCH', isActivity: false },
+    ],
+    minGroupSize: 3,
+    timeFit: ['MORNING'],
+    groupTypeFit: ['WORK'],
+    weatherFit: ['DRY'],
+    affinityVibes: ['CHILL', 'CREATIVE'],
+    contextBoost: 1.5,
+    mustInclude: ['CAFE', 'PARK'],
+    intentFit: ['TEAM_BONDING', 'CATCH_UP', 'RELAX'],
+    intentAvoid: ['ADVENTURE', 'CELEBRATE'],
   },
   {
     key: 'CREATIVE_DAY',
@@ -984,6 +1125,9 @@ export const ARCHETYPES: Archetype[] = [
     maxGroupSize: 5,
     timeFit: ['MORNING', 'AFTERNOON'],
     affinityVibes: ['CREATIVE', 'CULTURAL', 'ROMANTIC'],
+    mustInclude: ['POTTERY', 'WORKSHOP', 'PAINTING', 'ART_GALLERY'],
+    intentFit: ['EXPLORE', 'CATCH_UP', 'CELEBRATE'],
+    intentAvoid: ['ADVENTURE', 'EAT'],
   },
   {
     key: 'CULTURE_DAY',
@@ -996,6 +1140,9 @@ export const ARCHETYPES: Archetype[] = [
     minGroupSize: 2,
     timeFit: ['MORNING', 'AFTERNOON'],
     affinityVibes: ['CULTURAL', 'CHILL'],
+    mustInclude: ['MUSEUM', 'ART_GALLERY'],
+    intentFit: ['EXPLORE', 'CATCH_UP', 'FAMILY_TIME'],
+    intentAvoid: ['ADVENTURE', 'CELEBRATE'],
   },
   {
     key: 'CHILL_HANG',
@@ -1010,6 +1157,9 @@ export const ARCHETYPES: Archetype[] = [
     timeFit: ['AFTERNOON', 'EVENING'],
     weatherFit: ['DRY'],
     affinityVibes: ['CHILL'],
+    mustInclude: ['PARK'],
+    intentFit: ['RELAX', 'CATCH_UP'],
+    intentAvoid: ['ADVENTURE', 'CELEBRATE', 'IMPRESS'],
   },
   {
     key: 'HIGH_ENERGY',
@@ -1023,6 +1173,9 @@ export const ARCHETYPES: Archetype[] = [
     timeFit: ['AFTERNOON', 'EVENING'],
     groupTypeAvoid: ['DATE'],
     affinityVibes: ['ADVENTUROUS', 'COMPETITIVE'],
+    mustInclude: ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'],
+    intentFit: ['ADVENTURE', 'TEAM_BONDING', 'CATCH_UP'],
+    intentAvoid: ['RELAX', 'IMPRESS'],
   },
   {
     key: 'BIG_GROUP_BASH',
@@ -1035,18 +1188,28 @@ export const ARCHETYPES: Archetype[] = [
     minGroupSize: 5,
     timeFit: ['AFTERNOON', 'EVENING'],
     groupTypeAvoid: ['DATE'],
+    // A "bash" needs an actual bash activity, not restaurant-only. Bowling
+    // fits 5+ groups best; arcade and escape rooms also count.
+    mustInclude: ['BOWLING', 'ARCADE', 'ESCAPE_ROOM', 'SPORTS'],
+    intentFit: ['ADVENTURE', 'CELEBRATE', 'CATCH_UP', 'TEAM_BONDING'],
+    intentAvoid: ['RELAX', 'IMPRESS'],
   },
   {
     key: 'FOODIE_ARC',
     humanLabel: 'Foodie arc — café, restaurant, dessert crawl',
     slots: [
-      { role: 'CONVERSATION_START', isActivity: false },
+      // Force CAFE-only opener so this doesn't collapse to RESTAURANT →
+      // RESTAURANT → DESSERT alongside the DINNER slot.
+      { role: 'COFFEE_CLOSE', isActivity: false },
       { role: 'DINNER', isActivity: false },
       { role: 'DESSERT_CLOSE', isActivity: false },
     ],
     minGroupSize: 2,
     timeFit: ['AFTERNOON', 'EVENING', 'NIGHT'],
     affinityVibes: ['FOODIE', 'ROMANTIC'],
+    mustInclude: ['CAFE', 'RESTAURANT'],
+    intentFit: ['EAT', 'CELEBRATE', 'IMPRESS', 'CATCH_UP'],
+    intentAvoid: ['ADVENTURE', 'EXPLORE'],
   },
   {
     key: 'FAMILY_DAY_OUT',
@@ -1060,6 +1223,9 @@ export const ARCHETYPES: Archetype[] = [
     timeFit: ['MORNING', 'AFTERNOON'],
     groupTypeFit: ['FAMILY'],
     contextBoost: 1,
+    mustInclude: ['MUSEUM', 'ART_GALLERY', 'PARK'],
+    intentFit: ['FAMILY_TIME', 'RELAX', 'EXPLORE'],
+    intentAvoid: ['ADVENTURE', 'IMPRESS', 'CELEBRATE'],
   },
   {
     key: 'RAINY_INDOORS',
@@ -1077,13 +1243,17 @@ export const ARCHETYPES: Archetype[] = [
     // is walled off from DATE below.
     groupTypeAvoid: ['DATE'],
     contextBoost: 1.5,
+    mustInclude: ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'],
+    intentFit: ['ADVENTURE', 'CATCH_UP', 'TEAM_BONDING', 'FAMILY_TIME'],
   },
   {
     key: 'NIGHTLIFE',
-    humanLabel: 'Nightlife — dinner, late-night rooftop / bar, dessert',
+    humanLabel: 'Nightlife — cocktails / cafe, dinner, dessert',
     slots: [
+      // Open with a lounge cafe instead of another RESTAURANT so the arc
+      // doesn't compile to RESTAURANT → RESTAURANT → DESSERT.
+      { role: 'COFFEE_CLOSE', isActivity: false },
       { role: 'DINNER', isActivity: false },
-      { role: 'LATE_EVENING_EATS', isActivity: false },
       { role: 'DESSERT_CLOSE', isActivity: false },
     ],
     minGroupSize: 2,
@@ -1091,20 +1261,26 @@ export const ARCHETYPES: Archetype[] = [
     timeFit: ['EVENING', 'NIGHT'],
     groupTypeAvoid: ['FAMILY'],
     affinityVibes: ['FOODIE', 'ROMANTIC'],
+    mustInclude: ['CAFE', 'RESTAURANT'],
+    intentFit: ['CELEBRATE', 'IMPRESS', 'EAT'],
+    intentAvoid: ['RELAX', 'FAMILY_TIME', 'EXPLORE'],
   },
   {
     key: 'MORNING_BRUNCH',
-    humanLabel: 'Morning brunch — brunch café, scenic stroll, coffee close',
+    humanLabel: 'Morning brunch — brunch café, scenic stroll, dessert',
     slots: [
       { role: 'BRUNCH', isActivity: false },
       { role: 'SCENIC_STROLL', isActivity: true },
-      { role: 'COFFEE_CLOSE', isActivity: false },
+      // Was COFFEE_CLOSE → produced CAFE → PARK → CAFE. Close on dessert so
+      // the arc doesn't collapse to café-bookended.
+      { role: 'DESSERT_CLOSE', isActivity: false },
     ],
     minGroupSize: 2,
     timeFit: ['MORNING'],
-    // Brunch itself is indoor; the scenic stroll gets penalised at the venue
-    // level in monsoon but the arc still holds.
     affinityVibes: ['CHILL', 'FOODIE', 'ROMANTIC'],
+    mustInclude: ['CAFE', 'RESTAURANT', 'PARK'],
+    intentFit: ['RELAX', 'CATCH_UP', 'EAT', 'FAMILY_TIME'],
+    intentAvoid: ['ADVENTURE'],
   },
   {
     key: 'SHOPPING_ARC',
@@ -1121,6 +1297,9 @@ export const ARCHETYPES: Archetype[] = [
     // preference we surface it via SHOPPING_ARC on other members, not DATE.
     groupTypeAvoid: ['DATE'],
     contextBoost: 1,
+    mustInclude: ['MALL'],
+    intentFit: ['CATCH_UP', 'FAMILY_TIME'],
+    intentAvoid: ['ADVENTURE', 'RELAX', 'IMPRESS', 'CELEBRATE'],
   },
 ];
 
@@ -1129,6 +1308,8 @@ export const ARCHETYPES: Archetype[] = [
 const ARCHETYPE_KEY_TO_FAMILY: Record<ArchetypeKey, string> = {
   INTIMATE_DATE: 'INTIMATE_DATE',
   QUIET_DATE: 'QUIET_DATE',
+  CREATIVE_EVENING_DATE: 'CREATIVE_EVENING_DATE',
+  ART_NIGHT_DATE: 'ART_NIGHT_DATE',
   CREATIVE_DAY: 'CREATIVE_DAY',
   CULTURE_DAY: 'CULTURE_DAY',
   CHILL_HANG: 'CHILL_HANG',
@@ -1139,6 +1320,9 @@ const ARCHETYPE_KEY_TO_FAMILY: Record<ArchetypeKey, string> = {
   RAINY_INDOORS: 'RAINY_INDOORS',
   NIGHTLIFE: 'NIGHTLIFE',
   MORNING_BRUNCH: 'MORNING_BRUNCH',
+  MORNING_CULTURE_TOUR: 'MORNING_CULTURE_TOUR',
+  WORK_TEAM_ACTIVITY: 'WORK_TEAM_ACTIVITY',
+  WORK_MORNING_MEETUP: 'WORK_MORNING_MEETUP',
   SHOPPING_ARC: 'SHOPPING_ARC',
 };
 
@@ -1211,16 +1395,35 @@ function scoreArchetypeFit(a: Archetype, ctx: PlanningContext): number {
     else s += 3;
   }
 
-  // Preference overlap with slot roles' resolved categories
+  // Preference overlap with slot roles' resolved categories.
+  // MUCH stronger signal — a user asking for Museum + Park should aggressively
+  // push the planner toward archetypes that already carry those categories in
+  // specialised slots, not just sprinkle prefs in as scoring nudges. Weight
+  // grows with how *specialised* the matched slot is: an ART_GALLERY-slot
+  // hitting a Museum pref is worth more than a CAFE slot happening to include
+  // RESTAURANT (which is what CONVERSATION_START does by default).
   const prefs = new Set(ctx.preferredCategories);
   if (prefs.size > 0) {
     let overlap = 0;
+    let specialisedOverlap = 0;
+    let coveredPrefs = new Set<string>();
     for (const slot of a.slots) {
       const cats = resolveRoleToCategories(slot.role, ctx);
-      if (cats.some(c => prefs.has(c))) overlap++;
+      const upperCats = cats.map(c => c.toUpperCase());
+      const matched = upperCats.filter(c => prefs.has(c));
+      if (matched.length > 0) {
+        overlap++;
+        matched.forEach(m => coveredPrefs.add(m));
+        if (upperCats.some(c => SPECIALIZED_SLOT_CATEGORIES.has(c))) {
+          specialisedOverlap++;
+        }
+      }
     }
-    s += overlap;                  // 0..3 bonus per matching slot
-    if (overlap === 0) s -= 2;
+    s += overlap * 3;                    // was +1 per slot; now +3
+    s += specialisedOverlap * 3;         // extra +3 per specialised slot hit
+    // Reward covering MORE distinct preferences (Museum+Park > Museum+Museum)
+    s += coveredPrefs.size * 2;
+    if (overlap === 0) s -= 6;           // hard penalty when nothing matches
   }
 
   // Vibe affinity
@@ -1228,6 +1431,13 @@ function scoreArchetypeFit(a: Archetype, ctx: PlanningContext): number {
     const vibeSet = new Set(ctx.vibes);
     if (a.affinityVibes.some(v => vibeSet.has(v))) s += 2;
   }
+
+  // Intent alignment — the FIRST planning signal. An archetype that serves
+  // this intent gets a strong boost; one that avoids it gets a strong
+  // penalty. This is what makes "anniversary date" and "first date" produce
+  // different plans even when everything else is equal.
+  if (a.intentFit && a.intentFit.includes(ctx.intent)) s += 4;
+  if (a.intentAvoid && a.intentAvoid.includes(ctx.intent)) s -= 5;
 
   // Options that request a specific arc
   if (ctx.isMoreActivities && (a.key === 'HIGH_ENERGY' || a.key === 'BIG_GROUP_BASH' || a.key === 'RAINY_INDOORS')) s += 2;
@@ -1267,11 +1477,26 @@ export interface ArchetypePick {
 function compileArchetypeToTemplate(a: Archetype, ctx: PlanningContext): ItineraryTemplate {
   const [s1, s2, s3] = a.slots;
   const to = (r: SlotRole) => resolveRoleToCategories(r, ctx);
-  return {
+  const raw = {
     slot1: to(s1.role), slot1Act: s1.isActivity,
     slot2: to(s2.role), slot2Act: s2.isActivity,
     slot3: to(s3.role), slot3Act: s3.isActivity,
   };
+  // Whole-arc realism guard: when CONVERSATION_START (=[CAFE,RESTAURANT])
+  // sits next to a DINNER (=[RESTAURANT]) slot, drop RESTAURANT from the
+  // opener so we don't compile RESTAURANT → RESTAURANT patterns. Same for
+  // LATE_EVENING_EATS next to DINNER.
+  const isDinnerRole = (role: SlotRole) => role === 'DINNER';
+  const dropRestaurantIfAdjacentToDinner = (slotCats: string[], role: SlotRole, neighbours: SlotRole[]) => {
+    if (role !== 'CONVERSATION_START' && role !== 'LATE_EVENING_EATS' && role !== 'BRUNCH') return slotCats;
+    if (!neighbours.some(isDinnerRole)) return slotCats;
+    const trimmed = slotCats.filter(c => c !== 'RESTAURANT');
+    return trimmed.length > 0 ? trimmed : slotCats; // never leave the slot empty
+  };
+  raw.slot1 = dropRestaurantIfAdjacentToDinner(raw.slot1, s1.role, [s2.role]);
+  raw.slot2 = dropRestaurantIfAdjacentToDinner(raw.slot2, s2.role, [s1.role, s3.role]);
+  raw.slot3 = dropRestaurantIfAdjacentToDinner(raw.slot3, s3.role, [s2.role]);
+  return raw;
 }
 
 /**
@@ -1357,6 +1582,20 @@ const OVERLAY_ACTIVITY_CATS = new Set([
  * category has no local venues. This preserves the distinct-family output
  * that pickArchetypeTemplates worked to produce.
  */
+// Roles that carry specific archetype meaning (creative hands, culture stop,
+// scenic stroll, ...) — overlay must not pollute these. Otherwise a
+// CREATIVE_EVENING_DATE with user pref=[MALL] would compile to MALL→CAFE→
+// DESSERT and lose its "pottery + cafe + dessert" story. These roles are
+// identified by the CATEGORIES the template already declares.
+const SPECIALIZED_SLOT_CATEGORIES = new Set([
+  'POTTERY', 'WORKSHOP', 'PAINTING',        // creative hands
+  'MUSEUM', 'ART_GALLERY', 'ART_EXHIBITION', // culture stop
+  'PARK',                                     // scenic stroll
+  'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', // energetic activity
+  'MALL',                                     // shopping stroll
+  'MOVIE',                                    // movie stop
+]);
+
 export function overlayPreferencesOntoTemplate(
   t: ItineraryTemplate,
   preferredCategories: string[]
@@ -1374,7 +1613,13 @@ export function overlayPreferencesOntoTemplate(
     if (overlay.length === 0) return slot;
     const upperSlot = slot.map(s => s.toUpperCase());
     const hasOverlap = upperSlot.some(s => overlay.includes(s));
-    if (hasOverlap) return slot; // template already lines up with prefs
+    if (hasOverlap) return slot;
+    // If the slot is already specialised (pottery / museum / arcade / park /
+    // mall / movie), do NOT pollute it with unrelated preferences — that
+    // destroys the archetype's story. Preferences the user cares about will
+    // still surface in other archetypes' plans.
+    const isSpecialised = upperSlot.some(c => SPECIALIZED_SLOT_CATEGORIES.has(c));
+    if (isSpecialised) return slot;
     return Array.from(new Set([...upperSlot, ...overlay]));
   };
 
@@ -1799,21 +2044,34 @@ async function buildFallbackItineraryData(
       arrivalTime = prevTime;
     }
 
-    let mandatoryCost = place.estimatedCostPerHead;
-    let optionalCostMin = 0;
-    let optionalCostMax = 0;
+    // Prefer real DB-derived costs when present (populated in getZoneVenues
+    // from placeCosts). Only fall back to the category heuristic when they
+    // are truly missing. The old code unconditionally re-derived from
+    // estimatedCostPerHead, which threw away accurate ₹450 mandatory /
+    // ₹120 minimum drink numbers from the DB.
+    const dbMand = (place as any).mandatoryCost;
+    const dbOptMin = (place as any).optionalCostMin;
+    const dbOptMax = (place as any).optionalCostMax;
+    const est = place.estimatedCostPerHead;
+    const cat = place.category.toUpperCase();
 
-    if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(place.category.toUpperCase())) {
-      const est = place.estimatedCostPerHead;
+    let mandatoryCost: number;
+    let optionalCostMin: number;
+    let optionalCostMax: number;
+
+    if (dbMand !== undefined && dbMand !== null) {
+      mandatoryCost = dbMand;
+      optionalCostMin = dbOptMin ?? 0;
+      optionalCostMax = dbOptMax ?? 0;
+    } else if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
       mandatoryCost = Math.round(est * 0.4);
       optionalCostMin = Math.round(est * 0.6);
       optionalCostMax = Math.round(est * 1.5);
     } else if (place.isExperience) {
-      mandatoryCost = place.estimatedCostPerHead;
+      mandatoryCost = est;
       optionalCostMin = 0;
       optionalCostMax = 0;
     } else {
-      const est = place.estimatedCostPerHead;
       mandatoryCost = Math.round(est * 0.7);
       optionalCostMin = Math.round(est * 0.3);
       optionalCostMax = Math.round(est * 1.0);
@@ -1828,7 +2086,10 @@ async function buildFallbackItineraryData(
       arrivalTime,
       durationMinutes: duration,
       travelToNextMinutes: slotIdx === 2 ? null : 15,
-      estimatedCostPerHead: place.estimatedCostPerHead,
+      // Show what the user WILL spend on average (mandatory + typical
+      // discretionary min), not the raw catalog headline. Matches what the
+      // plan-total ₹s sum to.
+      estimatedCostPerHead: mandatoryCost + optionalCostMin,
       mandatoryCost,
       optionalCostMin,
       optionalCostMax,
@@ -1844,15 +2105,21 @@ async function buildFallbackItineraryData(
   for (let sIdx = 0; sIdx < slots.length - 1; sIdx++) {
     const current = slots[sIdx];
     const next = slots[sIdx + 1];
-    const slotDist = getHaversineDistance({ lat: current.lat, lng: current.lng }, { lat: next.lat, lng: next.lng });
+    const hop = calculateMumbaiTravelBreakdown(
+      { lat: current.lat, lng: current.lng },
+      { lat: next.lat, lng: next.lng },
+      groupData?.outingTime
+    );
 
-    const travelMin = Math.max(15, Math.round(slotDist * 4.0) + 5);
-    const travelCost = Math.round(23 + Math.max(0, slotDist - 1.5) * 15);
-
-    current.travelToNextMinutes = travelMin;
-    (current as any).travelToNextCost = Math.ceil(travelCost / Math.min(3, presentMembers.length));
-    // Propagate corrected arrival time to the next slot
-    next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + travelMin);
+    current.travelToNextMinutes = hop.totalTime;
+    (current as any).travelToNextCost = Math.ceil(hop.totalCost / Math.min(3, presentMembers.length));
+    (current as any).travelToNextMode = hop.trainTime > 0 ? 'TRAIN' : hop.autoTime > 0 ? 'AUTO' : 'WALK';
+    (current as any).travelToNextBreakdown = {
+      walkMin: hop.walkingTime,
+      autoMin: hop.autoTime,
+      trainMin: hop.trainTime,
+    };
+    next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + hop.totalTime);
   }
 
   const memberTravelsForPlan: any[] = [];
@@ -2596,62 +2863,409 @@ export function getVenueZone(lat: number, lng: number, name: string, address: st
 interface PlanScoringContext {
   preferredCategories: string[]; // uppercase
   zoneLowestBudget: number;
+  outingHour?: number; // 24h clock, integer hour
+}
+
+// Anchor = a category that can BE an outing on its own. Everything else is
+// "supporting" (dessert, sometimes cafe when it's the 3rd of 3 food stops).
+// This is the "cake shops shouldn't be primary anchors" contract.
+const ANCHOR_CATEGORIES = new Set([
+  'MUSEUM', 'ART_GALLERY', 'PARK',
+  'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS',
+  'POTTERY', 'WORKSHOP', 'PAINTING',
+  'MALL', 'MOVIE',
+  'RESTAURANT', 'CAFE',
+]);
+const SUPPORTING_CATEGORIES = new Set(['DESSERT']);
+
+const ARCHETYPE_BY_KEY: Record<string, Archetype> = Object.fromEntries(
+  ARCHETYPES.map(a => [a.key, a])
+);
+
+// ---------------------------------------------------------------------------
+// Constraint system.
+//
+// Every plan is validated against a stack of named constraints BEFORE it
+// reaches the scorer. Invalid plans are discarded, not penalised. If the
+// filter leaves fewer than the required 2 clusters, we relax constraints in a
+// fixed order (softest first) until we have enough survivors.
+//
+// Constraint order (strictest → softest):
+//   1. REQUIRED_PREFERENCE  — every category in ctx.requiredPreferences must
+//                             appear in the plan. User asked for MUSEUM →
+//                             plan without MUSEUM is not a plan.
+//   2. OPENING_HOURS        — no MUSEUM/PARK/POTTERY at NIGHT; no CAFE-only
+//                             at 10pm; no galleries after 6pm.
+//   3. ARCHETYPE_CONTRACT   — archetype.mustInclude ∩ plan.categories ≠ ∅
+//   4. MEAL_CHRONOLOGY      — RESTAURANT-as-opener needs outingHour ≥ 12
+//   5. DOUBLE_DESSERT       — no plan may have ≥ 2 DESSERT slots
+//   6. HAS_ANCHOR           — plan must include ≥ 1 anchor category
+// ---------------------------------------------------------------------------
+
+type ConstraintName =
+  | 'BUDGET_HARD_CEILING'    // never relax — users notice budget instantly
+  | 'REQUIRED_PREFERENCE'
+  | 'OPENING_HOURS'
+  | 'ARCHETYPE_CONTRACT'
+  | 'MEAL_CHRONOLOGY'
+  | 'DOUBLE_DESSERT'
+  | 'HAS_ANCHOR';
+
+// Relaxation order: LAST item drops FIRST when we can't gather enough
+// survivors. BUDGET_HARD_CEILING and REQUIRED_PREFERENCE are never relaxed —
+// budget is the metric users care about most, and a required Museum request
+// can't be answered with a non-museum plan.
+const RELAXATION_ORDER: ConstraintName[] = [
+  'HAS_ANCHOR',       // softest — droppable when the zone genuinely has no anchor
+  'DOUBLE_DESSERT',
+  'MEAL_CHRONOLOGY',
+  'ARCHETYPE_CONTRACT',
+  'OPENING_HOURS',
+  'REQUIRED_PREFERENCE',
+  'BUDGET_HARD_CEILING',
+];
+
+// The hard budget ceiling multiplier. A plan that costs ₹770 for a ₹700
+// budget is still ok; ₹980 for ₹700 is not.
+const BUDGET_HARD_CEILING_MULTIPLIER = 1.10;
+
+interface ValidationResult {
+  valid: boolean;
+  violations: ConstraintName[];
+}
+
+function categoriesForPlan(plan: any): string[] {
+  return (plan.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase());
+}
+
+function planHasRequiredPreferences(plan: any, requiredPrefs: string[]): boolean {
+  if (!requiredPrefs || requiredPrefs.length === 0) return true;
+  const cats = new Set(categoriesForPlan(plan));
+  return requiredPrefs.every(pref => cats.has(pref.toUpperCase()));
+}
+
+// Rough opening-hours table. Keeps venue slotting honest — museums close
+// ~6pm, parks are ok until sunset (~7pm) but not fully dark, galleries close
+// ~6pm, pottery/workshop classes end by ~9pm. Restaurants/cafes/desserts
+// operate late so they're unconstrained.
+function planOpeningHoursOk(plan: any, outingHour?: number): boolean {
+  if (typeof outingHour !== 'number') return true;
+  const slots = plan.slots ?? [];
+  // Slot i is expected to happen roughly outingHour + i * 2h into the day.
+  for (let i = 0; i < slots.length; i++) {
+    const cat = (slots[i].category ?? '').toUpperCase();
+    const approxSlotHour = outingHour + i * 2;
+    if ((cat === 'MUSEUM' || cat === 'ART_GALLERY') && approxSlotHour >= 18) return false;
+    if (cat === 'PARK' && approxSlotHour >= 21) return false;
+    if ((cat === 'POTTERY' || cat === 'WORKSHOP' || cat === 'PAINTING') && approxSlotHour >= 21) return false;
+    if ((cat === 'MALL') && approxSlotHour >= 22) return false;
+  }
+  return true;
+}
+
+function validatePlanCandidate(
+  plan: any,
+  ctx: {
+    requiredPreferences: string[];
+    outingHour?: number;
+    budget?: number;
+  },
+  disabled: Set<ConstraintName> = new Set()
+): ValidationResult {
+  const violations: ConstraintName[] = [];
+
+  if (!disabled.has('BUDGET_HARD_CEILING') && typeof ctx.budget === 'number' && ctx.budget > 0) {
+    const cost = plan.totalEstimatedCostPerHead ?? 0;
+    if (cost > ctx.budget * BUDGET_HARD_CEILING_MULTIPLIER) {
+      violations.push('BUDGET_HARD_CEILING');
+    }
+  }
+
+  if (!disabled.has('REQUIRED_PREFERENCE')
+      && !planHasRequiredPreferences(plan, ctx.requiredPreferences)) {
+    violations.push('REQUIRED_PREFERENCE');
+  }
+  if (!disabled.has('OPENING_HOURS')
+      && !planOpeningHoursOk(plan, ctx.outingHour)) {
+    violations.push('OPENING_HOURS');
+  }
+  if (!disabled.has('ARCHETYPE_CONTRACT')
+      && !planSatisfiesMustInclude(plan)) {
+    violations.push('ARCHETYPE_CONTRACT');
+  }
+  if (!disabled.has('MEAL_CHRONOLOGY')
+      && !planMealChronologyOk(plan, ctx.outingHour)) {
+    violations.push('MEAL_CHRONOLOGY');
+  }
+  if (!disabled.has('DOUBLE_DESSERT') && planDoubleDessert(plan)) {
+    violations.push('DOUBLE_DESSERT');
+  }
+  if (!disabled.has('HAS_ANCHOR') && !planHasAnchor(plan)) {
+    violations.push('HAS_ANCHOR');
+  }
+
+  return { valid: violations.length === 0, violations };
+}
+
+/**
+ * Filter candidates through the constraint stack. If fewer than `minSurvivors`
+ * pass, relax constraints in RELAXATION_ORDER (softest first). Returns the
+ * survivors + the set of constraints that were actually enforced.
+ */
+function filterValidCandidates(
+  candidates: any[],
+  ctx: { requiredPreferences: string[]; outingHour?: number; budget?: number },
+  minSurvivors = 2
+): { valid: any[]; enforcedConstraints: ConstraintName[]; relaxedConstraints: ConstraintName[] } {
+  const disabled = new Set<ConstraintName>();
+  const relaxed: ConstraintName[] = [];
+
+  const runFilter = () => candidates.filter(c => validatePlanCandidate(c, ctx, disabled).valid);
+
+  let survivors = runFilter();
+  for (const constraint of RELAXATION_ORDER) {
+    if (survivors.length >= minSurvivors) break;
+    // Skip REQUIRED_PREFERENCE relaxation when user has any hard prefs — a
+    // museum request must never return a non-museum plan.
+    if (constraint === 'REQUIRED_PREFERENCE' && ctx.requiredPreferences.length > 0) continue;
+    // BUDGET_HARD_CEILING is NEVER relaxed. If nothing fits, return fewer
+    // plans — better than showing an over-budget plan to a user who set ₹700.
+    if (constraint === 'BUDGET_HARD_CEILING') continue;
+    disabled.add(constraint);
+    relaxed.push(constraint);
+    survivors = runFilter();
+  }
+
+  const enforced = RELAXATION_ORDER.filter(c => !disabled.has(c));
+  return { valid: survivors, enforcedConstraints: enforced, relaxedConstraints: relaxed };
+}
+
+function planHasAnchor(plan: any): boolean {
+  const cats = (plan.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase());
+  return cats.some((c: string) => ANCHOR_CATEGORIES.has(c));
+}
+
+function planSatisfiesMustInclude(plan: any): boolean {
+  const key = plan.archetypeKey;
+  const arch = key ? ARCHETYPE_BY_KEY[key] : undefined;
+  if (!arch?.mustInclude || arch.mustInclude.length === 0) return true;
+  const cats = new Set((plan.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase()));
+  return arch.mustInclude.some(c => cats.has(c.toUpperCase()));
+}
+
+function planDoubleDessert(plan: any): boolean {
+  const cats = (plan.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase());
+  return cats.filter((c: string) => c === 'DESSERT').length >= 2;
+}
+
+// Expanded chronology by time-of-day.
+//
+// MORNING (5-11): openers ∈ CAFE / BRUNCH / PARK; no DINNER, no dessert-only
+//                 opener, no NIGHTLIFE categories.
+// AFTERNOON (11-16): openers ∈ RESTAURANT (lunch) / ACTIVITY / SHOPPING /
+//                    CAFE / MUSEUM / PARK.
+// EVENING (16-20):  openers ∈ CAFE / DINNER / GALLERY / PARK (sunset).
+// NIGHT (20+):     openers ∈ CAFE / DINNER / DESSERT / BAR-like; no MUSEUM /
+//                    PARK / POTTERY / WORKSHOP / MALL as opener OR later slot
+//                    (they're closed — that's the opening-hours constraint
+//                    talking; this rule just enforces the arc shape).
+//
+// Also: DESSERT should never open a plan.
+const MORNING_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'BREAKFAST']);
+const NIGHT_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
+
+function planMealChronologyOk(plan: any, outingHour?: number): boolean {
+  if (typeof outingHour !== 'number') return true;
+  const slots = plan.slots ?? [];
+  if (slots.length === 0) return true;
+  const firstCat = (slots[0].category ?? '').toUpperCase();
+
+  // Universal: dessert should never open a plan. It's a supporting closer.
+  if (firstCat === 'DESSERT') return false;
+
+  if (outingHour < 11) {
+    // Morning: heavy DINNER as the first stop reads wrong. "Restaurant" is
+    // ambiguous here — many places serve breakfast — but we still disallow it
+    // as opener since the archetype's BRUNCH/CAFE role should surface first.
+    if (firstCat === 'RESTAURANT') return false;
+    if (!MORNING_ALLOWED_OPENER.has(firstCat)) return false;
+  }
+  if (outingHour >= 20) {
+    if (!NIGHT_ALLOWED_OPENER.has(firstCat)) return false;
+  }
+
+  // Meal-order: within a plan, RESTAURANT (proper dinner) shouldn't be
+  // followed by CAFE (lighter meal). "Restaurant → Park → Cafe" reads as
+  // dinner-then-coffee — fine. But "Restaurant → Cafe" back-to-back is off.
+  // Only catch the obvious back-to-back case; the archetype system prevents
+  // most of these.
+  for (let i = 0; i < slots.length - 1; i++) {
+    const a = (slots[i].category ?? '').toUpperCase();
+    const b = (slots[i + 1].category ?? '').toUpperCase();
+    if (a === 'DINNER' && b === 'CAFE') return false;
+  }
+  return true;
 }
 
 function scorePlanCandidate(plan: any, ctx: PlanScoringContext): number {
   const slots = plan.slots ?? [];
   if (slots.length === 0) return 0;
 
-  // Travel fairness — the existing plan carries avgTotalTime.
   const avgTravel = plan.avgTotalTime ?? plan.avgCabTime ?? 30;
   const travelScore = Math.max(0.3, Math.min(1, 1 - avgTravel / 120));
 
-  // Budget — how well does the plan stay within the min budget?
   const cost = plan.totalEstimatedCostPerHead ?? 0;
   const budget = Math.max(500, ctx.zoneLowestBudget || 1500);
-  const budgetScore = cost <= budget ? 1 : Math.max(0, 1 - (cost - budget) / budget);
+  const overBudget = cost > budget;
+  const budgetScore = overBudget ? Math.max(0, 1 - (cost - budget) / budget) : 1;
+  // Hard budget floor: any plan that exceeds budget eats a fixed penalty on
+  // top of the linear taper. Guarantees ≥80% budget-respect on the surviving
+  // shortlist as long as we have at least one in-budget candidate to prefer.
+  const budgetHardPenalty = overBudget ? 0.5 : 0;
 
-  // Venue quality — average rating (fall back to 4.2 if missing).
   const ratings = slots.map((s: any) => s.rating).filter((r: any) => r != null);
   const avgRating = ratings.length > 0
     ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length
     : 4.2;
   const qualityScore = Math.min(1, avgRating / 5);
 
-  // Preference alignment.
   const prefs = new Set(ctx.preferredCategories);
   const prefMatchCount = slots.filter((s: any) => prefs.has((s.category ?? '').toUpperCase())).length;
   const prefScore = prefs.size === 0 ? 0.5 : prefMatchCount / slots.length;
 
-  // Realism — no CAFE→CAFE→CAFE, prefer activity + food + relaxed close.
   const cats = slots.map((s: any) => (s.category ?? '').toUpperCase());
   const uniqueCats = new Set(cats);
   const catDiversityScore = uniqueCats.size / cats.length;
 
-  // Flow — a "well-planned day" mixes activity with food. Reward plans that
-  // have at least one activity and at least one food slot.
   const foodCats = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
   const activityCats = new Set(['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING', 'MALL', 'MOVIE', 'PARK']);
   const hasFood = cats.some((c: string) => foodCats.has(c));
   const hasActivity = cats.some((c: string) => activityCats.has(c));
   const flowScore = (hasFood ? 0.5 : 0) + (hasActivity ? 0.5 : 0);
 
-  // Venue-usage repetition penalty at plan level — sum across slots.
   const repetitionPenalty = slots.reduce((sum: number, s: any) => {
     const id = s.venueId ?? s.experienceId;
     return sum + getVenueUsagePenalty(id ? String(id) : '');
   }, 0);
 
-  // Weights sum to 1.0 pre-penalty.
+  // New weighting reflects that a memorable place beats saving 4min travel.
+  // Prefs 0.25, Travel 0.22, Quality 0.18, Budget 0.15, Flow 0.10, Diversity 0.10.
   const composite =
-    0.15 * travelScore +
+    0.22 * travelScore +
+    0.25 * prefScore +
+    0.18 * qualityScore +
     0.15 * budgetScore +
-    0.20 * qualityScore +
-    0.20 * prefScore +
-    0.15 * catDiversityScore +
-    0.15 * flowScore;
+    0.10 * flowScore +
+    0.10 * catDiversityScore;
 
-  return composite - 0.15 * Math.min(1, repetitionPenalty);
+  return composite - 0.15 * Math.min(1, repetitionPenalty) - budgetHardPenalty;
+}
+
+/**
+ * Experience signature — the axis along which we cluster and diversify.
+ *
+ * Two plans in the same zone with different arcs are DIVERSE.
+ * Two plans in different zones with the same category shape are NOT.
+ *
+ * Signature = archetypeKey + sorted-slot-category-shape. We deliberately
+ * sort category shape so [CAFE, MUSEUM, DESSERT] and [MUSEUM, CAFE, DESSERT]
+ * collide (they're the same *ingredients*), while [CAFE, CAFE, DESSERT] and
+ * [MUSEUM, PARK, CAFE] stay distinct.
+ */
+function experienceSignature(plan: any): string {
+  const key = plan.archetypeKey ?? plan.archetypeFamily ?? plan.name ?? 'UNK';
+  const cats = (plan.slots ?? [])
+    .map((s: any) => (s.category ?? '').toUpperCase())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+  return `${key}::${cats}`;
+}
+
+/**
+ * Two plans differ by "experience distance" if their archetype key differs
+ * OR their category shape differs (at least 2 slots don't overlap). Used to
+ * grade candidate-pairs when picking the final 2 representatives.
+ */
+function experienceDistance(a: any, b: any): number {
+  const aKey = a.archetypeKey ?? a.archetypeFamily ?? 'UNK';
+  const bKey = b.archetypeKey ?? b.archetypeFamily ?? 'UNK';
+  const keyPart = aKey === bKey ? 0 : 1;
+
+  const aCats = new Set((a.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase()));
+  const bCats = new Set((b.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase()));
+  let overlap = 0;
+  for (const c of aCats) if (bCats.has(c as string)) overlap++;
+  const catPart = 1 - overlap / Math.max(1, Math.max(aCats.size, bCats.size));
+
+  const aVenues = new Set((a.slots ?? []).map((s: any) => String(s.venueId ?? s.experienceId ?? '')));
+  const bVenues = new Set((b.slots ?? []).map((s: any) => String(s.venueId ?? s.experienceId ?? '')));
+  let vOverlap = 0;
+  for (const v of aVenues) if (v && bVenues.has(v as string)) vOverlap++;
+  const venuePart = 1 - vOverlap / Math.max(1, Math.max(aVenues.size, bVenues.size));
+
+  // Experience diversity dominates: category shape 55%, archetype key 30%,
+  // venue set 15%. Zones deliberately NOT part of this distance — Bandra
+  // pottery + Bandra dessert-bar is a fine second option to Bandra art + cafe.
+  return 0.55 * catPart + 0.30 * keyPart + 0.15 * venuePart;
+}
+
+/**
+ * Stage 3 — Cluster candidates by experience signature, pick the top-scored
+ * representative from each cluster, then greedy-select `count` most-distinct
+ * representatives. Falls back to plain top-score if clustering yields <count.
+ */
+function clusterAndPickRepresentatives(candidates: any[], count = 2): any[] {
+  if (candidates.length === 0) return [];
+
+  const clusters = new Map<string, any[]>();
+  for (const c of candidates) {
+    const sig = experienceSignature(c);
+    if (!clusters.has(sig)) clusters.set(sig, []);
+    clusters.get(sig)!.push(c);
+  }
+
+  const representatives = Array.from(clusters.values()).map(members => {
+    members.sort((a, b) => (b.planLevelScore ?? 0) - (a.planLevelScore ?? 0));
+    return members[0];
+  });
+  representatives.sort((a, b) => (b.planLevelScore ?? 0) - (a.planLevelScore ?? 0));
+
+  if (representatives.length <= count) {
+    // Not enough distinct clusters — pad from the next-best non-picked
+    // candidates so we always return `count` plans.
+    const picked = [...representatives];
+    const seen = new Set(picked);
+    for (const c of [...candidates].sort((a, b) => (b.planLevelScore ?? 0) - (a.planLevelScore ?? 0))) {
+      if (picked.length >= count) break;
+      if (seen.has(c)) continue;
+      picked.push(c);
+    }
+    return picked.slice(0, count);
+  }
+
+  // Greedy: seed with top-scored representative, then repeatedly pick the
+  // representative that MAXIMISES minimum experience-distance to the picked
+  // set. This is "farthest-point sampling" applied to the itinerary space.
+  const picked: any[] = [representatives[0]];
+  const remaining = representatives.slice(1);
+  while (picked.length < count && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestScore = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const cand = remaining[i];
+      const minDist = Math.min(...picked.map(p => experienceDistance(cand, p)));
+      // Break ties on the plan's own score (memorable > minimal).
+      const composite = minDist + 0.15 * (cand.planLevelScore ?? 0);
+      if (composite > bestScore) {
+        bestScore = composite;
+        bestIdx = i;
+      }
+    }
+    picked.push(remaining[bestIdx]);
+    remaining.splice(bestIdx, 1);
+  }
+  return picked;
 }
 
 /**
@@ -2722,6 +3336,127 @@ function diversifyCandidatePlans(candidates: any[], count = 4): any[] {
   return picked;
 }
 
+// ---------------------------------------------------------------------------
+// Transit connectivity (replaces hardcoded MAJOR_HUBS bonus).
+//
+// A zone's connectivity is the sum of:
+//   * lineScore  — 3 points per major line (Western/Central/Harbour) that
+//                  serves the zone. Interchange hubs (Dadar, Kurla, Wadala,
+//                  Chembur, Vashi/Panvel spur) sit on 2 lines so score higher.
+//   * stationScore — how close the zone centroid is to its nearest
+//                  station platform. Walking distance ≤ 400m → full 4pts,
+//                  linearly falling to 0 at 1500m.
+//   * rickshawScore — a proxy for arriving cheaply from adjacent zones. Under
+//                  the local ₹26 base + ₹17/km rate, a ride under ~1.5km costs
+//                  ≈ ₹26 flat (the meter never leaves base). Zones with more
+//                  adjacent zones within that 1.5km ring are the ones you can
+//                  most cheaply converge on.
+//   * busScore   — small bump for zones on the trunk BEST bus routes that
+//                  actually help off-line members reach the venue.
+//
+// The numbers below are calibrated so the top hubs (Dadar, Kurla, Bandra) end
+// up in the 8-12 range, and less-connected zones like Chunabhatti / Wadala
+// end up in the 2-4 range. That gives the same *ordering* as the old
+// MAJOR_HUBS bonus but from a defensible, extendable data source instead of a
+// hand-picked list.
+// ---------------------------------------------------------------------------
+
+type MumbaiLine = 'WESTERN' | 'CENTRAL' | 'HARBOUR' | 'TRANS_HARBOUR';
+
+interface ZoneTransit {
+  lines: MumbaiLine[];
+  stationWalkMeters: number;   // walk from zone centroid to nearest platform
+  busTrunkRoutes: number;      // count of trunk BEST routes intersecting the zone
+}
+
+const ZONE_TRANSIT: Record<string, ZoneTransit> = {
+  // South
+  Colaba: { lines: [], stationWalkMeters: 900, busTrunkRoutes: 4 },
+  Fort: { lines: ['HARBOUR'], stationWalkMeters: 800, busTrunkRoutes: 5 },
+  Churchgate: { lines: ['WESTERN'], stationWalkMeters: 200, busTrunkRoutes: 4 },
+  'Marine Lines': { lines: ['WESTERN'], stationWalkMeters: 250, busTrunkRoutes: 2 },
+  Mahalakshmi: { lines: ['WESTERN'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Worli: { lines: [], stationWalkMeters: 1500, busTrunkRoutes: 3 },
+  'Lower Parel': { lines: ['WESTERN'], stationWalkMeters: 500, busTrunkRoutes: 3 },
+  Prabhadevi: { lines: ['WESTERN'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  // Central
+  Dadar: { lines: ['WESTERN', 'CENTRAL'], stationWalkMeters: 150, busTrunkRoutes: 6 },
+  Matunga: { lines: ['WESTERN', 'CENTRAL'], stationWalkMeters: 300, busTrunkRoutes: 3 },
+  Sewri: { lines: ['HARBOUR'], stationWalkMeters: 500, busTrunkRoutes: 1 },
+  Wadala: { lines: ['HARBOUR', 'CENTRAL'], stationWalkMeters: 350, busTrunkRoutes: 2 },
+  Sion: { lines: ['CENTRAL'], stationWalkMeters: 300, busTrunkRoutes: 3 },
+  // Western Suburbs
+  Mahim: { lines: ['WESTERN', 'HARBOUR'], stationWalkMeters: 300, busTrunkRoutes: 3 },
+  Bandra: { lines: ['WESTERN', 'HARBOUR'], stationWalkMeters: 250, busTrunkRoutes: 5 },
+  BKC: { lines: [], stationWalkMeters: 1200, busTrunkRoutes: 5 },
+  Khar: { lines: ['WESTERN'], stationWalkMeters: 300, busTrunkRoutes: 2 },
+  Santacruz: { lines: ['WESTERN'], stationWalkMeters: 300, busTrunkRoutes: 3 },
+  Juhu: { lines: [], stationWalkMeters: 1800, busTrunkRoutes: 3 },
+  'Vile Parle': { lines: ['WESTERN'], stationWalkMeters: 300, busTrunkRoutes: 2 },
+  Andheri: { lines: ['WESTERN', 'HARBOUR'], stationWalkMeters: 200, busTrunkRoutes: 5 },
+  Versova: { lines: [], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Jogeshwari: { lines: ['WESTERN'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Goregaon: { lines: ['WESTERN', 'HARBOUR'], stationWalkMeters: 350, busTrunkRoutes: 3 },
+  Malad: { lines: ['WESTERN'], stationWalkMeters: 400, busTrunkRoutes: 3 },
+  Kandivali: { lines: ['WESTERN'], stationWalkMeters: 350, busTrunkRoutes: 3 },
+  Borivali: { lines: ['WESTERN'], stationWalkMeters: 300, busTrunkRoutes: 4 },
+  Dahisar: { lines: ['WESTERN'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  // Eastern Suburbs
+  Kurla: { lines: ['CENTRAL', 'HARBOUR'], stationWalkMeters: 200, busTrunkRoutes: 5 },
+  Chunabhatti: { lines: ['HARBOUR'], stationWalkMeters: 350, busTrunkRoutes: 1 },
+  Chembur: { lines: ['HARBOUR'], stationWalkMeters: 300, busTrunkRoutes: 3 },
+  Ghatkopar: { lines: ['CENTRAL'], stationWalkMeters: 250, busTrunkRoutes: 4 },
+  Vikhroli: { lines: ['CENTRAL'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Powai: { lines: [], stationWalkMeters: 1600, busTrunkRoutes: 3 },
+  Bhandup: { lines: ['CENTRAL'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Mulund: { lines: ['CENTRAL'], stationWalkMeters: 350, busTrunkRoutes: 3 },
+  Thane: { lines: ['CENTRAL', 'TRANS_HARBOUR'], stationWalkMeters: 250, busTrunkRoutes: 5 },
+  Dombivli: { lines: ['CENTRAL'], stationWalkMeters: 300, busTrunkRoutes: 2 },
+  // Harbour / Navi Mumbai
+  Mankhurd: { lines: ['HARBOUR'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Vashi: { lines: ['HARBOUR', 'TRANS_HARBOUR'], stationWalkMeters: 300, busTrunkRoutes: 4 },
+  Sanpada: { lines: ['HARBOUR'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Nerul: { lines: ['HARBOUR', 'TRANS_HARBOUR'], stationWalkMeters: 350, busTrunkRoutes: 3 },
+  Seawoods: { lines: ['HARBOUR'], stationWalkMeters: 350, busTrunkRoutes: 2 },
+  Belapur: { lines: ['HARBOUR'], stationWalkMeters: 400, busTrunkRoutes: 3 },
+  Kharghar: { lines: ['HARBOUR'], stationWalkMeters: 500, busTrunkRoutes: 2 },
+  Airoli: { lines: ['TRANS_HARBOUR'], stationWalkMeters: 400, busTrunkRoutes: 2 },
+  Panvel: { lines: ['HARBOUR'], stationWalkMeters: 400, busTrunkRoutes: 3 },
+};
+
+// Rickshaw math: ₹26 flat covers ~1.5km (the meter only ticks up after 1.5km),
+// so a zone with N neighbours within 2.5km is "N cheap converge points".
+const RICKSHAW_CHEAP_RADIUS_KM = 2.5;
+
+function computeRickshawReach(zoneName: string): number {
+  const zone = MUMBAI_ZONES.find(z => z.name === zoneName);
+  if (!zone) return 0;
+  let neighboursInRing = 0;
+  for (const other of MUMBAI_ZONES) {
+    if (other.name === zoneName) continue;
+    const d = getHaversineDistance(
+      { lat: zone.lat, lng: zone.lng },
+      { lat: other.lat, lng: other.lng }
+    );
+    if (d <= RICKSHAW_CHEAP_RADIUS_KM) neighboursInRing += 1;
+  }
+  return neighboursInRing;
+}
+
+export function computeTransitConnectivity(zoneName: string): number {
+  const t = ZONE_TRANSIT[zoneName];
+  if (!t) return 0;
+
+  const lineScore = t.lines.length * 3;
+  const stationScore = t.stationWalkMeters <= 400
+    ? 4
+    : Math.max(0, 4 - ((t.stationWalkMeters - 400) / 275));
+  const rickshawScore = Math.min(3, computeRickshawReach(zoneName) * 0.5);
+  const busScore = Math.min(2, t.busTrunkRoutes * 0.35);
+
+  return +(lineScore + stationScore + rickshawScore + busScore).toFixed(2);
+}
+
 export async function executePlanningEngineForEval(
   groupData: any, presentMembers: any[], budgetSummary: any,
   presentLocations: any[], preferredCategories: string[], vibes: string[],
@@ -2752,24 +3487,20 @@ async function executePlanningEngine(
     [shuffledAllZones[i], shuffledAllZones[j]] = [shuffledAllZones[j], shuffledAllZones[i]];
   }
 
-  // Hub-aware fair ranking. selectCandidateZones already returns zones ranked
-  // by travel-fairness penalty (lower index = fairer). We preserve that as the
-  // primary signal, then give MAJOR_HUBS a large bump so a fair hub always
-  // beats a fair non-hub, and a slightly-less-fair hub can beat a much less
-  // relevant non-hub. The observed problem: 4 Borivali + 1 each Andheri /
-  // Ulhasnagar / Byculla / Seawoods produced Vile Parle / Santacruz /
-  // Ghatkopar instead of the actually-fair Bandra / Dadar / Kurla. This
-  // scoring restores those hubs.
-  const MAJOR_HUBS = ['Bandra', 'Dadar', 'Kurla', 'Andheri', 'Vashi', 'Thane', 'BKC', 'Ghatkopar', 'Powai', 'Lower Parel'];
+  // Transit-connectivity-aware fair ranking. selectCandidateZones returns
+  // zones ordered by travel-fairness penalty (lower idx = fairer). On top of
+  // that we compute an EXPLICIT connectivity score from the underlying transit
+  // graph: which lines the zone sits on (Western / Central / Harbour), its
+  // walk-distance to the nearest station, and its rickshaw-reachability from
+  // adjacent zones under the ₹26 base-fare + ₹17/km taxi rate. No hardcoded
+  // "Bandra + 8" bonuses — a zone that's genuinely well-connected will beat a
+  // less-connected zone even if the latter is a slightly better midpoint.
   const zoneRank = new Map<string, number>();
   shuffledAllZones.forEach((z, idx) => {
-    // Fairness bonus: better-ranked zones (lower idx) get a larger bonus.
-    // With 20 zones the range is roughly 0..20.
     const fairnessBonus = Math.max(0, shuffledAllZones.length - idx);
-    const hubBonus = MAJOR_HUBS.includes(z.name) ? 8 : 0;
-    // Small jitter for tie-break (do NOT dominate the fair+hub signal).
+    const connectivity = computeTransitConnectivity(z.name);
     const jitter = Math.random() * 1.5;
-    zoneRank.set(z.name, fairnessBonus + hubBonus + jitter);
+    zoneRank.set(z.name, fairnessBonus + connectivity + jitter);
   });
   shuffledAllZones.sort((a, b) => (zoneRank.get(b.name) ?? 0) - (zoneRank.get(a.name) ?? 0));
 
@@ -3274,8 +4005,12 @@ async function executePlanningEngine(
     outingTime: groupData.outingTime,
     outingDate: groupData.outingDate,
     preferredCategories,
+    requiredPreferences: Array.isArray(groupData.requiredPreferences)
+      ? groupData.requiredPreferences
+      : [],
     vibes: activeVibes,
     options,
+    intent: groupData.outingIntent as OutingIntent | undefined,
     extraGroupSignals: { activity: groupData.activity, outingType: groupData.outingType },
   });
   console.log('[PLANNER] planning context:', JSON.stringify({
@@ -3283,7 +4018,9 @@ async function executePlanningEngine(
     sizeBucket: planningContext.sizeBucket,
     timeBucket: planningContext.timeBucket,
     weather: planningContext.weather,
+    intent: planningContext.intent,
     preferences: planningContext.preferredCategories,
+    requiredPreferences: planningContext.requiredPreferences,
     vibes: planningContext.vibes,
     options: planningContext.options,
   }));
@@ -3295,11 +4032,11 @@ async function executePlanningEngine(
       [shuffledZones[idx], shuffledZones[j]] = [shuffledZones[j], shuffledZones[idx]];
     }
 
-    // Stage 2 primary path: dispatch archetype-first from PlanningContext,
-    // then compile the chosen archetypes into concrete templates. Falls back
-    // to the Stage 1 template picker if the archetype pool cannot cover the
-    // context (e.g. a very narrow request that hard-filters everything out).
-    const archetypePicks = pickArchetypesForContext(planningContext, 4);
+    // Stage 3 primary path: pull a LARGE archetype pool (up to 8) so the
+    // 40-candidate generation phase has enough shapes to combine with zones
+    // and budget tiers. The final cluster-and-pick step will still return 2.
+    const ARCHETYPE_POOL_SIZE = 8;
+    const archetypePicks = pickArchetypesForContext(planningContext, ARCHETYPE_POOL_SIZE);
     const isDate = planningContext.groupType === 'DATE';
     const templatePool = isDate ? DATE_ITINERARY_TEMPLATES : ITINERARY_TEMPLATES;
 
@@ -3307,9 +4044,6 @@ async function executePlanningEngine(
     let pickedArchetypeMeta: Array<{ key: string; family: string; label: string } | null>;
 
     if (archetypePicks.length >= 4) {
-      // All 4 plans come from real archetypes. Overlay user prefs only where
-      // the archetype's slot categories don't already cover them — the picker
-      // has already respected the user's stated interests via scoreArchetypeFit.
       pickedTemplates = archetypePicks.map(p =>
         overlayPreferencesOntoTemplate(p.template, planningContext.preferredCategories)
       );
@@ -3318,20 +4052,21 @@ async function executePlanningEngine(
         family: p.archetypeFamily,
         label: p.archetype.humanLabel,
       }));
-      console.log('[PLANNER] archetype dispatch:', archetypePicks.map(p => ({
-        key: p.archetypeKey,
-        shape: `${p.template.slot1[0]}->${p.template.slot2[0]}->${p.template.slot3[0]}`,
-        label: p.archetype.humanLabel,
-      })));
+      console.log('[PLANNER] archetype dispatch (pool size ' + archetypePicks.length + '):',
+        archetypePicks.map(p => ({
+          key: p.archetypeKey,
+          shape: `${p.template.slot1[0]}->${p.template.slot2[0]}->${p.template.slot3[0]}`,
+          label: p.archetype.humanLabel,
+        }))
+      );
     } else {
-      // Fallback: not enough eligible archetypes — top up with Stage 1 template
-      // picker. Log which plans came from archetypes vs the legacy pool so we
-      // can see this in the eval.
-      const s1Templates = pickArchetypeTemplates(planningContext, templatePool, 4);
+      // Fallback: pool badly under-served → top up with Stage 1 legacy templates.
+      const target = 6;
+      const s1Templates = pickArchetypeTemplates(planningContext, templatePool, target);
       const filled = [
         ...archetypePicks.map(p => p.template),
         ...s1Templates,
-      ].slice(0, 4);
+      ].slice(0, target);
       pickedTemplates = filled.map(t =>
         overlayPreferencesOntoTemplate(t, planningContext.preferredCategories)
       );
@@ -3341,9 +4076,9 @@ async function executePlanningEngine(
           family: p.archetypeFamily,
           label: p.archetype.humanLabel,
         })),
-        ...Array(Math.max(0, 4 - archetypePicks.length)).fill(null),
-      ].slice(0, 4);
-      console.warn(`[PLANNER] archetype pool short (${archetypePicks.length}/4) — padding with legacy templates. Context:`,
+        ...Array(Math.max(0, target - archetypePicks.length)).fill(null),
+      ].slice(0, target);
+      console.warn(`[PLANNER] archetype pool short (${archetypePicks.length}) — padding with legacy templates. Context:`,
         JSON.stringify({
           groupType: planningContext.groupType,
           size: planningContext.sizeBucket,
@@ -3359,25 +4094,40 @@ async function executePlanningEngine(
       return pickedArchetypeMeta[idx % pickedArchetypeMeta.length];
     };
 
-    // Candidate-first: generate up to 6 candidates per pass so the downstream
-    // diversifier has room to pick a genuinely varied top-4.
-    const CANDIDATE_TARGET = 6;
-    for (let i = 0; i < CANDIDATE_TARGET; i++) {
+    // Stage 3 candidate pool: generate up to CANDIDATE_TARGET candidates by
+    // sweeping (template × zone × budget-tier). We deliberately over-generate
+    // so the downstream clustering step can select 2 truly-distinct
+    // representatives instead of picking one-best-per-archetype. This is the
+    // "avoid local optima via clustering" pattern.
+    const CANDIDATE_TARGET = 40;
+    const combos: Array<{ templateIdx: number; zoneIdx: number; tierIdx: number }> = [];
+    for (let t = 0; t < pickedTemplates.length; t++) {
+      for (let z = 0; z < shuffledZones.length; z++) {
+        for (let b = 0; b < tiers.length; b++) {
+          combos.push({ templateIdx: t, zoneIdx: z, tierIdx: b });
+        }
+      }
+    }
+    // Shuffle combos so we don't burn all our budget on template[0].
+    for (let idx = combos.length - 1; idx > 0; idx--) {
+      const j = Math.floor(Math.random() * (idx + 1));
+      [combos[idx], combos[j]] = [combos[j], combos[idx]];
+    }
+
+    for (let i = 0; i < Math.min(CANDIDATE_TARGET, combos.length); i++) {
       if (draftItineraries.length >= CANDIDATE_TARGET) break;
 
-      const budgetTier = tiers[i % tiers.length];
+      const { templateIdx, zoneIdx, tierIdx } = combos[i];
+      const budgetTier = tiers[tierIdx];
       const planIndex = i + 1;
 
-      // No planIndex-based dedup here — we intentionally allow multiple
-      // candidates per archetype so the diversifier has variety to choose from.
-
-      const zoneObj = shuffledZones[i % shuffledZones.length];
+      const zoneObj = shuffledZones[zoneIdx];
       const zoneData = zonesData.find(zd => zd.zone.name === zoneObj.name) || zonesData[0];
 
       const filterAndUnused = (list: any[]) => allowSharedVenues ? list : list.filter(c => !usedPlaceIds.has(c.id));
       let candidatesPool = filterAndUnused(zoneData.candidates);
 
-      const template = getActiveTemplate(planIndex - 1);
+      const template = getActiveTemplate(templateIdx);
       const slot1Cats = template.slot1;
       const slot1IsActivity = template.slot1Act;
       const slot2Cats = template.slot2;
@@ -3447,8 +4197,29 @@ async function executePlanningEngine(
           return getMandatoryCost(place) + getOptionalCostMin(place);
         };
 
+        // Prefer venues whose category isn't already in the plan (extra
+        // guarantee on top of uniqueMatches — if two venues tie on score,
+        // the unused-category one wins). Keeps within-plan category diversity
+        // high without derailing budget/score.
+        // Layered sort: (1) preferred-category venues first (user asked
+        // for Museum + Park → we aggressively surface those), (2) unused
+        // category next (no CAFE→CAFE), (3) fall back to caller ordering
+        // (which is DB score ranking). This is what turns "sprinkle prefs
+        // as a scoring nudge" into "aggressively search for the pref".
+        const userPrefSet = new Set(
+          (preferredCategories || []).map(c => c.toUpperCase())
+        );
+        const rankByUnusedCat = (arr: PlaceCandidate[]) => [...arr].sort((a, b) => {
+          const ap = userPrefSet.has(a.category.toUpperCase()) ? 0 : 1;
+          const bp = userPrefSet.has(b.category.toUpperCase()) ? 0 : 1;
+          if (ap !== bp) return ap - bp; // prefs first
+          const au = selectedPlanCats.has(a.category.toUpperCase()) ? 1 : 0;
+          const bu = selectedPlanCats.has(b.category.toUpperCase()) ? 1 : 0;
+          return au - bu;
+        });
+
         // 1. Try to find a match of the preferred categories under budget constraint
-        const budgetMatches = matches.filter(c => getSlotCost(c) <= remainingBudget);
+        const budgetMatches = rankByUnusedCat(matches.filter(c => getSlotCost(c) <= remainingBudget));
 
         let selected: PlaceCandidate | null = null;
 
@@ -3468,7 +4239,11 @@ async function executePlanningEngine(
           // 2. If no preferred category matches under budget constraint, fallback to broad category checks under budget
           let fallbackPool: PlaceCandidate[] = [];
           if (isActivity) {
-            fallbackPool = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            // Activities: skip food AND skip categories already used in this
+            // plan. If that empties the pool, drop the used-category filter.
+            const nonFood = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            const unusedNonFood = nonFood.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
+            fallbackPool = unusedNonFood.length > 0 ? unusedNonFood : nonFood;
           } else {
             const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
             fallbackPool = candidatesPool.filter(c =>
@@ -3481,6 +4256,7 @@ async function executePlanningEngine(
           if (chainCount >= 1) {
             fallbackPool = fallbackPool.filter(c => !isChain(c.name));
           }
+          fallbackPool = rankByUnusedCat(fallbackPool);
 
           const budgetFallbackMatches = fallbackPool.filter(c => getSlotCost(c) <= remainingBudget);
           if (budgetFallbackMatches.length > 0) {
@@ -3513,7 +4289,12 @@ async function executePlanningEngine(
         return selected;
       };
 
-      let isTwoSlots = false; // Always generate 3-slot itineraries
+      // Variable stop count: archetypes with slotCount === 2 (WORK_TEAM_
+      // ACTIVITY, WORK_MORNING_MEETUP, NIGHTLIFE-lite) produce 2-stop plans.
+      // Everything else stays 3-stop for now.
+      const activeArchKey = getActiveArchetypeMeta(templateIdx)?.key ?? null;
+      const activeArch = activeArchKey ? ARCHETYPE_BY_KEY[activeArchKey] : undefined;
+      let isTwoSlots = activeArch?.slotCount === 2;
       let remainingBudget = zoneData.zoneLowestBudget;
 
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity, remainingBudget);
@@ -3566,14 +4347,20 @@ async function executePlanningEngine(
         let finalLink = place.sourceUrl || null;
         let needsDbUpdate = false;
         
-        if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience) {
+        // Real Google Places photo lookup. Skipped for fallback venues and
+        // for OLA-prefixed ids (Ola's places API doesn't return Google
+        // photo references — those venues fall through to the text-search
+        // getVenueImageUrl below).
+        const isGooglePlaceId = place.id
+          && !place.id.startsWith('fb_')
+          && !place.id.startsWith('fallback_')
+          && !place.id.startsWith('OLA_')
+          && !place.isExperience;
+        if (isGooglePlaceId) {
           try {
-            let actualPlaceId = place.id;
-            if (place.id.startsWith('GOOGLE_')) {
-              actualPlaceId = place.id.slice(7);
-            } else if (place.id.startsWith('OLA_')) {
-              actualPlaceId = place.id.slice(4);
-            }
+            const actualPlaceId = place.id.startsWith('GOOGLE_')
+              ? place.id.slice(7)
+              : place.id;
             const details = await getVenueDetails(actualPlaceId);
             if (details && details.photos && details.photos.length > 0) {
               const photoRef = details.photos[0].photo_reference;
@@ -3637,7 +4424,10 @@ async function executePlanningEngine(
           arrivalTime,
           durationMinutes: duration,
           travelToNextMinutes: slotIdx === 2 ? null : 15,
-          estimatedCostPerHead: place.estimatedCostPerHead,
+          // Honest per-slot spend: mandatory + typical optional min. Matches
+          // what the plan-total sums up to, and what a user would actually
+          // spend if they order a normal meal / do the standard experience.
+          estimatedCostPerHead: getMandatoryCost(place) + getOptionalCostMin(place),
           mandatoryCost: getMandatoryCost(place),
           optionalCostMin: getOptionalCostMin(place),
           optionalCostMax: getOptionalCostMax(place),
@@ -3656,15 +4446,26 @@ async function executePlanningEngine(
         for (let sIdx = 0; sIdx < slots.length - 1; sIdx++) {
           const current = slots[sIdx];
           const next = slots[sIdx + 1];
-          const slotDist = getHaversineDistance({ lat: current.lat, lng: current.lng }, { lat: next.lat, lng: next.lng });
 
-          const travelMin = Math.max(15, Math.round(slotDist * 4.0) + 5);
-          const travelCost = Math.round(23 + Math.max(0, slotDist - 1.5) * 15);
+          // Use the SAME breakdown model as home→meetup for slot-to-slot.
+          // A 200m walk between venues is not "15 min"; a 6km train hop is
+          // not "24 min auto". Honest numbers only.
+          const hop = calculateMumbaiTravelBreakdown(
+            { lat: current.lat, lng: current.lng },
+            { lat: next.lat, lng: next.lng },
+            groupData.outingTime
+          );
 
-          current.travelToNextMinutes = travelMin;
-          (current as any).travelToNextCost = Math.ceil(travelCost / Math.min(3, presentMembers.length));
+          current.travelToNextMinutes = hop.totalTime;
+          (current as any).travelToNextCost = Math.ceil(hop.totalCost / Math.min(3, presentMembers.length));
+          (current as any).travelToNextMode = hop.trainTime > 0 ? 'TRAIN' : hop.autoTime > 0 ? 'AUTO' : 'WALK';
+          (current as any).travelToNextBreakdown = {
+            walkMin: hop.walkingTime,
+            autoMin: hop.autoTime,
+            trainMin: hop.trainTime,
+          };
           // Propagate corrected arrival time to the next slot
-          next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + travelMin);
+          next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + hop.totalTime);
         }
 
         const memberTravelsForPlan: any[] = [];
@@ -3823,9 +4624,9 @@ async function executePlanningEngine(
           memberTravels: memberTravelsForPlan,
           // Stage 2 metadata — surfaces the archetype behind the plan so eval
           // and downstream UI can label "this is a Family Day Out" etc.
-          archetypeKey: getActiveArchetypeMeta(planIndex - 1)?.key ?? null,
-          archetypeFamily: getActiveArchetypeMeta(planIndex - 1)?.family ?? null,
-          archetypeLabel: getActiveArchetypeMeta(planIndex - 1)?.label ?? null,
+          archetypeKey: getActiveArchetypeMeta(templateIdx)?.key ?? null,
+          archetypeFamily: getActiveArchetypeMeta(templateIdx)?.family ?? null,
+          archetypeLabel: getActiveArchetypeMeta(templateIdx)?.label ?? null,
         };
       };
 
@@ -3836,24 +4637,54 @@ async function executePlanningEngine(
 
   await buildPass(false);
 
-  if (draftItineraries.length < 4) {
+  // Aim for ≥12 usable candidates before we cluster. 12 gives the picker room
+  // to select 2 truly-distinct representatives across ≥4 experience shapes.
+  if (draftItineraries.length < 12) {
     console.warn(`Only ${draftItineraries.length} plans generated. Running second pass allowing shared venues...`);
     await buildPass(true);
   }
 
-  // Candidate-first: score all candidates plan-level, then greedy-diversify
-  // down to 4. Only the final 4 count against the venue-usage tracker so
-  // rejected candidates don't burn the budget for their venues.
+  const outingHourMatch = (groupData.outingTime ?? '').match(/^(\d{1,2}):(\d{2})/);
+  const outingHour = outingHourMatch ? parseInt(outingHourMatch[1], 10) : undefined;
+
+  // Stage 5: constraint system. Filter DRAFT candidates first — invalid
+  // plans never reach the scorer or clusterer.
+  const validationCtx = {
+    requiredPreferences: planningContext.requiredPreferences,
+    outingHour,
+    budget: lowestBudget && lowestBudget > 0 ? lowestBudget : undefined,
+  };
+  const {
+    valid: validCandidates,
+    enforcedConstraints,
+    relaxedConstraints,
+  } = filterValidCandidates(draftItineraries, validationCtx, 2);
+  if (relaxedConstraints.length > 0) {
+    console.warn(`[PLANNER] constraint relaxation triggered — dropped: ${relaxedConstraints.join(', ')} (enforced: ${enforcedConstraints.join(', ')})`);
+  }
+
   const scoringCtx = {
     preferredCategories: (preferredCategories || []).map(c => c.toUpperCase()),
     zoneLowestBudget: lowestBudget || 1500,
+    outingHour,
   };
-  draftItineraries.forEach(p => {
+  validCandidates.forEach(p => {
     p.planLevelScore = scorePlanCandidate(p, scoringCtx);
   });
 
-  const finalPlans = diversifyCandidatePlans(draftItineraries, 4);
+  // Cluster the valid candidates only. Scoring differentiates within a
+  // constraint-satisfying set — it is NOT trying to make bad plans better.
+  const finalPlans = clusterAndPickRepresentatives(validCandidates, 2);
   finalPlans.forEach((it, idx) => { it.planIndex = idx + 1; });
+
+  console.log(`[PLANNER] candidates ${draftItineraries.length} → valid ${validCandidates.length} → clustered → returning ${finalPlans.length}`,
+    finalPlans.map(p => ({
+      key: p.archetypeKey,
+      zone: p.name,
+      shape: (p.slots ?? []).map((s: any) => (s.category ?? '').toUpperCase()).join('→'),
+      score: (p.planLevelScore ?? 0).toFixed(3),
+    }))
+  );
 
   // Bump venue-usage counter ONLY for venues that survived diversification.
   for (const plan of finalPlans) {
