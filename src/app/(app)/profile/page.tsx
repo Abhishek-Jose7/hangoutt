@@ -10,6 +10,7 @@ import { User, DollarSign, Heart, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUser } from '@clerk/nextjs';
 import { getUserPreferencesAction, updateUserProfile } from '@/actions/users';
+import { ProfileSkeleton } from '@/components/shared/BasicSkeleton';
 
 export default function ProfilePage() {
   const { user, isLoaded: isClerkLoaded } = useUser();
@@ -106,21 +107,15 @@ export default function ProfilePage() {
 
   const userEmail = user?.primaryEmailAddress?.emailAddress || 'no-email@clerk.com';
 
-  if (!isClerkLoaded || dbLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
-        <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing Profile...</p>
-      </div>
-    );
-  }
-
   return (
     <PageContainer
       title="My Profile"
       subtitle="Manage your personal preferences for outing calculations."
     >
-      <form onSubmit={handleSaveProfile} className="space-y-6 max-w-4xl font-sans text-sm relative z-10">
+      {(!isClerkLoaded || dbLoading) ? (
+        <ProfileSkeleton />
+      ) : (
+        <form onSubmit={handleSaveProfile} className="space-y-6 max-w-4xl font-sans text-sm relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
           {/* Left panel: Avatar & Basic Details */}
@@ -269,6 +264,7 @@ export default function ProfilePage() {
 
         </div>
       </form>
+      )}
     </PageContainer>
   );
 }

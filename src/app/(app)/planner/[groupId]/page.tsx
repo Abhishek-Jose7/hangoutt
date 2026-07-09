@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PlannerSkeleton } from '@/components/shared/BasicSkeleton';
 
 export default function PlannerPage() {
   const params = useParams();
@@ -264,10 +266,12 @@ export default function PlannerPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
-        <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing AI Planner Module...</p>
-      </div>
+      <PageContainer
+        title="LOBBY PLANNER"
+        subtitle="ITINERARY CONFIGURATOR // PLANS FOR LOBBY"
+      >
+        <PlannerSkeleton />
+      </PageContainer>
     );
   }
 

@@ -10,6 +10,7 @@ import { joinGroup } from '@/actions/members';
 import { Loader2, ShieldAlert, ArrowRight, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { GroupCardSkeleton } from '@/components/shared/BasicSkeleton';
 
 export default function JoinGroupPage() {
   const params = useParams();
@@ -73,17 +74,7 @@ export default function JoinGroupPage() {
     <PageContainer title="Outing Join Portal">
       <div className="max-w-md mx-auto relative z-10 pt-10">
         {status === 'LOADING' && (
-          <Card className="border border-stone-900 bg-stone-950/45 p-8 text-center rounded-[12px] backdrop-blur-md space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mx-auto" />
-            <div className="space-y-1">
-              <CardTitle className="text-xs font-mono font-bold uppercase tracking-widest text-[#DC143C]">
-                Verifying Invite Protocol
-              </CardTitle>
-              <p className="text-[10px] font-mono text-neutral-500 uppercase">
-                Validating security hash & membership rules...
-              </p>
-            </div>
-          </Card>
+          <GroupCardSkeleton />
         )}
 
         {status === 'SUCCESS' && (

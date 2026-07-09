@@ -19,10 +19,29 @@ import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader
 import { toast } from 'sonner';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
+import { WorkspaceSkeleton } from '@/components/shared/BasicSkeleton';
 
 const AVAILABLE_VIBES = [
   'CHILL', 'CREATIVE', 'FOODIE', 'CULTURAL', 'COMPETITIVE', 'ROMANTIC', 'LUXURY', 'BUDGET', 'ADVENTUROUS'
 ];
+
+function getZoneImageUrl(zone: string): string {
+  const z = (zone ?? '').toLowerCase();
+  if (z.includes('powai')) {
+    return 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?q=80&w=600&auto=format&fit=crop';
+  }
+  if (z.includes('bhandup')) {
+    return 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=600&auto=format&fit=crop';
+  }
+  if (z.includes('vikhroli')) {
+    return 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=600&auto=format&fit=crop';
+  }
+  if (z.includes('mulund')) {
+    return 'https://images.unsplash.com/photo-1533777857889-4be7c70b33f7?q=80&w=600&auto=format&fit=crop';
+  }
+  return 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?q=80&w=600&auto=format&fit=crop';
+}
 
 function getFallbackImageUrl(category: string): string {
   const cat = (category ?? '').toUpperCase();
@@ -516,10 +535,9 @@ export default function GroupDetailsPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] bg-[#0A0A0C] text-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-4" />
-        <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-mono font-bold">Initializing Workspace Module...</p>
-      </div>
+      <main className="relative min-h-screen pt-10 pb-24 md:pb-10 bg-black text-[#e5e2e1] overflow-x-hidden">
+        <WorkspaceSkeleton />
+      </main>
     );
   }
 
@@ -789,7 +807,13 @@ export default function GroupDetailsPage() {
                       return (
                         <div key={plan.id} className="w-full shrink-0 snap-center snap-always px-1">
                           <Card 
-                            className="bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 transition-all select-none relative"
+                            style={{
+                              backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 75%, rgba(14, 14, 14, 1) 100%), url(${getZoneImageUrl(plan.meetupZone)})`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center 20%',
+                              backgroundRepeat: 'no-repeat',
+                            }}
+                            className="bg-[#0e0e0e]/95 border border-[#353534] rounded-[12px] p-5 shadow-lg flex flex-col justify-between gap-4 transition-all select-none relative overflow-hidden"
                           >
                             {/* Top row: Image & details */}
                             <div className="flex gap-4 items-start">
@@ -1111,7 +1135,13 @@ export default function GroupDetailsPage() {
                     return (
                       <Card 
                         key={plan.id} 
-                        className="h-full min-h-[560px] border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg backdrop-blur-md flex flex-col justify-between gap-5 rounded-[12px] hover:border-[#DC143C]/40 transition-all"
+                        style={{
+                          backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 60%, rgba(14, 14, 14, 1) 100%), url(${getZoneImageUrl(plan.meetupZone)})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center 20%',
+                          backgroundRepeat: 'no-repeat',
+                        }}
+                        className="h-full min-h-[560px] border border-[#353534] bg-[#0e0e0e]/85 p-6 shadow-lg backdrop-blur-md flex flex-col justify-between gap-5 rounded-[12px] hover:border-[#DC143C]/40 transition-all overflow-hidden"
                       >
                         <div className="space-y-4">
                           <div className="flex justify-between items-start gap-2 border-b border-[#353534]/50 pb-3.5">

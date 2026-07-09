@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Users, DollarSign, Clock, Loader2 } from 'lucide-react';
 import { getUserHistoryAction } from '@/actions/groups';
 import { toast } from 'sonner';
+import { HistoryCardSkeleton } from '@/components/shared/BasicSkeleton';
 
 export default function HistoryPage() {
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
@@ -38,9 +39,9 @@ export default function HistoryPage() {
     >
       <div className="space-y-6 font-sans text-sm">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
-            <Loader2 className="h-7 w-7 animate-spin text-[#DC143C] mb-4" />
-            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Loading outing history...</p>
+          <div className="space-y-4 max-w-3xl">
+            <HistoryCardSkeleton />
+            <HistoryCardSkeleton />
           </div>
         ) : historyEntries.length > 0 ? (
           <div className="space-y-4 max-w-3xl">

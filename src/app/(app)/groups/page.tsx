@@ -11,6 +11,7 @@ import { Users, Plus, LogIn, ArrowRight, FolderArchive, Activity, Loader2 } from
 import Link from 'next/link';
 import { getUserGroupsAction } from '@/actions/groups';
 import { toast } from 'sonner';
+import { GroupCardSkeleton } from '@/components/shared/BasicSkeleton';
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<any[]>([]);
@@ -113,9 +114,10 @@ export default function GroupsPage() {
 
         {/* Groups Grid */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
-            <Loader2 className="h-7 w-7 animate-spin text-[#DC143C] mb-4" />
-            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing Group Registry...</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <GroupCardSkeleton />
+            <GroupCardSkeleton />
+            <GroupCardSkeleton />
           </div>
         ) : filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
