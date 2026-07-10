@@ -3,6 +3,7 @@ import { db } from '@/lib/db/client';
 import { places } from '@/lib/db/schema';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
+import { recordCost } from '@/lib/services/costLedger';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,9 @@ export async function GET(req: NextRequest) {
 
     // Follow the redirect manually to get the actual image
     const redirectRes = await fetch(googleUrl, { redirect: 'manual' });
+    // Only bill when we actually hit Google (misses only — cached hits above
+    // never reach this line, so PLACES_PHOTO accurately reflects paid calls).
+    recordCost({ operation: 'PLACES_PHOTO', provider: 'GOOGLE_PLACES' });
     const redirectUrl = redirectRes.headers.get('location');
 
     if (!redirectUrl) {

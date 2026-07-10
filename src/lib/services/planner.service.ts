@@ -2227,6 +2227,14 @@ async function buildFallbackItineraryData(
     ];
   }
 
+  // Hard budget ceiling — even the fallback builder honors it. If the built
+  // plan can't fit budget × 1.10, throw so the caller can retry with cheaper
+  // venues (or return fewer plans). Same rule as the main constraint stack.
+  const fallbackPlanCost = totalMandatoryCost + slotsOptionalMin;
+  if (groupBudget && groupBudget > 0 && fallbackPlanCost > groupBudget * 1.10) {
+    throw new Error(`FALLBACK_OVER_BUDGET: ₹${fallbackPlanCost} > ₹${Math.round(groupBudget * 1.10)}`);
+  }
+
   return {
     id: planId,
     groupId: groupData.id,
@@ -2234,7 +2242,7 @@ async function buildFallbackItineraryData(
     name: activeZoneObj.name,
     tagline,
     budgetTier,
-    totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
+    totalEstimatedCostPerHead: fallbackPlanCost,
     totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots[0].travelToNextMinutes || 0) + (slots[1].travelToNextMinutes || 0),
     score: budgetTier === 'BALANCED' ? 0.95 : (budgetTier === 'TRAVEL_FRIENDLY' ? 0.92 : (budgetTier === 'EXPERIENCE_FIRST' ? 0.88 : 0.82)),
 
@@ -4701,12 +4709,276 @@ async function executePlanningEngine(
   return finalPlans;
 }
 
+/**
+ * Fetch the minimum inputs needed to derive a stable cache key WITHOUT
+ * paying the cost of a full planner run. We reuse the two data sources
+ * already accessible in both the D1 / local paths — group + members +
+ * locations + budget summary — and stop.
+ *
+ * Returns null if the group is not found (which means the inner path will
+ * throw with a friendlier error).
+ */
+async function peekCacheInputs(
+  userId: string,
+  _groupId: string,
+  options: string[],
+  authContext?: { clerkId?: string; ip?: string }
+): Promise<import('./itineraryCache').CacheKeyInputs | null> {
+  try {
+    const groupId = _groupId;
+    const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
+    let groupData: any;
+    let members: any[] = [];
+    let locations: any[] = [];
+    let budgetSummary: any;
+
+    if (isHangoutApiConfigured()) {
+      let clerkId = authContext?.clerkId;
+      if (!clerkId) {
+        const { userRepository } = await import('../repositories/user.repository');
+        const userRecord = await userRepository.findById(userId);
+        if (!userRecord) return null;
+        clerkId = userRecord.clerkId;
+      }
+      const res = await hangoutApi<any>(`/groups/${groupId}?clerkId=${encodeURIComponent(clerkId)}`);
+      if (!res.success) return null;
+      groupData = res.data.group;
+      members = res.data.members || [];
+      locations = res.data.locations || [];
+      budgetSummary = res.data.budgetSummary || {};
+    } else {
+      const { locationRepository } = await import('../repositories/location.repository');
+      const { memberRepository } = await import('../repositories/member.repository');
+      const group: any = await groupRepository.findById(groupId);
+      if (!group) return null;
+      groupData = group;
+      members = await memberRepository.getMembersWithUserDetails(groupId) as any[];
+      const locsRes = await locationRepository.getGroupLocations(groupId);
+      locations = locsRes || [];
+      const bs = await budgetRepository.getGroupBudgetSummary(groupId);
+      budgetSummary = bs || {};
+    }
+
+    const presentUserIds = members.map(m => m.userId);
+    const presentLocations = locations.filter(l => presentUserIds.includes(l.userId));
+    if (presentLocations.length === 0) return null;
+
+    const vibes: string[] = [];
+    try {
+      if (groupData?.vibes) {
+        const parsed = JSON.parse(groupData.vibes);
+        if (Array.isArray(parsed)) vibes.push(...parsed);
+      }
+    } catch {}
+
+    return {
+      groupId,
+      groupType: groupData?.groupType ?? 'CUSTOM',
+      memberLocations: presentLocations.map(l => ({ lat: l.lat, lng: l.lng })),
+      outingTime: groupData?.outingTime ?? null,
+      outingDate: groupData?.outingDate ?? null,
+      budget: budgetSummary?.min ?? 1000,
+      preferredCategories: [],       // resolved from users' favouriteActivities in inner path — see note
+      requiredPreferences: Array.isArray(groupData?.requiredPreferences) ? groupData.requiredPreferences : [],
+      vibes,
+      options,
+      intent: groupData?.outingIntent ?? null,
+    };
+  } catch (err: any) {
+    console.warn('[peekCacheInputs] failed:', err?.message ?? err);
+    return null;
+  }
+}
+
 export const plannerService = {
+  /**
+   * Public entry point. Wraps the expensive `_generatePlanUncached`
+   * implementation with:
+   *   - request context (AsyncLocalStorage) so all instrumentation
+   *     downstream sees the same userId / groupId / requestId
+   *   - per-user / per-group / per-IP rate limiting
+   *   - deterministic itinerary cache (skip regeneration for identical
+   *     input tuples within TTL)
+   *   - single-flight coalescing (concurrent identical requests share one
+   *     underlying computation)
+   *
+   * The plan shape returned is IDENTICAL to the uncached path — no UX
+   * surface changes.
+   */
   async generatePlan(
     userId: string,
     groupId: string,
     options: string[] = [],
-    authContext?: { clerkId?: string }
+    authContext?: { clerkId?: string; ip?: string }
+  ): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
+    const { runWithPlannerContext, plannerLog, PLANNER_VERSION } = await import('../observability/plannerContext');
+    const { checkRateLimit, rateLimitMessage } = await import('./rateLimit');
+    const { computeCacheKey, lookupCache, storeCache } = await import('./itineraryCache');
+    const { runCoalesced } = await import('./inflightRegistry');
+    const { recordCost, bumpDailyRollup } = await import('./costLedger');
+
+    const requestId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : require('crypto').randomUUID();
+
+    return runWithPlannerContext(
+      {
+        userId,
+        groupId,
+        ip: authContext?.ip,
+        requestId,
+        startedAtMs: Date.now(),
+        costCentsAccumulated: 0,
+        cacheHit: false,
+        coalesced: false,
+      },
+      async () => {
+        plannerLog({ event: 'GENERATION_START', operation: 'PLAN_GENERATE' });
+
+        // 1. Rate limit — fail fast BEFORE any DB or AI work.
+        const rl = await checkRateLimit({
+          operation: 'PLAN_GENERATE',
+          userId,
+          groupId,
+          ip: authContext?.ip,
+        });
+        if (!rl.allowed && rl.hit) {
+          throw new ValidationError(rateLimitMessage(rl.hit));
+        }
+
+        // 2. Load minimal inputs needed for cache key. Reuse whatever the
+        //    inner path fetches — we duplicate a lightweight peek here.
+        let cacheKey: string | null = null;
+        let cacheInputs: any = null;
+        try {
+          cacheInputs = await peekCacheInputs(userId, groupId, options, authContext);
+          if (cacheInputs) {
+            cacheKey = computeCacheKey(cacheInputs);
+
+            // 3. Cache lookup. If we have a fresh hit, verify the plans still
+            //    exist in the DB — otherwise the row is stale.
+            const hit = await lookupCache<PlanWithSlots[]>(cacheKey);
+            if (hit.hit) {
+              const persistedPlans = await planRepository.getPlansForGroup(groupId);
+              const stillValid = persistedPlans.length > 0
+                && hit.planIds.every(id => persistedPlans.some(p => p.id === id));
+              if (stillValid) {
+                recordCost({
+                  operation: 'CACHE_SAVED',
+                  provider: 'INTERNAL',
+                  units: 1,
+                  costCents: hit.estimatedCostCents,
+                  cacheHit: true,
+                  userId,
+                  groupId,
+                  metadata: { generationTimeMsSaved: hit.generationTimeMs, cacheKey },
+                });
+                await bumpDailyRollup({
+                  subjectKind: 'GLOBAL', subjectId: '',
+                  plansGenerated: 0, cacheHits: 1,
+                  costCents: 0,
+                  timeSavedMs: hit.generationTimeMs,
+                });
+                await bumpDailyRollup({
+                  subjectKind: 'USER', subjectId: userId,
+                  cacheHits: 1, timeSavedMs: hit.generationTimeMs,
+                });
+                await bumpDailyRollup({
+                  subjectKind: 'GROUP', subjectId: groupId,
+                  cacheHits: 1, timeSavedMs: hit.generationTimeMs,
+                });
+                plannerLog({
+                  event: 'GENERATION_END',
+                  operation: 'PLAN_GENERATE',
+                  durationMs: 0, // cache hit
+                  cacheHit: true,
+                });
+                return { success: true, plans: persistedPlans };
+              }
+              // Stale — invalidate the row and fall through to regenerate.
+              plannerLog({ event: 'CACHE_STALE', key: cacheKey, operation: 'PLAN_GENERATE' });
+            }
+          }
+        } catch (err: any) {
+          console.warn('[plannerService] cache peek failed, falling through to generation:', err?.message ?? err);
+        }
+
+        // 4. Single-flight coalesce identical requests. Inside the coalesced
+        //    function we run the full uncached generation.
+        const coalescedKey = cacheKey ?? `NO_KEY:${groupId}:${userId}`;
+        const startMs = Date.now();
+        const result = await runCoalesced({
+          key: coalescedKey,
+          operation: 'PLAN_GENERATE',
+          subjectId: groupId,
+          fn: () => this._generatePlanUncached(userId, groupId, options, authContext),
+          onCrossProcessCoalesce: async () => {
+            if (!cacheKey) return null;
+            const hit = await lookupCache<PlanWithSlots[]>(cacheKey);
+            if (!hit.hit) return null;
+            const persistedPlans = await planRepository.getPlansForGroup(groupId);
+            if (persistedPlans.length > 0 && hit.planIds.every(id => persistedPlans.some(p => p.id === id))) {
+              return { success: true, plans: persistedPlans };
+            }
+            return null;
+          },
+        });
+        const generationTimeMs = Date.now() - startMs;
+
+        // 5. Store cache (best-effort). Use accumulated cost from the ledger
+        //    context so cache hits later credit the correct savings figure.
+        if (cacheKey && result.success && result.plans.length > 0) {
+          const ctx = (await import('../observability/plannerContext')).currentPlannerContext();
+          void storeCache({
+            key: cacheKey,
+            groupId,
+            payload: result.plans,
+            planIds: result.plans.map(p => p.id),
+            generationTimeMs,
+            estimatedCostCents: ctx?.costCentsAccumulated ?? 0,
+          });
+        }
+
+        recordCost({
+          operation: 'PLAN_GENERATE',
+          provider: 'INTERNAL',
+          units: result.plans?.length ?? 0,
+          costCents: 0, // real cost was captured by nested AI / places calls
+          userId,
+          groupId,
+        });
+        await bumpDailyRollup({
+          subjectKind: 'GLOBAL', subjectId: '',
+          plansGenerated: result.plans?.length ?? 0,
+          cacheMisses: 1,
+        });
+        await bumpDailyRollup({
+          subjectKind: 'USER', subjectId: userId,
+          plansGenerated: result.plans?.length ?? 0,
+          cacheMisses: 1,
+        });
+        await bumpDailyRollup({
+          subjectKind: 'GROUP', subjectId: groupId,
+          plansGenerated: result.plans?.length ?? 0,
+          cacheMisses: 1,
+        });
+
+        plannerLog({
+          event: 'GENERATION_END',
+          operation: 'PLAN_GENERATE',
+          durationMs: generationTimeMs,
+          cacheHit: false,
+        });
+        return result;
+      }
+    );
+  },
+
+  async _generatePlanUncached(
+    userId: string,
+    groupId: string,
+    options: string[] = [],
+    authContext?: { clerkId?: string; ip?: string }
   ): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
     const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
     if (isHangoutApiConfigured()) {
@@ -4929,6 +5201,8 @@ export const plannerService = {
           avgTotalTime: draft.avgTotalTime,
           avgTotalCost: draft.avgTotalCost,
           avgWalkTime: draft.avgWalkTime,
+          archetypeKey: draft.archetypeKey ?? null,
+          archetypeLabel: draft.archetypeLabel ?? null,
           generatedAt: new Date().toISOString()
         });
 
@@ -5283,6 +5557,8 @@ export const plannerService = {
           avgTotalTime: draft.avgTotalTime,
           avgTotalCost: draft.avgTotalCost,
           avgWalkTime: draft.avgWalkTime,
+          archetypeKey: draft.archetypeKey ?? null,
+          archetypeLabel: draft.archetypeLabel ?? null,
           generatedAt: new Date().toISOString()
         });
 

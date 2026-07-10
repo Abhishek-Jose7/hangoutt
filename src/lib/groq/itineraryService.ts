@@ -3,6 +3,7 @@ import { groqClient } from './client';
 import { ITINERARY_SYSTEM_PROMPT, buildItineraryPrompt } from './prompts';
 import { itineraryResponseSchema, ItineraryResponse } from '../validators/itinerary.schema';
 import { ItineraryPromptContext } from '../types/planner.types';
+import { recordCost } from '../services/costLedger';
 import {
   GroqTimeoutError,
   GroqParseError,
@@ -57,6 +58,20 @@ export async function generateItineraries(
           { role: 'system', content: ITINERARY_SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
+      });
+
+      // Cost accounting — Groq bills by tokens.
+      const usage: any = (completion as any).usage;
+      const totalTokens = Number(usage?.total_tokens ?? usage?.prompt_tokens ?? 0) + Number(usage?.completion_tokens ?? 0);
+      recordCost({
+        operation: 'AI_GROQ',
+        provider: 'GROQ',
+        units: totalTokens || 1,
+        metadata: {
+          model: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
+          promptTokens: usage?.prompt_tokens,
+          completionTokens: usage?.completion_tokens,
+        },
       });
 
       const raw = completion.choices[0]?.message?.content;

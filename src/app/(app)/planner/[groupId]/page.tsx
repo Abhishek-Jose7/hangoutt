@@ -60,6 +60,26 @@ export default function PlannerPage() {
     'PREMIUM': 'EXPERIENCE FIRST',
   };
 
+  const groupTypeLabels: Record<string, string> = {
+    'DATE': 'DATE FRIENDLY',
+    'FRIENDS': 'FRIENDS HANGOUT',
+    'FAMILY': 'FAMILY DAY',
+    'WORK': 'TEAM OUTING',
+    'CUSTOM': 'HANGOUT',
+  };
+
+  // Turn Stage-2 archetype metadata into a short badge label. The full
+  // humanLabel ("Foodie arc — café, restaurant, dessert crawl") is too long
+  // for a badge, so we cut at the em-dash or first "—".
+  const shortenArchetypeLabel = (label?: string | null) => {
+    if (!label) return null;
+    const cut = label.split(/[—:-]/)[0].trim().toUpperCase();
+    return cut.length > 24 ? cut.slice(0, 24) : cut;
+  };
+
+  const hasOutdoorSlot = (plan: any) =>
+    plan.slots?.some((s: any) => ['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes((s.category || '').toUpperCase()));
+
   const getFrontendFallbackImage = (category: string) => {
     const cat = (category ?? '').toUpperCase();
     if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
@@ -434,15 +454,21 @@ export default function PlannerPage() {
                       
                       {/* Tag Badges */}
                       <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        {plan.archetypeLabel && (
+                          <span className="bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                            {shortenArchetypeLabel(plan.archetypeLabel)}
+                          </span>
+                        )}
+
                         <span className="bg-[#DC143C]/15 border border-[#DC143C]/30 text-[#DC143C] text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
                           {budgetTierLabels[plan.budgetTier] || plan.budgetTier.replace('_', ' ')}
                         </span>
-                        
+
                         <span className="bg-purple-500/15 border border-purple-500/30 text-purple-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
-                          {group.groupType === 'DATE' ? 'DATE FRIENDLY' : 'FRIENDS HANGOUT'}
+                          {groupTypeLabels[group.groupType] || 'HANGOUT'}
                         </span>
-                        
-                        {!plan.slots?.some((s: any) => ['PARK', 'PROMENADE', 'BEACH', 'OUTDOOR'].includes(s.category.toUpperCase())) && (
+
+                        {!hasOutdoorSlot(plan) && (
                           <span className="bg-teal-500/15 border border-teal-500/30 text-teal-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
                             INDOOR FRIENDLY
                           </span>
@@ -1156,6 +1182,21 @@ export default function PlannerPage() {
                 <div className="flex justify-between items-start gap-4">
                   <div className="space-y-1">
                     <DialogTitle className="text-sm font-bold text-white uppercase tracking-widest">{plan.name}</DialogTitle>
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      {plan.archetypeLabel && (
+                        <span className="bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                          {shortenArchetypeLabel(plan.archetypeLabel)}
+                        </span>
+                      )}
+                      <span className="bg-purple-500/15 border border-purple-500/30 text-purple-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                        {groupTypeLabels[group.groupType] || 'HANGOUT'}
+                      </span>
+                      {!hasOutdoorSlot(plan) && (
+                        <span className="bg-teal-500/15 border border-teal-500/30 text-teal-400 text-[7.5px] font-mono font-bold py-0.5 px-1.5 rounded-[4px] uppercase tracking-wide">
+                          INDOOR FRIENDLY
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-neutral-400 font-sans tracking-wide leading-relaxed mt-1">{plan.tagline}</p>
                   </div>
                   {isWinningPlan ? (

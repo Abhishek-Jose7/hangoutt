@@ -1,5 +1,6 @@
 import 'server-only';
 import { VenueCategory } from '../types/planner.types';
+import { recordCost } from '../services/costLedger';
 
 const getGoogleApiKey = () => process.env.GOOGLE_MAPS_API_KEY;
 const GOOGLE_BASE_URL = 'https://maps.googleapis.com/maps/api/place';
@@ -36,6 +37,8 @@ export async function getVenueImageUrl(
     } finally {
       clearTimeout(searchTimeout);
     }
+    // Chargeable regardless of hit — the API bills for every request.
+    recordCost({ operation: 'PLACES_TEXTSEARCH', provider: 'GOOGLE_PLACES' });
 
     if (!searchRes.ok) {
       console.warn(`Google textsearch returned ${searchRes.status} for "${searchQuery}"`);
@@ -114,6 +117,7 @@ export async function searchNearbyVenues(
     } finally {
       clearTimeout(timeout);
     }
+    recordCost({ operation: 'PLACES_NEARBY', provider: 'GOOGLE_PLACES' });
 
     if (!res.ok) {
       console.warn(`Google nearbysearch returned ${res.status} for category ${category}`);
@@ -146,6 +150,7 @@ export async function getVenueDetails(placeId: string): Promise<any> {
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
+    recordCost({ operation: 'PLACES_DETAILS', provider: 'GOOGLE_PLACES' });
 
     if (!res.ok) {
       console.warn(`Google details returned ${res.status} for place_id="${placeId}"`);
@@ -174,6 +179,7 @@ export async function searchTextVenues(query: string): Promise<any[]> {
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
+    recordCost({ operation: 'PLACES_TEXTSEARCH', provider: 'GOOGLE_PLACES' });
 
     if (!res.ok) {
       console.warn(`Google textsearch returned ${res.status} for query "${query}"`);

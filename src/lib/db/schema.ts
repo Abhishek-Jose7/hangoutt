@@ -205,6 +205,10 @@ export const plans = sqliteTable('plans', {
   avgTotalTime: integer('avg_total_time').default(0).notNull(),
   avgTotalCost: integer('avg_total_cost').default(0).notNull(),
   avgWalkTime: integer('avg_walk_time').default(0).notNull(),
+  // Stage 2+ archetype metadata — surfaces the archetype behind the plan
+  // to the UI as a tag ("CULTURE DAY", "BIG GROUP BASH", …).
+  archetypeKey: text('archetype_key'),
+  archetypeLabel: text('archetype_label'),
   generatedAt: text('generated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
   uniqueGroupPlanIndex: uniqueIndex('plans_group_plan_idx').on(table.groupId, table.planIndex),
@@ -495,5 +499,95 @@ export const itineraryFeedback = sqliteTable('itinerary_feedback', {
 }, (table) => ({
   historyIdx: index('itinerary_feedback_history_idx').on(table.historyId),
   uniqueUserHistory: uniqueIndex('itinerary_feedback_user_history_idx').on(table.userId, table.historyId),
+}));
+
+// 29. Itinerary Cache — deterministic-key cache for planner outputs.
+// key: SHA-256 of canonical JSON of all inputs affecting planning + PLANNER_VERSION.
+// planIdsJson: array of plan IDs already persisted to `plans` (we clone their
+// rows/slots into the group on cache hit rather than storing the full plan
+// blob). This keeps the cache small and always consistent with schema.
+export const itineraryCache = sqliteTable('itinerary_cache', {
+  key: text('key').primaryKey(),
+  plannerVersion: text('planner_version').notNull(),
+  groupId: text('group_id').notNull(),
+  planIdsJson: text('plan_ids_json').notNull(),      // JSON string array
+  planPayloadJson: text('plan_payload_json').notNull(), // full serialised PlanWithSlots[] to survive DB changes
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  expiresAt: text('expires_at').notNull(),
+  hits: integer('hits').default(0).notNull(),
+  generationTimeMs: integer('generation_time_ms').default(0).notNull(),
+  estimatedCostCents: integer('estimated_cost_cents').default(0).notNull(),
+}, (table) => ({
+  expiresIdx: index('itinerary_cache_expires_idx').on(table.expiresAt),
+  versionIdx: index('itinerary_cache_version_idx').on(table.plannerVersion),
+}));
+
+// 30. Rate limit windows — sliding-window counters per (subject, operation).
+// subjectKind: 'USER' | 'GROUP' | 'IP'. windowStartUnix is truncated to the
+// window size in seconds. Rows expire naturally via TTL sweep.
+export const rateLimitWindows = sqliteTable('rate_limit_windows', {
+  id: text('id').primaryKey(),
+  subjectKind: text('subject_kind').notNull(),
+  subjectId: text('subject_id').notNull(),
+  operation: text('operation').notNull(),
+  windowStartUnix: integer('window_start_unix').notNull(),
+  windowSizeSec: integer('window_size_sec').notNull(),
+  count: integer('count').default(0).notNull(),
+}, (table) => ({
+  lookupIdx: uniqueIndex('rate_limit_unique_idx').on(
+    table.subjectKind, table.subjectId, table.operation, table.windowStartUnix, table.windowSizeSec
+  ),
+}));
+
+// 31. Inflight requests — DB-backed single-flight guard for cross-process
+// coalescing. Row is inserted at start, deleted at completion, and expires
+// after ttlUnix so a crashed request doesn't wedge the key.
+export const inflightRequests = sqliteTable('inflight_requests', {
+  key: text('key').primaryKey(),
+  operation: text('operation').notNull(),
+  subjectId: text('subject_id'),
+  startedAt: text('started_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  expiresAtUnix: integer('expires_at_unix').notNull(),
+}, (table) => ({
+  expiresIdx: index('inflight_expires_idx').on(table.expiresAtUnix),
+}));
+
+// 32. Cost ledger — one row per paid external operation.
+export const costLedger = sqliteTable('cost_ledger', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  groupId: text('group_id'),
+  operation: text('operation').notNull(),      // PLAN_GENERATE | AI_GROQ | AI_ANTHROPIC | PLACES_TEXTSEARCH | PLACES_DETAILS | OLA_PLACES | ...
+  provider: text('provider').notNull(),        // GROQ | ANTHROPIC | GOOGLE_PLACES | OLA
+  units: integer('units').default(1).notNull(), // tokens, requests, whatever the provider bills by
+  costCents: integer('cost_cents').default(0).notNull(),
+  metadata: text('metadata'),                  // JSON blob (optional context)
+  cacheHit: integer('cache_hit').default(0).notNull(), // 1 if the wrapping call was a cache hit
+  at: text('at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => ({
+  userIdx: index('cost_ledger_user_idx').on(table.userId),
+  groupIdx: index('cost_ledger_group_idx').on(table.groupId),
+  atIdx: index('cost_ledger_at_idx').on(table.at),
+  operationIdx: index('cost_ledger_operation_idx').on(table.operation),
+}));
+
+// 33. Usage daily rollup — pre-aggregated metrics per (day, subjectKind, subjectId).
+// Populated by nightly job or on-demand from cost_ledger. Speeds up the admin
+// dashboard so it never scans the raw ledger.
+export const usageDailyRollup = sqliteTable('usage_daily_rollup', {
+  id: text('id').primaryKey(),
+  dayUtc: text('day_utc').notNull(),           // YYYY-MM-DD
+  subjectKind: text('subject_kind').notNull(), // GLOBAL | USER | GROUP
+  subjectId: text('subject_id').notNull(),     // '' for GLOBAL
+  plansGenerated: integer('plans_generated').default(0).notNull(),
+  cacheHits: integer('cache_hits').default(0).notNull(),
+  cacheMisses: integer('cache_misses').default(0).notNull(),
+  aiCalls: integer('ai_calls').default(0).notNull(),
+  externalCalls: integer('external_calls').default(0).notNull(),
+  costCents: integer('cost_cents').default(0).notNull(),
+  timeSavedMs: integer('time_saved_ms').default(0).notNull(),
+}, (table) => ({
+  uniqueRow: uniqueIndex('usage_daily_unique_idx').on(table.dayUtc, table.subjectKind, table.subjectId),
+  dayIdx: index('usage_daily_day_idx').on(table.dayUtc),
 }));
 

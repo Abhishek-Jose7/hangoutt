@@ -1,0 +1,2 @@
+ALTER TABLE `plans` ADD `archetype_key` text;
+ALTER TABLE `plans` ADD `archetype_label` text;
