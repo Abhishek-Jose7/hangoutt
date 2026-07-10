@@ -362,6 +362,122 @@ const CATEGORIES = [
   'Sport Centers',
 ];
 
+function GlowingRiverBackground({ color1 = "#DC143C", color2 = "#00E5A0" }: { color1?: string, color2?: string }) {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+      <svg className="w-full h-full opacity-[0.18]" viewBox="0 0 1440 1000" fill="none" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="river-glow-main" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={color1} />
+            <stop offset="50%" stopColor={color2} />
+            <stop offset="100%" stopColor={color1} />
+          </linearGradient>
+        </defs>
+        
+        {/* Main Flow Channel */}
+        <path
+          d="M 100 -50 C 400 150, 200 450, 700 550 C 1200 650, 1000 850, 1300 1050"
+          stroke="url(#river-glow-main)"
+          strokeWidth="8"
+          strokeLinecap="round"
+          className="animate-flow-river opacity-60"
+          strokeDasharray="30 25"
+        />
+        
+        <path
+          d="M 120 -50 C 420 150, 220 450, 720 550 C 1220 650, 1020 850, 1320 1050"
+          stroke="url(#river-glow-main)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          className="animate-flow-river-reverse opacity-45"
+          strokeDasharray="15 35"
+        />
+
+        {/* Secondary Winding Streams */}
+        <path
+          d="M 1300 -50 C 900 200, 1100 450, 600 650 C 100 850, 300 950, -50 1050"
+          stroke="url(#river-glow-main)"
+          strokeWidth="5"
+          strokeLinecap="round"
+          className="animate-flow-river opacity-50"
+          strokeDasharray="20 20"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function FluidCanvasBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let width = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
+    let height = (canvas.height = canvas.parentElement?.clientHeight || 450);
+
+    const handleResize = () => {
+      if (canvas && canvas.parentElement) {
+        width = canvas.width = canvas.parentElement.clientWidth;
+        height = canvas.height = canvas.parentElement.clientHeight;
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    let offset = 0;
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+      offset += 0.005;
+
+      // Draw 3 layers of waves to create a reflecting lake surface effect
+      for (let j = 0; j < 3; j++) {
+        ctx.beginPath();
+        const grad = ctx.createLinearGradient(0, 0, width, 0);
+        if (j === 0) {
+          grad.addColorStop(0, 'rgba(220, 20, 60, 0.12)'); // Crimson
+          grad.addColorStop(1, 'rgba(0, 229, 160, 0.03)'); // Emerald
+          ctx.lineWidth = 2;
+        } else if (j === 1) {
+          grad.addColorStop(0, 'rgba(0, 229, 160, 0.09)');
+          grad.addColorStop(1, 'rgba(220, 20, 60, 0.06)');
+          ctx.lineWidth = 3;
+        } else {
+          grad.addColorStop(0, 'rgba(220, 20, 60, 0.05)');
+          grad.addColorStop(1, 'rgba(0, 229, 160, 0.12)');
+          ctx.lineWidth = 1.5;
+        }
+
+        ctx.strokeStyle = grad;
+
+        for (let i = 0; i <= width; i += 8) {
+          const y =
+            height * 0.55 +
+            Math.sin(i * 0.0035 + offset + j * 1.5) * 50 +
+            Math.cos(i * 0.0015 - offset * 1.2) * 25 +
+            Math.sin(i * 0.007 + offset * 0.4) * 12;
+          if (i === 0) ctx.moveTo(i, y);
+          else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0 w-full h-full" />;
+}
+
 export default function HomePage() {
   const { isSignedIn } = useAuth();
   const [activeCategory, setActiveCategory] = useState<string>('Cafes');
@@ -689,107 +805,134 @@ export default function HomePage() {
       </section>
 
 
-      {/* ── SECTION 2: THE CORE COORDINATION TECHNOLOGY (BENTO GRID WITH GLOW) ── */}
-      <section id="about" className="bg-[#0A0A0C] py-24 md:py-32 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#DC143C]/5 rounded-full filter blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#00E5A0]/2 rounded-full filter blur-[100px] pointer-events-none" />
+      {/* ── SECTION 2: WHERE COORDINATION FLOWS (BENTO FLOW WITH SVG RIVERS) ── */}
+      <section id="about" className="bg-[#070709] py-28 md:py-36 relative overflow-hidden border-t border-stone-900/40">
+        {/* EverSwap-Inspired Animated River Background */}
+        <GlowingRiverBackground />
 
         <div className="mx-auto max-w-7xl px-8 relative z-10" id="features">
-          <ScrollReveal className="text-center max-w-3xl mx-auto mb-20 space-y-4">
-            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#DC143C] font-mono">
-              [ COORDINATION PLATFORM ARCHITECTURE ]
+          <ScrollReveal className="text-center max-w-3xl mx-auto mb-24 space-y-4">
+            <span className="inline-block text-xs font-mono font-bold uppercase tracking-[0.3em] text-[#DC143C]">
+              [ PROTOCOL CAPABILITIES ]
             </span>
-            <h2 className="font-heading text-4xl sm:text-6xl text-white font-normal leading-tight italic">
-              Resolving the friction of group coordination
+            <h2 className="font-heading text-5xl sm:text-7xl text-white font-normal leading-tight tracking-tight uppercase">
+              Where Coordination <span className="text-glow text-[#00E5A0] font-serif-display italic lowercase font-light">flows</span>
             </h2>
-            <p className="text-sm font-light text-neutral-400 leading-relaxed font-sans max-w-2xl mx-auto pt-2">
-              Hangoutt automates spatial coordinate geography, privacy budget ceilings, and dining preferences. No endless messaging chains. Just optimal consensus itineraries compiled instantly.
+            <p className="text-sm font-light text-neutral-400 leading-relaxed font-sans max-w-xl mx-auto pt-2">
+              Hangoutt automates spatial midpoint calculations, budget ceilings, and group consensus. No chat lists. Just optimal itineraries.
             </p>
           </ScrollReveal>
 
-          {/* Bento Grid using GlowCard */}
+          {/* Bento Grid layout winding along the river */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
-            {/* Card 1 */}
+            {/* Card 1: Centroids */}
             <ScrollReveal>
-              <GlowCard glowColor="rgba(220, 20, 60, 0.15)" className="h-full">
-                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#DC143C]/30 tracking-widest">PROTO_01</div>
-                <div>
-                  <div className="w-10 h-10 rounded-lg bg-[#DC143C]/10 border border-[#DC143C]/30 flex items-center justify-center mb-6">
-                    <Navigation className="w-5 h-5 text-[#DC143C] transform rotate-45" />
+              <div className="relative group overflow-hidden bg-stone-950/80 border border-stone-900/60 p-8 flex flex-col justify-between h-[360px] rounded-[12px] transition-all duration-300 hover:border-[#DC143C]/40 hover:bg-stone-950/90 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
+                {/* Accent glow corner */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-radial-gradient from-[#DC143C]/10 to-transparent pointer-events-none rounded-bl-full" />
+                
+                <div className="relative z-10 space-y-6">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[9px] text-neutral-500 uppercase tracking-widest">GATEWAY // 01</span>
+                    <span className="w-2 h-2 rounded-full bg-[#DC143C] animate-pulse shadow-[0_0_8px_#DC143C]" />
                   </div>
-                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
-                    Fair travel midpoints
-                  </h3>
-                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
-                    Computes geographic coordinate centroids that minimize travel times. The participant living farthest away is no longer forced to bear all the commute burdens.
-                  </p>
+                  
+                  <div className="space-y-3">
+                    <h3 className="font-heading text-2xl text-white font-normal uppercase tracking-wide">
+                      Fair Centroid Midpoints
+                    </h3>
+                    <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                      Computes travel centroids that minimize overall group commute times, so the furthest members don't bear the full travel burden.
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
-                  <span>METRIC: TRAVEL AVERAGES</span>
+
+                <div className="border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>METRIC: TRANSIT SYNC</span>
                   <span className="text-[#DC143C] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
-              </GlowCard>
+              </div>
             </ScrollReveal>
 
-            {/* Card 2 */}
+            {/* Card 2: Zero-Disclosure */}
             <ScrollReveal>
-              <GlowCard glowColor="rgba(0, 229, 160, 0.15)" className="h-full border-secondary/20">
-                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#00E5A0]/30 tracking-widest">PROTO_02</div>
-                <div>
-                  <div className="w-10 h-10 rounded-lg bg-[#00E5A0]/10 border border-[#00E5A0]/30 flex items-center justify-center mb-6">
-                    <Activity className="w-5 h-5 text-[#00E5A0]" />
+              <div className="relative group overflow-hidden bg-stone-950/80 border border-stone-900/60 p-8 flex flex-col justify-between h-[360px] rounded-[12px] transition-all duration-300 hover:border-[#00E5A0]/40 hover:bg-stone-950/90 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-radial-gradient from-[#00E5A0]/10 to-transparent pointer-events-none rounded-bl-full" />
+                
+                <div className="relative z-10 space-y-6">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[9px] text-neutral-500 uppercase tracking-widest">SECURITY // 02</span>
+                    <span className="w-2 h-2 rounded-full bg-[#00E5A0] animate-pulse shadow-[0_0_8px_#00E5A0]" />
                   </div>
-                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
-                    Zero-disclosure limits
-                  </h3>
-                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
-                    Individual budgets and start coordinates are kept completely private. Only derived averages and lowest-common-denominator caps are passed to recommend options.
-                  </p>
+                  
+                  <div className="space-y-3">
+                    <h3 className="font-heading text-2xl text-white font-normal uppercase tracking-wide">
+                      Zero-Disclosure Limits
+                    </h3>
+                    <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                      Start coordinates and budgets remain entirely private. Only mathematically derived averages and overlap caps are processed.
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
-                  <span>SECURITY: ENVELOPE SYNC</span>
+
+                <div className="border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>SECURITY: ENVELOPE V4</span>
                   <span className="text-[#00E5A0] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
-              </GlowCard>
+              </div>
             </ScrollReveal>
 
-            {/* Card 3 */}
+            {/* Card 3: Compiler */}
             <ScrollReveal>
-              <GlowCard glowColor="rgba(220, 20, 60, 0.15)" className="h-full">
-                <div className="absolute top-4 right-4 font-mono text-[9px] text-[#DC143C]/30 tracking-widest">PROTO_03</div>
-                <div>
-                  <div className="w-10 h-10 rounded-lg bg-[#DC143C]/10 border border-[#DC143C]/30 flex items-center justify-center mb-6">
-                    <Sparkles className="w-5 h-5 text-[#DC143C]" />
+              <div className="relative group overflow-hidden bg-stone-950/80 border border-stone-900/60 p-8 flex flex-col justify-between h-[360px] rounded-[12px] transition-all duration-300 hover:border-[#DC143C]/40 hover:bg-stone-950/90 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-radial-gradient from-[#DC143C]/10 to-transparent pointer-events-none rounded-bl-full" />
+                
+                <div className="relative z-10 space-y-6">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[9px] text-neutral-500 uppercase tracking-widest">COMPILER // 03</span>
+                    <span className="w-2 h-2 rounded-full bg-[#DC143C] animate-pulse shadow-[0_0_8px_#DC143C]" />
                   </div>
-                  <h3 className="font-heading text-2xl text-white font-normal mb-3 uppercase tracking-wide">
-                    Itinerary compiler
-                  </h3>
-                  <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
-                    Instead of random restaurant listings, venues are processed through our planner layer to generate 3 narrative options. Group members vote in real-time.
-                  </p>
+                  
+                  <div className="space-y-3">
+                    <h3 className="font-heading text-2xl text-white font-normal uppercase tracking-wide">
+                      Consensus Compiler
+                    </h3>
+                    <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
+                      Compiles 3 curated itinerary options based on group archetype parameters. Voting is registered directly in the shared workspace.
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-8 border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
-                  <span>SYSTEM: COMPILER CORES</span>
+
+                <div className="border-t border-stone-900/60 pt-4 flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>SYSTEM: ORACLE CORES</span>
                   <span className="text-[#DC143C] group-hover:translate-x-1 transition-transform">→</span>
                 </div>
-              </GlowCard>
+              </div>
             </ScrollReveal>
           </div>
         </div>
       </section>
 
       {/* ── SECTION 3: THE PROTOCOL TIMELINE (SCROLL PROGRESS CONNECTOR) ── */}
-      <section id="steps" className="bg-[#0D0D10] py-24 md:py-32 border-t border-stone-900/60 relative">
-        <div className="mx-auto max-w-7xl px-8">
-          <ScrollReveal className="text-center max-w-3xl mx-auto mb-16 space-y-3">
-            <span className="inline-block text-xs font-bold uppercase tracking-widest text-[#00E5A0] font-mono">
-              [ EXECUTION PROTOCOLS ]
+      <section id="steps" className="bg-[#0A0A0C] py-28 md:py-36 border-t border-stone-900/40 relative overflow-hidden">
+        {/* Subtle glowing lines crossing behind the timeline */}
+        <div className="absolute inset-0 pointer-events-none opacity-[0.06]">
+          <svg className="w-full h-full" viewBox="0 0 1440 800" fill="none" preserveAspectRatio="none">
+            <path d="M-100 400 C300 100, 500 700, 900 400 C1100 200, 1300 600, 1540 400" stroke="#DC143C" strokeWidth="3" />
+            <path d="M-100 450 C350 150, 450 650, 950 450 C1150 250, 1250 550, 1540 450" stroke="#00E5A0" strokeWidth="2" strokeDasharray="10 10" />
+          </svg>
+        </div>
+
+        <div className="mx-auto max-w-7xl px-8 relative z-10">
+          <ScrollReveal className="text-center max-w-3xl mx-auto mb-20 space-y-3">
+            <span className="inline-block text-xs font-mono font-bold uppercase tracking-[0.3em] text-[#00E5A0]">
+              [ PROTOCOL TIMELINE ]
             </span>
-            <h2 className="font-heading text-4xl sm:text-5xl text-white font-normal leading-tight italic">
-              How the platform operates
+            <h2 className="font-heading text-5xl sm:text-6xl text-white font-normal leading-tight tracking-tight uppercase">
+              The Path to <span className="text-glow text-[#DC143C] font-serif-display italic lowercase font-light">consensus</span>
             </h2>
-            <p className="text-xs font-mono text-neutral-500 uppercase tracking-widest mt-2">
-              Scroll to advance the synchronization sequence
+            <p className="text-xs font-mono text-neutral-500 uppercase tracking-widest mt-3">
+              Scroll down to advance the synchronization stream
             </p>
           </ScrollReveal>
 
@@ -798,24 +941,24 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── SECTION 4: CALL TO ACTION EDITORIAL ── */}
-      <section id="cta" className="relative py-32 border-t border-stone-900/60 overflow-hidden bg-black text-center">
-        <div className="absolute inset-0 z-0">
-          {/* Subtle grid accent overlay */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:40px_40px] opacity-40" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0C] via-transparent to-[#0A0A0C] z-10" />
-        </div>
+      {/* ── SECTION 4: CALL TO ACTION EDITORIAL (REFLECTIVE LIQUID WAVES) ── */}
+      <section id="cta" className="relative py-36 border-t border-stone-900/40 overflow-hidden bg-black text-center min-h-[450px]">
+        {/* HTML5 Canvas fluid wave background simulation */}
+        <FluidCanvasBackground />
+
+        {/* Ambient background shade overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0C] via-transparent to-black z-0 pointer-events-none" />
 
         <div className="relative z-10 max-w-4xl mx-auto px-8 space-y-10">
           <ScrollReveal className="space-y-4">
-            <span className="inline-block text-xs font-mono font-bold uppercase tracking-widest text-[#DC143C]">
-              [ LAUNCH INITIALIZATION ]
+            <span className="inline-block text-xs font-mono font-bold uppercase tracking-[0.25em] text-[#00E5A0]">
+              [ START EXECUTION ]
             </span>
-            <h2 className="font-heading text-5xl sm:text-7xl text-white font-normal italic leading-none">
-              Ready for the night?
+            <h2 className="font-heading text-6xl sm:text-8xl text-white font-normal uppercase leading-none tracking-tight">
+              Ready for the <span className="text-glow text-[#DC143C] font-serif-display italic lowercase font-light">night?</span>
             </h2>
-            <p className="text-sm font-light text-neutral-400 max-w-xl mx-auto pt-2 font-sans">
-              Connect your friends, coordinate coordinate maps, and let Hangoutt compile your most optimal outing expedition.
+            <p className="text-sm font-light text-neutral-400 max-w-xl mx-auto pt-2 font-sans leading-relaxed">
+              Connect your friends, coordinate your coordinates, and let Hangoutt compile your most optimal outing.
             </p>
           </ScrollReveal>
 
@@ -824,7 +967,7 @@ export default function HomePage() {
               <Link href="/groups" passHref>
                 <button
                   type="button"
-                  className="px-14 py-6 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                  className="px-16 py-5.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-[0_0_20px_rgba(220,20,60,0.3)] rounded-[8px]"
                 >
                   Go to Groups
                 </button>
@@ -833,7 +976,7 @@ export default function HomePage() {
               <Link href="/sign-up" passHref>
                 <button
                   type="button"
-                  className="px-14 py-6 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-lg rounded-[8px]"
+                  className="px-16 py-5.5 bg-gradient-to-r from-[#DC143C] to-[#FB7185] hover:from-[#E11D48] hover:to-[#F43F5E] text-black font-mono font-bold text-xs uppercase tracking-[0.25em] transition-all hover:scale-105 active:scale-95 duration-300 cursor-pointer shadow-[0_0_20px_rgba(220,20,60,0.3)] rounded-[8px]"
                 >
                   START A HANGOUT
                 </button>

@@ -43,6 +43,35 @@ function getZoneImageUrl(zone: string): string {
   return 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?q=80&w=600&auto=format&fit=crop';
 }
 
+function getPlanBackgroundImage(plan: any): string {
+  const orderedSlots = [...(plan.slots ?? [])].sort((a: any, b: any) => a.slotOrder - b.slotOrder);
+
+  // 1. Try to find a slot that has a real Google Maps photo url
+  const gmapsSlot = orderedSlots.find(
+    (s: any) => s.imageUrl && s.imageUrl.startsWith('/api/places/photo')
+  );
+  if (gmapsSlot) {
+    // Increase size/quality for background image
+    return gmapsSlot.imageUrl.replace('maxwidth=300', 'maxwidth=800');
+  }
+
+  // 2. Fall back to a live Google Places lookup by venue name so the card
+  // always shows the actual place, not a stock/zone placeholder.
+  const namedSlot = orderedSlots.find((s: any) => s.name);
+  if (namedSlot) {
+    const params = new URLSearchParams({
+      name: namedSlot.name,
+      city: 'Mumbai',
+      maxwidth: '800',
+    });
+    if (namedSlot.category) params.set('category', namedSlot.category);
+    return `/api/places/venue-photo?${params.toString()}`;
+  }
+
+  // 3. Absolute fallback to zone image
+  return getZoneImageUrl(plan.meetupZone);
+}
+
 function getFallbackImageUrl(category: string): string {
   const cat = (category ?? '').toUpperCase();
   if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
@@ -52,6 +81,9 @@ function getFallbackImageUrl(category: string): string {
 }
 
 function getSlotImageUrl(slot: any): string {
+  if (slot.imageUrl && !slot.imageUrl.includes('unsplash.com') && !slot.imageUrl.includes('placehold.co') && !slot.imageUrl.includes('mumbai_map.png')) {
+    return slot.imageUrl;
+  }
   const name = (slot.name || '').toLowerCase();
   const cat = (slot.category || '').toLowerCase();
 
@@ -808,7 +840,7 @@ export default function GroupDetailsPage() {
                         <div key={plan.id} className="w-full shrink-0 snap-center snap-always px-1">
                           <Card 
                             style={{
-                              backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 75%, rgba(14, 14, 14, 1) 100%), url(${getZoneImageUrl(plan.meetupZone)})`,
+                              backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 75%, rgba(14, 14, 14, 1) 100%), url(${getPlanBackgroundImage(plan)})`,
                               backgroundSize: 'cover',
                               backgroundPosition: 'center 20%',
                               backgroundRepeat: 'no-repeat',
@@ -1136,7 +1168,7 @@ export default function GroupDetailsPage() {
                       <Card 
                         key={plan.id} 
                         style={{
-                          backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 60%, rgba(14, 14, 14, 1) 100%), url(${getZoneImageUrl(plan.meetupZone)})`,
+                          backgroundImage: `linear-gradient(to bottom, rgba(14, 14, 14, 0.4) 0%, rgba(14, 14, 14, 0.95) 60%, rgba(14, 14, 14, 1) 100%), url(${getPlanBackgroundImage(plan)})`,
                           backgroundSize: 'cover',
                           backgroundPosition: 'center 20%',
                           backgroundRepeat: 'no-repeat',

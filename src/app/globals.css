@@ -209,3 +209,19 @@
   background: #E11D48;
 }
 
+@keyframes flow-river {
+  0% {
+    stroke-dashoffset: 200;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-flow-river {
+  animation: flow-river 8s linear infinite;
+}
+.animate-flow-river-reverse {
+  animation: flow-river 12s linear infinite reverse;
+}
+
