@@ -4722,7 +4722,7 @@ async function peekCacheInputs(
   userId: string,
   _groupId: string,
   options: string[],
-  authContext?: { clerkId?: string; ip?: string }
+  authContext?: { clerkId?: string; ip?: string; email?: string }
 ): Promise<import('./itineraryCache').CacheKeyInputs | null> {
   try {
     const groupId = _groupId;
@@ -4809,7 +4809,7 @@ export const plannerService = {
     userId: string,
     groupId: string,
     options: string[] = [],
-    authContext?: { clerkId?: string; ip?: string }
+    authContext?: { clerkId?: string; ip?: string; email?: string }
   ): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
     const { runWithPlannerContext, plannerLog, PLANNER_VERSION } = await import('../observability/plannerContext');
     const { checkRateLimit, rateLimitMessage } = await import('./rateLimit');
@@ -4835,12 +4835,14 @@ export const plannerService = {
       async () => {
         plannerLog({ event: 'GENERATION_START', operation: 'PLAN_GENERATE' });
 
-        // 1. Rate limit — fail fast BEFORE any DB or AI work.
+        // 1. Rate limit — fail fast BEFORE any DB or AI work. Admin emails
+        //    bypass all limits (see src/lib/auth/adminEmails.ts).
         const rl = await checkRateLimit({
           operation: 'PLAN_GENERATE',
           userId,
           groupId,
           ip: authContext?.ip,
+          userEmail: authContext?.email,
         });
         if (!rl.allowed && rl.hit) {
           throw new ValidationError(rateLimitMessage(rl.hit));
@@ -4856,10 +4858,22 @@ export const plannerService = {
             cacheKey = computeCacheKey(cacheInputs);
 
             // 3. Cache lookup. If we have a fresh hit, verify the plans still
-            //    exist in the DB — otherwise the row is stale.
+            //    exist in the DB — otherwise the row is stale. In D1 mode
+            //    read plans via the worker; locally hit the repository.
             const hit = await lookupCache<PlanWithSlots[]>(cacheKey);
             if (hit.hit) {
-              const persistedPlans = await planRepository.getPlansForGroup(groupId);
+              const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
+              let persistedPlans: PlanWithSlots[] = [];
+              if (isHangoutApiConfigured()) {
+                try {
+                  const res = await hangoutApi<any>(`/groups/${groupId}/plans`);
+                  if (res?.success && Array.isArray(res.data)) persistedPlans = res.data;
+                } catch (err: any) {
+                  console.warn('[PLANNER] cache-hit plan fetch failed:', err?.message ?? err);
+                }
+              } else {
+                persistedPlans = await planRepository.getPlansForGroup(groupId);
+              }
               const stillValid = persistedPlans.length > 0
                 && hit.planIds.every(id => persistedPlans.some(p => p.id === id));
               if (stillValid) {
@@ -4916,7 +4930,16 @@ export const plannerService = {
             if (!cacheKey) return null;
             const hit = await lookupCache<PlanWithSlots[]>(cacheKey);
             if (!hit.hit) return null;
-            const persistedPlans = await planRepository.getPlansForGroup(groupId);
+            const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
+            let persistedPlans: PlanWithSlots[] = [];
+            if (isHangoutApiConfigured()) {
+              try {
+                const res = await hangoutApi<any>(`/groups/${groupId}/plans`);
+                if (res?.success && Array.isArray(res.data)) persistedPlans = res.data;
+              } catch {}
+            } else {
+              persistedPlans = await planRepository.getPlansForGroup(groupId);
+            }
             if (persistedPlans.length > 0 && hit.planIds.every(id => persistedPlans.some(p => p.id === id))) {
               return { success: true, plans: persistedPlans };
             }
@@ -4978,7 +5001,7 @@ export const plannerService = {
     userId: string,
     groupId: string,
     options: string[] = [],
-    authContext?: { clerkId?: string; ip?: string }
+    authContext?: { clerkId?: string; ip?: string; email?: string }
   ): Promise<{ success: boolean; plans: PlanWithSlots[] }> {
     const { isHangoutApiConfigured, hangoutApi } = await import('../cloudflare/hangoutApi');
     if (isHangoutApiConfigured()) {

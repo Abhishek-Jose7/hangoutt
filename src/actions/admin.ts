@@ -3,15 +3,11 @@
 import { apiResponse, ApiResponse } from '@/lib/utils/apiResponse';
 import { ActionResponse } from '@/lib/types/api.types';
 import { getCurrentApiUser, hangoutApi, isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
-
-const ADMIN_EMAILS = new Set([
-  'abhishekjose780@gmail.com',
-  'johannjoseph232006@gmail.com',
-]);
+import { isAdminEmail } from '@/lib/auth/adminEmails';
 
 async function checkAdminAuth() {
   const user = await getCurrentApiUser();
-  if (!user.email || !ADMIN_EMAILS.has(user.email.toLowerCase())) {
+  if (!isAdminEmail(user.email)) {
     throw new Error('Forbidden: Administrative privileges required.');
   }
 }

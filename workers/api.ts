@@ -2174,6 +2174,17 @@ export default {
       const unauthorized = await assertAuthorized(request, env);
       if (unauthorized) return unauthorized;
 
+      // Cost-control endpoints — called by the Next.js host, not the browser.
+      if (url.pathname === '/internal/cost-control/cache-lookup' && request.method === 'POST') return handleCacheLookup(request, env);
+      if (url.pathname === '/internal/cost-control/cache-store' && request.method === 'POST') return handleCacheStore(request, env);
+      if (url.pathname === '/internal/cost-control/cache-invalidate' && request.method === 'POST') return handleCacheInvalidate(request, env);
+      if (url.pathname === '/internal/cost-control/rate-check' && request.method === 'POST') return handleRateCheck(request, env);
+      if (url.pathname === '/internal/cost-control/inflight-acquire' && request.method === 'POST') return handleInflightAcquire(request, env);
+      if (url.pathname === '/internal/cost-control/inflight-release' && request.method === 'POST') return handleInflightRelease(request, env);
+      if (url.pathname === '/internal/cost-control/cost-record' && request.method === 'POST') return handleCostRecord(request, env);
+      if (url.pathname === '/internal/cost-control/rollup-bump' && request.method === 'POST') return handleRollupBump(request, env);
+      if (url.pathname === '/internal/cost-control/usage-summary' && request.method === 'GET') return handleUsageSummary(request, env);
+
       if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
       if (url.pathname === '/api/admin/trigger-cron' && request.method === 'POST') {
         const cron = url.searchParams.get('cron') || '0 * * * *';
@@ -2748,4 +2759,357 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
       }
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cost-control endpoints. All backed by D1 tables created in migration 0019.
+// Called by the Next.js host via hangoutApi so the frontend never touches
+// a local SQLite file. All routes are behind assertAuthorized.
+// ---------------------------------------------------------------------------
+
+async function handleCacheLookup(request: Request, env: Env) {
+  const { key, plannerVersion } = await readJson<{ key: string; plannerVersion: string }>(request);
+  if (!key || !plannerVersion) {
+    return json({ success: false, error: { code: 'VALIDATION', message: 'key + plannerVersion required' } }, { status: 400, headers: corsHeaders(env) });
+  }
+  const nowIso = new Date().toISOString();
+  const row = await env.DB
+    .prepare(
+      `SELECT key, planner_version AS plannerVersion, group_id AS groupId,
+              plan_ids_json AS planIdsJson, plan_payload_json AS planPayloadJson,
+              created_at AS createdAt, expires_at AS expiresAt, hits,
+              generation_time_ms AS generationTimeMs, estimated_cost_cents AS estimatedCostCents
+       FROM itinerary_cache WHERE key = ? AND planner_version = ? AND expires_at >= ? LIMIT 1`
+    )
+    .bind(key, plannerVersion, nowIso)
+    .first<any>();
+  if (!row) {
+    return json({ success: true, data: { hit: false } }, { headers: corsHeaders(env) });
+  }
+  // Bump hit counter — fire-and-forget.
+  await env.DB.prepare(`UPDATE itinerary_cache SET hits = hits + 1 WHERE key = ?`).bind(key).run().catch(() => {});
+  return json(
+    {
+      success: true,
+      data: {
+        hit: true,
+        payloadJson: row.planPayloadJson,
+        planIdsJson: row.planIdsJson,
+        createdAt: row.createdAt,
+        hits: (row.hits ?? 0) + 1,
+        generationTimeMs: row.generationTimeMs ?? 0,
+        estimatedCostCents: row.estimatedCostCents ?? 0,
+      },
+    },
+    { headers: corsHeaders(env) }
+  );
+}
+
+async function handleCacheStore(request: Request, env: Env) {
+  const body = await readJson<{
+    key: string;
+    plannerVersion: string;
+    groupId: string;
+    planIdsJson: string;
+    planPayloadJson: string;
+    ttlHours?: number;
+    generationTimeMs?: number;
+    estimatedCostCents?: number;
+  }>(request);
+  if (!body.key || !body.plannerVersion || !body.groupId) {
+    return json({ success: false, error: { code: 'VALIDATION', message: 'key, plannerVersion, groupId required' } }, { status: 400, headers: corsHeaders(env) });
+  }
+  const ttlHours = body.ttlHours ?? 24;
+  const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000).toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO itinerary_cache
+       (key, planner_version, group_id, plan_ids_json, plan_payload_json, expires_at, hits, generation_time_ms, estimated_cost_cents)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         planner_version = excluded.planner_version,
+         plan_ids_json = excluded.plan_ids_json,
+         plan_payload_json = excluded.plan_payload_json,
+         expires_at = excluded.expires_at,
+         generation_time_ms = excluded.generation_time_ms,
+         estimated_cost_cents = excluded.estimated_cost_cents`
+    )
+    .bind(
+      body.key,
+      body.plannerVersion,
+      body.groupId,
+      body.planIdsJson,
+      body.planPayloadJson,
+      expiresAt,
+      body.generationTimeMs ?? 0,
+      body.estimatedCostCents ?? 0
+    )
+    .run();
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function handleCacheInvalidate(request: Request, env: Env) {
+  const { groupId } = await readJson<{ groupId: string }>(request);
+  if (!groupId) {
+    return json({ success: false, error: { code: 'VALIDATION', message: 'groupId required' } }, { status: 400, headers: corsHeaders(env) });
+  }
+  const result = await env.DB.prepare(`DELETE FROM itinerary_cache WHERE group_id = ?`).bind(groupId).run();
+  return json({ success: true, data: { deleted: (result as any).meta?.changes ?? 0 } }, { headers: corsHeaders(env) });
+}
+
+interface RateCheckWindow { sizeSec: number; max: number; }
+interface RateCheckSubject { kind: 'USER' | 'GROUP' | 'IP'; id: string; windows: RateCheckWindow[]; }
+
+async function handleRateCheck(request: Request, env: Env) {
+  const body = await readJson<{ operation: string; subjects: RateCheckSubject[] }>(request);
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (const subject of body.subjects) {
+    if (!subject.id) continue;
+    for (const w of subject.windows) {
+      const start = nowSec - (nowSec % w.sizeSec);
+      const rowId = `${subject.kind}:${subject.id}:${body.operation}:${w.sizeSec}:${start}`;
+      await env.DB
+        .prepare(
+          `INSERT INTO rate_limit_windows (id, subject_kind, subject_id, operation, window_start_unix, window_size_sec, count)
+           VALUES (?, ?, ?, ?, ?, ?, 1)
+           ON CONFLICT(subject_kind, subject_id, operation, window_start_unix, window_size_sec)
+           DO UPDATE SET count = count + 1`
+        )
+        .bind(rowId, subject.kind, subject.id, body.operation, start, w.sizeSec)
+        .run()
+        .catch(() => {});
+      const row = await env.DB
+        .prepare(
+          `SELECT count FROM rate_limit_windows
+           WHERE subject_kind = ? AND subject_id = ? AND operation = ? AND window_start_unix = ? AND window_size_sec = ?`
+        )
+        .bind(subject.kind, subject.id, body.operation, start, w.sizeSec)
+        .first<{ count: number }>();
+      const current = row?.count ?? 1;
+      if (current > w.max) {
+        return json(
+          {
+            success: true,
+            data: {
+              allowed: false,
+              hit: {
+                subjectKind: subject.kind,
+                subjectId: subject.id,
+                windowSizeSec: w.sizeSec,
+                max: w.max,
+                current,
+                retryAfterSec: Math.max(1, (start + w.sizeSec) - nowSec),
+              },
+            },
+          },
+          { headers: corsHeaders(env) }
+        );
+      }
+    }
+  }
+  return json({ success: true, data: { allowed: true } }, { headers: corsHeaders(env) });
+}
+
+async function handleInflightAcquire(request: Request, env: Env) {
+  const body = await readJson<{ key: string; operation: string; subjectId?: string; ttlSec?: number }>(request);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expiresAtUnix = nowSec + (body.ttlSec ?? 30);
+  try {
+    await env.DB
+      .prepare(`INSERT INTO inflight_requests (key, operation, subject_id, expires_at_unix) VALUES (?, ?, ?, ?)`)
+      .bind(body.key, body.operation, body.subjectId ?? null, expiresAtUnix)
+      .run();
+    return json({ success: true, data: { acquired: true } }, { headers: corsHeaders(env) });
+  } catch {
+    // Existing row — either live or stale.
+    const row = await env.DB
+      .prepare(`SELECT expires_at_unix AS expiresAtUnix FROM inflight_requests WHERE key = ?`)
+      .bind(body.key)
+      .first<{ expiresAtUnix: number }>();
+    if (!row || row.expiresAtUnix < nowSec) {
+      await env.DB.prepare(`DELETE FROM inflight_requests WHERE key = ?`).bind(body.key).run().catch(() => {});
+      // Retry once.
+      try {
+        await env.DB
+          .prepare(`INSERT INTO inflight_requests (key, operation, subject_id, expires_at_unix) VALUES (?, ?, ?, ?)`)
+          .bind(body.key, body.operation, body.subjectId ?? null, expiresAtUnix)
+          .run();
+        return json({ success: true, data: { acquired: true } }, { headers: corsHeaders(env) });
+      } catch {
+        return json({ success: true, data: { acquired: true } }, { headers: corsHeaders(env) });
+      }
+    }
+    return json({ success: true, data: { acquired: false } }, { headers: corsHeaders(env) });
+  }
+}
+
+async function handleInflightRelease(request: Request, env: Env) {
+  const { key } = await readJson<{ key: string }>(request);
+  await env.DB.prepare(`DELETE FROM inflight_requests WHERE key = ?`).bind(key).run().catch(() => {});
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function handleCostRecord(request: Request, env: Env) {
+  const body = await readJson<{
+    userId?: string | null;
+    groupId?: string | null;
+    operation: string;
+    provider: string;
+    units?: number;
+    costCents?: number;
+    metadata?: unknown;
+    cacheHit?: boolean;
+  }>(request);
+  await env.DB
+    .prepare(
+      `INSERT INTO cost_ledger (id, user_id, group_id, operation, provider, units, cost_cents, metadata, cache_hit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      body.userId ?? null,
+      body.groupId ?? null,
+      body.operation,
+      body.provider,
+      body.units ?? 1,
+      body.costCents ?? 0,
+      body.metadata ? JSON.stringify(body.metadata) : null,
+      body.cacheHit ? 1 : 0
+    )
+    .run()
+    .catch(() => {});
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function handleRollupBump(request: Request, env: Env) {
+  const body = await readJson<{
+    subjectKind: 'GLOBAL' | 'USER' | 'GROUP';
+    subjectId: string;
+    plansGenerated?: number;
+    cacheHits?: number;
+    cacheMisses?: number;
+    aiCalls?: number;
+    externalCalls?: number;
+    costCents?: number;
+    timeSavedMs?: number;
+  }>(request);
+  const day = new Date().toISOString().slice(0, 10);
+  const rowId = `${day}:${body.subjectKind}:${body.subjectId}`;
+  await env.DB
+    .prepare(
+      `INSERT INTO usage_daily_rollup
+       (id, day_utc, subject_kind, subject_id, plans_generated, cache_hits, cache_misses, ai_calls, external_calls, cost_cents, time_saved_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(day_utc, subject_kind, subject_id) DO UPDATE SET
+         plans_generated = plans_generated + excluded.plans_generated,
+         cache_hits = cache_hits + excluded.cache_hits,
+         cache_misses = cache_misses + excluded.cache_misses,
+         ai_calls = ai_calls + excluded.ai_calls,
+         external_calls = external_calls + excluded.external_calls,
+         cost_cents = cost_cents + excluded.cost_cents,
+         time_saved_ms = time_saved_ms + excluded.time_saved_ms`
+    )
+    .bind(
+      rowId,
+      day,
+      body.subjectKind,
+      body.subjectId,
+      body.plansGenerated ?? 0,
+      body.cacheHits ?? 0,
+      body.cacheMisses ?? 0,
+      body.aiCalls ?? 0,
+      body.externalCalls ?? 0,
+      body.costCents ?? 0,
+      body.timeSavedMs ?? 0
+    )
+    .run()
+    .catch(() => {});
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function handleUsageSummary(request: Request, env: Env) {
+  const url = new URL(request.url);
+  const days = Math.max(1, Math.min(90, parseInt(url.searchParams.get('days') || '7', 10)));
+  const now = Date.now();
+  const fromIso = new Date(now - days * 86400 * 1000).toISOString();
+  const dayCutoff = fromIso.slice(0, 10);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+
+  const [spendToday, spendMonth, breakdown, rollupRows, dauRow, topUsers, topGroups, cacheStats] = await Promise.all([
+    env.DB.prepare(`SELECT COALESCE(SUM(cost_cents),0) AS total FROM cost_ledger WHERE at >= ?`).bind(todayIso).first<any>(),
+    env.DB.prepare(`SELECT COALESCE(SUM(cost_cents),0) AS total FROM cost_ledger WHERE at >= ?`).bind(monthStart).first<any>(),
+    env.DB
+      .prepare(
+        `SELECT operation, provider, COALESCE(SUM(units),0) AS units, COALESCE(SUM(cost_cents),0) AS costCents,
+                COUNT(*) AS calls, COALESCE(SUM(cache_hit),0) AS cacheHits
+         FROM cost_ledger WHERE at >= ? GROUP BY operation, provider`
+      )
+      .bind(fromIso)
+      .all<any>(),
+    env.DB
+      .prepare(
+        `SELECT day_utc AS dayUtc, plans_generated AS plansGenerated, cache_hits AS cacheHits,
+                cache_misses AS cacheMisses, ai_calls AS aiCalls, external_calls AS externalCalls,
+                cost_cents AS costCents, time_saved_ms AS timeSavedMs
+         FROM usage_daily_rollup WHERE subject_kind = 'GLOBAL' AND day_utc >= ? ORDER BY day_utc DESC`
+      )
+      .bind(dayCutoff)
+      .all<any>(),
+    env.DB
+      .prepare(`SELECT COUNT(DISTINCT user_id) AS count FROM cost_ledger WHERE at >= ? AND user_id IS NOT NULL`)
+      .bind(todayIso)
+      .first<any>(),
+    env.DB
+      .prepare(
+        `SELECT user_id AS subjectId, COALESCE(SUM(cost_cents),0) AS costCents, COUNT(*) AS calls
+         FROM cost_ledger WHERE at >= ? AND user_id IS NOT NULL
+         GROUP BY user_id ORDER BY costCents DESC LIMIT 10`
+      )
+      .bind(fromIso)
+      .all<any>(),
+    env.DB
+      .prepare(
+        `SELECT group_id AS subjectId, COALESCE(SUM(cost_cents),0) AS costCents, COUNT(*) AS calls
+         FROM cost_ledger WHERE at >= ? AND group_id IS NOT NULL
+         GROUP BY group_id ORDER BY costCents DESC LIMIT 10`
+      )
+      .bind(fromIso)
+      .all<any>(),
+    env.DB
+      .prepare(
+        `SELECT COUNT(*) AS entries, COALESCE(SUM(hits),0) AS totalHits,
+                COALESCE(AVG((julianday(current_timestamp) - julianday(created_at)) * 24), 0) AS avgAgeHours,
+                COALESCE(SUM(hits * estimated_cost_cents), 0) AS estimatedSavedCents,
+                COALESCE(SUM(hits * generation_time_ms), 0) AS estimatedTimeSavedMs
+         FROM itinerary_cache`
+      )
+      .first<any>(),
+  ]);
+
+  return json(
+    {
+      success: true,
+      data: {
+        windowDays: days,
+        generatedAt: new Date().toISOString(),
+        spend: { todayCents: Number(spendToday?.total ?? 0), monthCents: Number(spendMonth?.total ?? 0) },
+        daily: {
+          activeUsers: Number(dauRow?.count ?? 0),
+        },
+        rollupByDay: rollupRows.results ?? [],
+        operationBreakdown: breakdown.results ?? [],
+        topUsersByCost: topUsers.results ?? [],
+        topGroupsByCost: topGroups.results ?? [],
+        cache: {
+          entriesLive: Number(cacheStats?.entries ?? 0),
+          totalHitsAllTime: Number(cacheStats?.totalHits ?? 0),
+          avgAgeHours: Math.round(Number(cacheStats?.avgAgeHours ?? 0) * 10) / 10,
+          estimatedSavedCentsAllTime: Number(cacheStats?.estimatedSavedCents ?? 0),
+          estimatedTimeSavedMsAllTime: Number(cacheStats?.estimatedTimeSavedMs ?? 0),
+        },
+      },
+    },
+    { headers: corsHeaders(env) }
+  );
 }

@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import CreateGroupDialog from './CreateGroupDialog';
 import JoinGroupDialog from './JoinGroupDialog';
+import { isAdminEmail } from '@/lib/auth/adminEmails';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -16,8 +17,8 @@ export default function Navbar() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
 
-  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
-  const isAdmin = userEmail && (userEmail === 'abhishekjose780@gmail.com' || userEmail === 'johannjoseph232006@gmail.com');
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
+  const isAdmin = isAdminEmail(userEmail);
 
   const navItems = [
     { name: 'My Groups', href: '/groups', icon: Users },

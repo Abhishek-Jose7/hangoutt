@@ -1,7 +1,6 @@
-import { db } from '../db/client';
-import { rateLimitWindows } from '../db/schema';
-import { and, eq, lt, sql } from 'drizzle-orm';
 import { plannerLog } from '../observability/plannerContext';
+import { isAdminEmail } from '../auth/adminEmails';
+import { apiRateCheck } from './costControlClient';
 
 export type SubjectKind = 'USER' | 'GROUP' | 'IP';
 
@@ -28,15 +27,15 @@ interface OperationLimits {
  * (office, university lab) doesn't shut down individual users.
  *
  * Numbers are calibrated to be invisible to normal usage: a real user
- * generating a plan every few minutes is nowhere near 10/hr, but a script
+ * generating a plan every few minutes is nowhere near 15/hr, but a script
  * hammering the endpoint hits the burst cap in one minute.
  */
 const LIMITS: Record<RateLimitOperation, OperationLimits> = {
   PLAN_GENERATE: {
     perUser: [
-      { sizeSec: 60,      max: 3   },  // 3/min burst
-      { sizeSec: 3600,    max: 15  },  // 15/hr rolling
-      { sizeSec: 86400,   max: 60  },  // 60/day cap
+      { sizeSec: 60,      max: 3   },
+      { sizeSec: 3600,    max: 15  },
+      { sizeSec: 86400,   max: 60  },
     ],
     perGroup: [
       { sizeSec: 60,      max: 4   },
@@ -44,7 +43,7 @@ const LIMITS: Record<RateLimitOperation, OperationLimits> = {
       { sizeSec: 86400,   max: 120 },
     ],
     perIp: [
-      { sizeSec: 60,      max: 8   },  // shared IPs
+      { sizeSec: 60,      max: 8   },
       { sizeSec: 3600,    max: 60  },
       { sizeSec: 86400,   max: 300 },
     ],
@@ -90,119 +89,61 @@ interface RateLimitInput {
   userId?: string;
   groupId?: string;
   ip?: string;
+  /** If provided AND matches the admin allowlist, all limits are bypassed. */
+  userEmail?: string | null;
 }
 
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
-function windowStart(nowSec: number, sizeSec: number): number {
-  return nowSec - (nowSec % sizeSec);
-}
-
-/**
- * Increment (or observe) each configured window for each subject. Returns
- * `allowed: false` on the first window that would exceed its cap. Order is
- * (user → group → ip) so the tightest scope refuses first, which gives a
- * more accurate `retryAfterSec` message.
- */
 export async function checkRateLimit(input: RateLimitInput): Promise<RateLimitCheckResult> {
   const limits = LIMITS[input.operation];
   if (!limits) return { allowed: true };
 
-  const subjects: Array<{ kind: SubjectKind; id: string | undefined; windows: WindowSpec[] }> = [
-    { kind: 'USER', id: input.userId, windows: limits.perUser },
-    { kind: 'GROUP', id: input.groupId, windows: limits.perGroup },
-    { kind: 'IP', id: input.ip, windows: limits.perIp },
-  ];
-  const now = nowUnix();
+  // Admin bypass — hardcoded emails have no rate limits on any operation.
+  if (isAdminEmail(input.userEmail)) {
+    plannerLog({
+      event: 'RATE_LIMIT_BYPASSED',
+      operation: input.operation,
+      reason: 'admin_email',
+    });
+    return { allowed: true };
+  }
 
-  for (const subject of subjects) {
-    if (!subject.id) continue;
-    for (const window of subject.windows) {
-      const start = windowStart(now, window.sizeSec);
-      const rowId = `${subject.kind}:${subject.id}:${input.operation}:${window.sizeSec}:${start}`;
+  const subjects = [
+    input.userId ? { kind: 'USER' as const, id: input.userId, windows: limits.perUser } : null,
+    input.groupId ? { kind: 'GROUP' as const, id: input.groupId, windows: limits.perGroup } : null,
+    input.ip ? { kind: 'IP' as const, id: input.ip, windows: limits.perIp } : null,
+  ].filter(Boolean) as Array<{ kind: SubjectKind; id: string; windows: WindowSpec[] }>;
 
-      // Atomic upsert-and-increment. Returns the resulting count so we know
-      // whether we crossed the cap.
-      try {
-        await db.insert(rateLimitWindows).values({
-          id: rowId,
-          subjectKind: subject.kind,
-          subjectId: subject.id,
-          operation: input.operation,
-          windowStartUnix: start,
-          windowSizeSec: window.sizeSec,
-          count: 1,
-        }).onConflictDoUpdate({
-          target: [
-            rateLimitWindows.subjectKind,
-            rateLimitWindows.subjectId,
-            rateLimitWindows.operation,
-            rateLimitWindows.windowStartUnix,
-            rateLimitWindows.windowSizeSec,
-          ],
-          set: { count: sql`${rateLimitWindows.count} + 1` },
-        });
-      } catch (err) {
-        // If the DB is unreachable, fail open — we'd rather serve a real user
-        // than block them behind a broken limiter.
-        return { allowed: true };
-      }
+  if (subjects.length === 0) return { allowed: true };
 
-      const row = await db
-        .select({ count: rateLimitWindows.count })
-        .from(rateLimitWindows)
-        .where(and(
-          eq(rateLimitWindows.subjectKind, subject.kind),
-          eq(rateLimitWindows.subjectId, subject.id),
-          eq(rateLimitWindows.operation, input.operation),
-          eq(rateLimitWindows.windowStartUnix, start),
-          eq(rateLimitWindows.windowSizeSec, window.sizeSec),
-        ))
-        .then((rows: any[]) => rows[0]);
-
-      const current = row?.count ?? 1;
-      if (current > window.max) {
-        const retryAfterSec = Math.max(1, (start + window.sizeSec) - now);
-        plannerLog({
-          event: 'RATE_LIMITED',
-          operation: input.operation,
-          reason: `${subject.kind}:${subject.id} @ ${window.sizeSec}s`,
-          retryAfterSeconds: retryAfterSec,
-          metadata: { current, max: window.max },
-        });
-        return {
-          allowed: false,
-          hit: {
-            subjectKind: subject.kind,
-            subjectId: subject.id,
-            windowSizeSec: window.sizeSec,
-            max: window.max,
-            current,
-            retryAfterSec,
-          },
-        };
-      }
-    }
+  const result = await apiRateCheck({ operation: input.operation, subjects });
+  if (!result.allowed && result.hit) {
+    plannerLog({
+      event: 'RATE_LIMITED',
+      operation: input.operation,
+      reason: `${result.hit.subjectKind}:${result.hit.subjectId} @ ${result.hit.windowSizeSec}s`,
+      retryAfterSeconds: result.hit.retryAfterSec,
+      metadata: { current: result.hit.current, max: result.hit.max },
+    });
+    return {
+      allowed: false,
+      hit: {
+        subjectKind: result.hit.subjectKind as SubjectKind,
+        subjectId: result.hit.subjectId,
+        windowSizeSec: result.hit.windowSizeSec,
+        max: result.hit.max,
+        current: result.hit.current,
+        retryAfterSec: result.hit.retryAfterSec,
+      },
+    };
   }
   return { allowed: true };
 }
 
 /**
- * Best-effort cleanup of expired windows so the table doesn't grow forever.
- * Called opportunistically (e.g. from the admin API) or via a cron.
+ * Sweep is now handled server-side. Kept as a no-op for compatibility.
  */
 export async function sweepExpiredWindows(): Promise<number> {
-  const cutoff = nowUnix() - 3 * 86400; // keep 3 days for the dashboard
-  try {
-    const result = await db
-      .delete(rateLimitWindows)
-      .where(lt(rateLimitWindows.windowStartUnix, cutoff));
-    return (result as any)?.changes ?? 0;
-  } catch {
-    return 0;
-  }
+  return 0;
 }
 
 /**

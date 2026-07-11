@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { isAdminEmail } from '@/lib/auth/adminEmails';
 
 // Define public routes that do not require authentication
 const isPublicRoute = createRouteMatcher([
@@ -14,11 +15,6 @@ const isPublicRoute = createRouteMatcher([
 
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)',
-]);
-
-const ADMIN_EMAILS = new Set([
-  'abhishekjose780@gmail.com',
-  'johannjoseph232006@gmail.com',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -48,7 +44,7 @@ export default clerkMiddleware(async (auth, req) => {
       }
     }
 
-    if (!userEmail || !ADMIN_EMAILS.has(userEmail.toLowerCase())) {
+    if (!isAdminEmail(userEmail)) {
       return NextResponse.redirect(new URL('/', req.url));
     }
   } else if (!isPublicRoute(req)) {

@@ -1,8 +1,6 @@
-import { createHash, randomUUID } from 'crypto';
-import { db } from '../db/client';
-import { itineraryCache } from '../db/schema';
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { createHash } from 'crypto';
 import { PLANNER_VERSION, currentPlannerContext, plannerLog } from '../observability/plannerContext';
+import { apiCacheInvalidate, apiCacheLookup, apiCacheStore } from './costControlClient';
 
 /**
  * All inputs that materially affect planner output. Any change here MUST be
@@ -12,8 +10,6 @@ import { PLANNER_VERSION, currentPlannerContext, plannerLog } from '../observabi
 export interface CacheKeyInputs {
   groupId: string;
   groupType: string;
-  // Members are represented by their location (lat, lng rounded to 3dp,
-  // ~110m). Two different users at the same location produce the same key.
   memberLocations: Array<{ lat: number; lng: number }>;
   outingTime: string | null | undefined;
   outingDate: string | null | undefined;
@@ -28,8 +24,6 @@ export interface CacheKeyInputs {
 const CACHE_TTL_HOURS = Number(process.env.HANGOUT_CACHE_TTL_HOURS ?? 24);
 
 function canonicalise(inputs: CacheKeyInputs): string {
-  // Sort every array so member order / preference order doesn't split the key.
-  // Round coordinates so trivial GPS jitter doesn't split the key either.
   const canonical = {
     v: PLANNER_VERSION,
     groupType: (inputs.groupType || 'CUSTOM').toUpperCase(),
@@ -48,10 +42,7 @@ function canonicalise(inputs: CacheKeyInputs): string {
   return JSON.stringify(canonical);
 }
 
-function round3(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
+function round3(n: number): number { return Math.round(n * 1000) / 1000; }
 function normaliseTime(t: string | null | undefined): string | null {
   if (!t) return null;
   const m = t.match(/^(\d{1,2}):(\d{2})/);
@@ -60,12 +51,9 @@ function normaliseTime(t: string | null | undefined): string | null {
 }
 
 export function computeCacheKey(inputs: CacheKeyInputs): string {
-  const canonical = canonicalise(inputs);
-  return createHash('sha256').update(canonical).digest('hex');
+  return createHash('sha256').update(canonicalise(inputs)).digest('hex');
 }
 
-// ---------------------------------------------------------------------------
-// Read / write
 // ---------------------------------------------------------------------------
 
 export interface CacheHit<T> {
@@ -81,34 +69,19 @@ export interface CacheHit<T> {
 export type CacheLookup<T> = CacheHit<T> | { hit: false };
 
 export async function lookupCache<T = unknown>(key: string): Promise<CacheLookup<T>> {
-  const row = await db
-    .select()
-    .from(itineraryCache)
-    .where(and(
-      eq(itineraryCache.key, key),
-      eq(itineraryCache.plannerVersion, PLANNER_VERSION),
-      gte(itineraryCache.expiresAt, new Date().toISOString()),
-    ))
-    .then((rows: any[]) => rows[0])
-    .catch(() => undefined);
+  const res = await apiCacheLookup({ key, plannerVersion: PLANNER_VERSION });
+  if (!res.hit || !res.payloadJson) return { hit: false };
 
-  if (!row) return { hit: false };
-
-  // Bump the hit counter — best-effort.
-  void db.update(itineraryCache)
-    .set({ hits: sql`${itineraryCache.hits} + 1` })
-    .where(eq(itineraryCache.key, key))
-    .catch(() => {});
-
-  const payload = safeParseJSON<T>(row.planPayloadJson);
-  const planIds = safeParseJSON<string[]>(row.planIdsJson) ?? [];
-  if (payload === undefined) return { hit: false };
+  let payload: T | undefined;
+  let planIds: string[] = [];
+  try { payload = JSON.parse(res.payloadJson) as T; } catch { return { hit: false }; }
+  try { planIds = JSON.parse(res.planIdsJson ?? '[]') as string[]; } catch {}
 
   plannerLog({
     event: 'CACHE_HIT',
     key,
-    durationMs: row.generationTimeMs,
-    metadata: { hits: row.hits + 1, ageHours: hoursSince(row.createdAt) },
+    durationMs: res.generationTimeMs ?? 0,
+    metadata: { hits: res.hits ?? 0, ageHours: res.createdAt ? hoursSince(res.createdAt) : 0 },
   });
 
   const ctx = currentPlannerContext();
@@ -116,12 +89,12 @@ export async function lookupCache<T = unknown>(key: string): Promise<CacheLookup
 
   return {
     hit: true,
-    payload,
+    payload: payload as T,
     planIds,
-    createdAt: row.createdAt,
-    hits: row.hits + 1,
-    generationTimeMs: row.generationTimeMs,
-    estimatedCostCents: row.estimatedCostCents,
+    createdAt: res.createdAt ?? '',
+    hits: res.hits ?? 0,
+    generationTimeMs: res.generationTimeMs ?? 0,
+    estimatedCostCents: res.estimatedCostCents ?? 0,
   };
 }
 
@@ -133,76 +106,32 @@ export async function storeCache<T>(input: {
   generationTimeMs: number;
   estimatedCostCents: number;
 }): Promise<void> {
-  const expiresAt = new Date(Date.now() + CACHE_TTL_HOURS * 3600 * 1000).toISOString();
-  try {
-    await db.insert(itineraryCache).values({
-      key: input.key,
-      plannerVersion: PLANNER_VERSION,
-      groupId: input.groupId,
-      planIdsJson: JSON.stringify(input.planIds),
-      planPayloadJson: JSON.stringify(input.payload),
-      expiresAt,
-      hits: 0,
-      generationTimeMs: input.generationTimeMs,
-      estimatedCostCents: input.estimatedCostCents,
-    }).onConflictDoUpdate({
-      target: itineraryCache.key,
-      set: {
-        plannerVersion: PLANNER_VERSION,
-        planIdsJson: JSON.stringify(input.planIds),
-        planPayloadJson: JSON.stringify(input.payload),
-        expiresAt,
-        generationTimeMs: input.generationTimeMs,
-        estimatedCostCents: input.estimatedCostCents,
-      },
-    });
-    plannerLog({
-      event: 'CACHE_STORED',
-      key: input.key,
-      durationMs: input.generationTimeMs,
-      costCents: input.estimatedCostCents,
-    });
-  } catch (err: any) {
-    console.warn('[itineraryCache] store failed:', err?.message ?? err);
-  }
+  await apiCacheStore({
+    key: input.key,
+    plannerVersion: PLANNER_VERSION,
+    groupId: input.groupId,
+    planIdsJson: JSON.stringify(input.planIds),
+    planPayloadJson: JSON.stringify(input.payload),
+    ttlHours: CACHE_TTL_HOURS,
+    generationTimeMs: input.generationTimeMs,
+    estimatedCostCents: input.estimatedCostCents,
+  });
+  plannerLog({
+    event: 'CACHE_STORED',
+    key: input.key,
+    durationMs: input.generationTimeMs,
+    costCents: input.estimatedCostCents,
+  });
 }
 
-/**
- * Invalidate any cache entries for this group (e.g. members left, budget
- * changed). We purge by groupId rather than by input hash so we don't need
- * to reconstruct the exact request that produced the cached row.
- */
 export async function invalidateGroupCache(groupId: string): Promise<number> {
-  try {
-    const result = await db.delete(itineraryCache).where(eq(itineraryCache.groupId, groupId));
-    return (result as any)?.changes ?? 0;
-  } catch {
-    return 0;
-  }
+  await apiCacheInvalidate(groupId);
+  return 0; // count not exposed
 }
 
 export async function sweepExpiredCache(): Promise<number> {
-  try {
-    const result = await db
-      .delete(itineraryCache)
-      .where(lt(itineraryCache.expiresAt, new Date().toISOString()));
-    return (result as any)?.changes ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-function safeParseJSON<T>(text: string | null | undefined): T | undefined {
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return undefined;
-  }
+  // Worker sweeps on its own cron; nothing for the Next.js host to do here.
+  return 0;
 }
 
 function hoursSince(iso: string): number {
