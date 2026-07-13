@@ -17,23 +17,32 @@ function resolveLocalDbPath(): string {
       : path.resolve(process.cwd(), configuredPath);
   }
 
-  // Serverless hosts (Vercel, Netlify Functions, AWS Lambda) have a
-  // read-only bundle at cwd but a writable /tmp. Copy the bundled seed
-  // once at cold start so reads AND writes work. Writes are ephemeral per
-  // instance — that's fine, the source of truth is D1 via the worker;
-  // local.db here is used for the places/venues catalog reads and a few
-  // tracking-metric upserts.
-  const runtime = '/tmp/local.db';
-  const bundled = path.resolve(process.cwd(), 'local.db');
-
   const isServerlessRO = process.env.VERCEL === '1'
-    || process.env.AWS_LAMBDA_FUNCTION_NAME
+    || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME)
     || process.env.NETLIFY === 'true';
 
+  // Look for the bundled local.db in a few candidate locations. Next.js
+  // outputFileTracing sometimes places included files at cwd, sometimes at
+  // the project root under .next/server/, and Vercel's launcher can chdir
+  // between them. Trying each avoids a single point of failure.
+  const candidates = [
+    path.resolve(process.cwd(), 'local.db'),
+    path.resolve(process.cwd(), '.next/server/local.db'),
+    path.resolve(process.cwd(), '..', 'local.db'),
+    '/var/task/local.db',
+    '/var/task/.next/server/local.db',
+  ];
+
+  const bundled = candidates.find(p => {
+    try { return fs.existsSync(p); } catch { return false; }
+  });
+
   if (isServerlessRO) {
+    const runtime = '/tmp/local.db';
     try {
-      if (!fs.existsSync(runtime) && fs.existsSync(bundled)) {
+      if (!fs.existsSync(runtime) && bundled) {
         fs.copyFileSync(bundled, runtime);
+        console.log(`[db/client] seeded /tmp/local.db from ${bundled}`);
       }
       if (fs.existsSync(runtime)) return runtime;
     } catch (err: any) {
@@ -41,7 +50,14 @@ function resolveLocalDbPath(): string {
     }
   }
 
-  return bundled;
+  if (bundled) return bundled;
+
+  // Nothing found — log every candidate we tried so it's easy to see in
+  // production what's missing. Return the first candidate (better-sqlite3
+  // will throw a legible error).
+  console.error('[db/client] local.db not found. Tried:', candidates.join(', '));
+  console.error('[db/client] cwd =', process.cwd(), 'VERCEL =', process.env.VERCEL);
+  return candidates[0];
 }
 
 export function getDb(): DbClient {
