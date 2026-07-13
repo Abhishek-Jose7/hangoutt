@@ -360,6 +360,30 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-11T06:35:45.900Z"
+    },
+    {
+      "id": "94c05995-502a-4ce7-a15e-782eac487f0d",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "haha",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-13T17:43:57.977Z"
+    },
+    {
+      "id": "7a2c0c43-a519-439f-b0d6-1ccdceb51bf4",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "bundle local.db for Vercel deploy",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".gitignore\",\"local.db\",\"next.config.ts\",\"src/lib/db/client.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-13T18:02:31.861Z"
     }
   ]
 }
