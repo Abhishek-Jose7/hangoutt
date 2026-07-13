@@ -348,6 +348,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-10T06:42:24.161Z"
+    },
+    {
+      "id": "55d4240f-2d20-44d1-b429-8327affa7804",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "lol",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"scratch/test_google_maps.js\",\"src/actions/admin.ts\",\"src/app/api/admin/usage/route.ts\",\"src/app/api/itinerary/generate/route.ts\",\"src/components/shared/Navbar.tsx\",\"src/lib/auth/adminEmails.ts\",\"src/lib/services/costControlClient.ts\",\"src/lib/services/costLedger.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-11T06:35:45.900Z"
     }
   ]
 }
