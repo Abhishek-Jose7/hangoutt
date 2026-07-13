@@ -2243,7 +2243,7 @@ async function buildFallbackItineraryData(
     tagline,
     budgetTier,
     totalEstimatedCostPerHead: fallbackPlanCost,
-    totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + (slots[0].travelToNextMinutes || 0) + (slots[1].travelToNextMinutes || 0),
+    totalDurationMinutes: slots.reduce((sum, s) => sum + (s?.durationMinutes ?? 0) + (s?.travelToNextMinutes ?? 0), 0),
     score: budgetTier === 'BALANCED' ? 0.95 : (budgetTier === 'TRAVEL_FRIENDLY' ? 0.92 : (budgetTier === 'EXPERIENCE_FIRST' ? 0.88 : 0.82)),
 
     experienceScore: budgetTier === 'EXPERIENCE_FIRST' ? 0.95 : 0.82,
@@ -4599,7 +4599,7 @@ async function executePlanningEngine(
           tagline,
           budgetTier,
           totalEstimatedCostPerHead: totalMandatoryCost + slotsOptionalMin,
-          totalDurationMinutes: slots.reduce((sum, s) => sum + s.durationMinutes, 0) + slots.reduce((sum, s) => sum + (s.travelToNextMinutes || 0), 0),
+          totalDurationMinutes: slots.reduce((sum, s) => sum + (s?.durationMinutes ?? 0) + (s?.travelToNextMinutes ?? 0), 0),
           score: overallScore,
 
           experienceScore: preferenceScore,
