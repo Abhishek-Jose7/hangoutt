@@ -42,8 +42,8 @@ next-env.d.ts
 .scar/db.sqlite
 .scar/db.sqlite-*
 
-# local SQLite DB
-local.db
+# local SQLite DB — local.db is committed so Vercel can bundle it as a
+# read-only places catalog seed. Journals stay gitignored.
 local.db-*
 
 # Cloudflare Wrangler state

@@ -9,11 +9,39 @@ export type DbClient = ReturnType<typeof drizzleBetterSqlite<typeof schema>> | R
 
 let dbInstance: any = null;
 
-function resolveLocalDbPath() {
-  const configuredPath = process.env.DB_LOCAL_PATH || './local.db';
-  return path.isAbsolute(configuredPath)
-    ? configuredPath
-    : path.resolve(process.cwd(), configuredPath);
+function resolveLocalDbPath(): string {
+  const configuredPath = process.env.DB_LOCAL_PATH;
+  if (configuredPath) {
+    return path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.resolve(process.cwd(), configuredPath);
+  }
+
+  // Serverless hosts (Vercel, Netlify Functions, AWS Lambda) have a
+  // read-only bundle at cwd but a writable /tmp. Copy the bundled seed
+  // once at cold start so reads AND writes work. Writes are ephemeral per
+  // instance — that's fine, the source of truth is D1 via the worker;
+  // local.db here is used for the places/venues catalog reads and a few
+  // tracking-metric upserts.
+  const runtime = '/tmp/local.db';
+  const bundled = path.resolve(process.cwd(), 'local.db');
+
+  const isServerlessRO = process.env.VERCEL === '1'
+    || process.env.AWS_LAMBDA_FUNCTION_NAME
+    || process.env.NETLIFY === 'true';
+
+  if (isServerlessRO) {
+    try {
+      if (!fs.existsSync(runtime) && fs.existsSync(bundled)) {
+        fs.copyFileSync(bundled, runtime);
+      }
+      if (fs.existsSync(runtime)) return runtime;
+    } catch (err: any) {
+      console.warn('[db/client] serverless copy to /tmp failed:', err?.message ?? err);
+    }
+  }
+
+  return bundled;
 }
 
 export function getDb(): DbClient {
@@ -31,16 +59,23 @@ export function getDb(): DbClient {
   // Fallback to local better-sqlite3
   const dbPath = resolveLocalDbPath();
   const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+  } catch {}
 
   const sqlite = new Database(dbPath);
-  
+
   // Performance optimization for SQLite
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('synchronous = NORMAL');
-  
+  try {
+    sqlite.pragma('journal_mode = WAL');
+    sqlite.pragma('synchronous = NORMAL');
+  } catch {
+    // WAL requires write access to the directory. If it fails (read-only
+    // bundle path), fall back silently — DELETE journal still works.
+  }
+
   dbInstance = drizzleBetterSqlite(sqlite, { schema });
   return dbInstance;
 }
