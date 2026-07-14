@@ -408,6 +408,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-13T18:25:58.866Z"
+    },
+    {
+      "id": "79f67043-b9cb-44dd-af9c-b6c33f00c6b2",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "hehe",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/lib/services/planner.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-13T18:35:27.551Z"
     }
   ]
 }
