@@ -2185,6 +2185,11 @@ export default {
       if (url.pathname === '/internal/cost-control/rollup-bump' && request.method === 'POST') return handleRollupBump(request, env);
       if (url.pathname === '/internal/cost-control/usage-summary' && request.method === 'GET') return handleUsageSummary(request, env);
 
+      // Places catalog reads for the Next.js planner (avoids bundling local.db).
+      if (url.pathname === '/internal/places/by-zone' && request.method === 'POST') return handlePlacesByZone(request, env);
+      if (url.pathname === '/internal/places/zone-fallbacks' && request.method === 'GET') return handleZoneFallbacks(request, env);
+      if (url.pathname === '/internal/places/experiences' && request.method === 'GET') return handleExperiencesRead(request, env);
+
       if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
       if (url.pathname === '/api/admin/trigger-cron' && request.method === 'POST') {
         const cron = url.searchParams.get('cron') || '0 * * * *';
@@ -2766,6 +2771,72 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
 // Called by the Next.js host via hangoutApi so the frontend never touches
 // a local SQLite file. All routes are behind assertAuthorized.
 // ---------------------------------------------------------------------------
+
+async function handlePlacesByZone(request: Request, env: Env) {
+  const { lat, lng, radiusKm } = await readJson<{ lat: number; lng: number; radiusKm?: number }>(request);
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return json({ success: false, error: { code: 'VALIDATION', message: 'lat + lng required' } }, { status: 400, headers: corsHeaders(env) });
+  }
+  const r = typeof radiusKm === 'number' ? radiusKm : 6.0;
+  const latDiff = r / 111.0;
+  const lngDiff = r / (111.0 * Math.cos(lat * Math.PI / 180));
+
+  const rs = await env.DB
+    .prepare(
+      `SELECT
+         p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount,
+         pc.category,
+         pcost.mandatory_cost AS mandatoryCost, pcost.optional_cost_min AS optionalCostMin, pcost.optional_cost_max AS optionalCostMax,
+         p.last_verified AS lastVerified, p.is_featured AS isFeatured, p.is_hidden AS isHidden,
+         p.boost_factor AS boostFactor, p.first_seen AS firstSeen, p.image_url AS imageUrl,
+         ps.popularity, ps.budget_friendliness AS budgetFriendliness, ps.conversation,
+         ps.group_suitability AS groupSuitability, ps.date_suitability AS dateSuitability,
+         ps.friends_suitability AS friendsSuitability, ps.family_suitability AS familySuitability,
+         ps.weather_suitability AS weatherSuitability, ps.uniqueness,
+         ps.experience_score AS experienceScore, ps.overall AS overallScore
+       FROM places p
+       INNER JOIN place_categories pc ON pc.place_id = p.id
+       INNER JOIN place_costs pcost ON pcost.place_id = p.id
+       LEFT JOIN place_scores ps ON ps.place_id = p.id
+       WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?`
+    )
+    .bind(lat - latDiff, lat + latDiff, lng - lngDiff, lng + lngDiff)
+    .all<any>();
+
+  return json({ success: true, data: rs.results ?? [] }, { headers: corsHeaders(env) });
+}
+
+async function handleZoneFallbacks(_request: Request, env: Env) {
+  const rs = await env.DB.prepare(
+    `SELECT id, zone_name AS zoneName, name, category, lat, lng,
+            estimated_cost_per_head AS estimatedCostPerHead,
+            mandatory_cost AS mandatoryCost,
+            optional_cost_min AS optionalCostMin,
+            optional_cost_max AS optionalCostMax,
+            address, rating
+     FROM zone_fallbacks`
+  ).all<any>();
+  return json({ success: true, data: rs.results ?? [] }, { headers: corsHeaders(env) });
+}
+
+async function handleExperiencesRead(_request: Request, env: Env) {
+  const rs = await env.DB.prepare(
+    `SELECT e.id, e.title, e.description, e.category, e.city,
+            e.latitude, e.longitude,
+            e.start_date AS startDate, e.end_date AS endDate,
+            e.ticket_price AS ticketPrice, e.capacity, e.source,
+            e.source_url AS sourceUrl, e.image_url AS imageUrl,
+            e.rating, e.popularity_score AS popularityScore,
+            e.is_recurring AS isRecurring, e.is_active AS isActive,
+            e.trending_score AS trendingScore, e.first_seen AS firstSeen,
+            e.created_at AS createdAt, e.updated_at AS updatedAt,
+            fe.id AS featuredId
+     FROM experiences e
+     LEFT JOIN featured_experiences fe ON fe.experience_id = e.id
+     WHERE e.city = 'Mumbai' AND e.is_active = 1`
+  ).all<any>();
+  return json({ success: true, data: rs.results ?? [] }, { headers: corsHeaders(env) });
+}
 
 async function handleCacheLookup(request: Request, env: Env) {
   const { key, plannerVersion } = await readJson<{ key: string; plannerVersion: string }>(request);

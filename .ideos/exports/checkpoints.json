@@ -420,6 +420,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-13T18:35:27.551Z"
+    },
+    {
+      "id": "808cee69-4c60-4f70-ad83-05518d3c2ae0",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "fix",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"local.db\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-14T04:34:37.764Z"
     }
   ]
 }

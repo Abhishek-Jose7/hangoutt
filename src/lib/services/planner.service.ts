@@ -10,6 +10,7 @@ import { recommendationService } from './recommendation.service';
 import { generateItineraries } from '../groq/itineraryService';
 import { selectCandidateZones, getHaversineDistance, LatLng, MUMBAI_ZONES } from '../algorithms/zoneSelection';
 import { db, safeTransaction } from '../db/client';
+import { isHangoutApiConfigured, hangoutApi } from '../cloudflare/hangoutApi';
 import { users, groups, plans, planSlots, memberTravelMetrics, zones, places, placeCategories, placeCosts, placeScores, experiences, zoneFallbacks, rankingMetrics, featuredExperiences, discoveryQueue, apiBudget } from '../db/schema';
 import { eq, sql, and, between } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
@@ -1795,36 +1796,50 @@ async function buildFallbackItineraryData(
   const hasMoviePreference = (groupData.activity && String(groupData.activity).toLowerCase().includes('movie')) ||
     (groupData.outingType && String(groupData.outingType).toLowerCase().includes('movie'));
 
-  // Query actual places from the database within radius Km of the fallback zone
+  // Query actual places from the database within radius Km of the fallback zone.
+  // Worker-proxied in D1 mode so the fallback works on serverless hosts too.
   const radiusKm = 6.0;
   const latDiff = radiusKm / 111.0;
   const lngDiff = radiusKm / (111.0 * Math.cos(zoneObj.lat * Math.PI / 180));
 
-  let dbPlaces = await db
-    .select({
-      id: places.id,
-      name: places.name,
-      category: placeCategories.category,
-      rating: places.rating,
-      reviewCount: places.reviewCount,
-      lat: places.lat,
-      lng: places.lng,
-      imageUrl: places.imageUrl,
-      address: places.address,
-      mandatoryCost: placeCosts.mandatoryCost,
-      optionalCostMin: placeCosts.optionalCostMin,
-      optionalCostMax: placeCosts.optionalCostMax
-    })
-    .from(places)
-    .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
-    .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
-    .where(
-      and(
-        between(places.lat, zoneObj.lat - latDiff, zoneObj.lat + latDiff),
-        between(places.lng, zoneObj.lng - lngDiff, zoneObj.lng + lngDiff)
+  let dbPlaces: any[] = [];
+  if (isHangoutApiConfigured()) {
+    try {
+      const res = await hangoutApi<any>('/internal/places/by-zone', {
+        method: 'POST',
+        body: { lat: zoneObj.lat, lng: zoneObj.lng, radiusKm },
+      });
+      dbPlaces = res?.success && Array.isArray(res.data) ? res.data : [];
+    } catch (err: any) {
+      console.warn('[FALLBACK] worker places-by-zone failed:', err?.message ?? err);
+    }
+  } else {
+    dbPlaces = await db
+      .select({
+        id: places.id,
+        name: places.name,
+        category: placeCategories.category,
+        rating: places.rating,
+        reviewCount: places.reviewCount,
+        lat: places.lat,
+        lng: places.lng,
+        imageUrl: places.imageUrl,
+        address: places.address,
+        mandatoryCost: placeCosts.mandatoryCost,
+        optionalCostMin: placeCosts.optionalCostMin,
+        optionalCostMax: placeCosts.optionalCostMax
+      })
+      .from(places)
+      .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
+      .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
+      .where(
+        and(
+          between(places.lat, zoneObj.lat - latDiff, zoneObj.lat + latDiff),
+          between(places.lng, zoneObj.lng - lngDiff, zoneObj.lng + lngDiff)
+        )
       )
-    )
-    .catch(() => [] as any[]);
+      .catch(() => [] as any[]);
+  }
 
   let candidates = dbPlaces
     .map((p: any) => ({
@@ -1847,26 +1862,41 @@ async function buildFallbackItineraryData(
 
   // If no candidates found in the zone, fetch ANY places from the database
   if (candidates.length < 5) {
-    const allPlaces = await db
-      .select({
-        id: places.id,
-        name: places.name,
-        category: placeCategories.category,
-        rating: places.rating,
-        reviewCount: places.reviewCount,
-        lat: places.lat,
-        lng: places.lng,
-        imageUrl: places.imageUrl,
-        address: places.address,
-        mandatoryCost: placeCosts.mandatoryCost,
-        optionalCostMin: placeCosts.optionalCostMin,
-        optionalCostMax: placeCosts.optionalCostMax
-      })
-      .from(places)
-      .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
-      .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
-      .limit(200)
-      .catch(() => [] as any[]);
+    let allPlaces: any[] = [];
+    if (isHangoutApiConfigured()) {
+      try {
+        // Wide-radius query centred on Mumbai — same effect as a LIMIT 200
+        // unfiltered read but works through the worker.
+        const res = await hangoutApi<any>('/internal/places/by-zone', {
+          method: 'POST',
+          body: { lat: 19.0760, lng: 72.8777, radiusKm: 40 },
+        });
+        allPlaces = res?.success && Array.isArray(res.data) ? res.data.slice(0, 200) : [];
+      } catch (err: any) {
+        console.warn('[FALLBACK] worker wide places read failed:', err?.message ?? err);
+      }
+    } else {
+      allPlaces = await db
+        .select({
+          id: places.id,
+          name: places.name,
+          category: placeCategories.category,
+          rating: places.rating,
+          reviewCount: places.reviewCount,
+          lat: places.lat,
+          lng: places.lng,
+          imageUrl: places.imageUrl,
+          address: places.address,
+          mandatoryCost: placeCosts.mandatoryCost,
+          optionalCostMin: placeCosts.optionalCostMin,
+          optionalCostMax: placeCosts.optionalCostMax
+        })
+        .from(places)
+        .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
+        .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
+        .limit(200)
+        .catch(() => [] as any[]);
+    }
 
     candidates = allPlaces
       .map((p: any) => ({
@@ -2318,6 +2348,10 @@ async function reactiveVenueFetch(
   zone: { name: string; lat: number; lng: number },
   missingCategories: string[]
 ): Promise<PlaceCandidate[]> {
+  // Reactive fetch writes discovered venues into the local places catalog.
+  // On serverless (D1 mode) that write path isn't available — the worker's
+  // discovery cron owns catalog growth there. Skip quietly.
+  if (isHangoutApiConfigured()) return [];
   const remaining = await getReactiveBudgetRemaining();
   if (remaining <= 0) {
     console.log('[REACTIVE] API budget exhausted today, skipping reactive fetch');
@@ -2536,8 +2570,25 @@ function addMinutesToTimeString(timeStr: string, minutesToAdd: number): string {
 }
 
 async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: number): Promise<PlaceCandidate[]> {
-  // 1. Try the curated zoneFallbacks table first
-  const allFallbacks = await db.select().from(zoneFallbacks);
+  // 1. Try the curated zoneFallbacks table first. In D1 mode read via the
+  //    worker; locally hit the DB directly.
+  let allFallbacks: any[] = [];
+  if (isHangoutApiConfigured()) {
+    try {
+      const res = await hangoutApi<any>('/internal/places/zone-fallbacks');
+      allFallbacks = res?.success && Array.isArray(res.data)
+        ? res.data.map((r: any) => ({
+            ...r,
+            zoneName: r.zoneName ?? r.zone_name,
+            estimatedCostPerHead: r.estimatedCostPerHead ?? r.estimated_cost_per_head,
+          }))
+        : [];
+    } catch (err: any) {
+      console.warn('[PLANNER] worker zone-fallbacks failed:', err?.message ?? err);
+    }
+  } else {
+    allFallbacks = await db.select().from(zoneFallbacks);
+  }
   if (allFallbacks.length > 0) {
     const fallbacksByZone: Record<string, typeof allFallbacks> = {};
     for (const fb of allFallbacks) {
@@ -2569,6 +2620,28 @@ async function resolveZoneFallbacks(zoneName: string, zoneLat: number, zoneLng: 
   // 2. Safety net: query actual DB venues near the zone (6km radius)
   console.log(`[FALLBACK] No zone fallback rows for "${zoneName}". Querying places DB within 6km.`);
   try {
+    if (isHangoutApiConfigured()) {
+      const res = await hangoutApi<any>('/internal/places/by-zone', {
+        method: 'POST',
+        body: { lat: zoneLat, lng: zoneLng, radiusKm: 6 },
+      });
+      const rows = res?.success && Array.isArray(res.data) ? res.data : [];
+      return rows
+        .filter((p: any) => getVenueZone(p.lat, p.lng, p.name, p.address || '') === zoneName)
+        .slice(0, 20)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          category: (p.category || 'CAFE').toUpperCase(),
+          rating: p.rating ?? 4.0,
+          lat: p.lat,
+          lng: p.lng,
+          estimatedCostPerHead: (p.mandatoryCost ?? 200) + (p.optionalCostMin ?? 0),
+          address: p.address || '',
+          openNow: true,
+          isZoneCurated: true,
+        }));
+    }
     const allPlaces = await db
       .select()
       .from(places)
@@ -3559,7 +3632,17 @@ async function executePlanningEngine(
     activeVibes.push('ROMANTIC');
   }
 
-  const budgetsList = await budgetRepository.getGroupBudgets(groupData.id);
+  // Per-member budget rows live in the local DB only for local dev. In D1
+  // mode we rely on the budgetSummary min (already fetched from the worker) —
+  // the .find() below simply misses and falls back to lowestBudget.
+  let budgetsList: any[] = [];
+  if (!isHangoutApiConfigured()) {
+    try {
+      budgetsList = await budgetRepository.getGroupBudgets(groupData.id);
+    } catch (err: any) {
+      console.warn('[PLANNER] local budgets read failed:', err?.message ?? err);
+    }
+  }
 
   const zoneCandidatesPromises = candidateZones.map(async (zone) => {
     const memberAvailableBudgets = presentMembers.map(m => {
@@ -3595,47 +3678,64 @@ async function executePlanningEngine(
     const latDiff = radiusKm / 111.0;
     const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
 
-    const dbPlaces = await db
-      .select({
-        id: places.id,
-        name: places.name,
-        address: places.address,
-        lat: places.lat,
-        lng: places.lng,
-        rating: places.rating,
-        reviewCount: places.reviewCount,
-        category: placeCategories.category,
-        mandatoryCost: placeCosts.mandatoryCost,
-        optionalCostMin: placeCosts.optionalCostMin,
-        optionalCostMax: placeCosts.optionalCostMax,
-        lastVerified: places.lastVerified,
-        isFeatured: places.isFeatured,
-        isHidden: places.isHidden,
-        boostFactor: places.boostFactor,
-        firstSeen: places.firstSeen,
-        imageUrl: places.imageUrl,
-        popularity: placeScores.popularity,
-        budgetFriendliness: placeScores.budgetFriendliness,
-        conversation: placeScores.conversation,
-        groupSuitability: placeScores.groupSuitability,
-        dateSuitability: placeScores.dateSuitability,
-        friendsSuitability: placeScores.friendsSuitability,
-        familySuitability: placeScores.familySuitability,
-        weatherSuitability: placeScores.weatherSuitability,
-        uniqueness: placeScores.uniqueness,
-        experienceScore: placeScores.experienceScore,
-        overallScore: placeScores.overall
-      })
-      .from(places)
-      .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
-      .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
-      .leftJoin(placeScores, eq(placeScores.placeId, places.id))
-      .where(
-        and(
-          between(places.lat, zone.lat - latDiff, zone.lat + latDiff),
-          between(places.lng, zone.lng - lngDiff, zone.lng + lngDiff)
-        )
-      );
+    // In D1 mode, proxy the places query through the worker so the Next.js
+    // host doesn't need a bundled local.db. Falls back to the local DB path
+    // for `npm run dev` where the worker isn't configured.
+    let dbPlaces: any[] = [];
+    if (isHangoutApiConfigured()) {
+      try {
+        const res = await hangoutApi<any>('/internal/places/by-zone', {
+          method: 'POST',
+          body: { lat: zone.lat, lng: zone.lng, radiusKm },
+        });
+        dbPlaces = res?.success && Array.isArray(res.data) ? res.data : [];
+      } catch (err: any) {
+        console.error('[PLANNER] worker places-by-zone failed:', err?.message ?? err);
+        dbPlaces = [];
+      }
+    } else {
+      dbPlaces = await db
+        .select({
+          id: places.id,
+          name: places.name,
+          address: places.address,
+          lat: places.lat,
+          lng: places.lng,
+          rating: places.rating,
+          reviewCount: places.reviewCount,
+          category: placeCategories.category,
+          mandatoryCost: placeCosts.mandatoryCost,
+          optionalCostMin: placeCosts.optionalCostMin,
+          optionalCostMax: placeCosts.optionalCostMax,
+          lastVerified: places.lastVerified,
+          isFeatured: places.isFeatured,
+          isHidden: places.isHidden,
+          boostFactor: places.boostFactor,
+          firstSeen: places.firstSeen,
+          imageUrl: places.imageUrl,
+          popularity: placeScores.popularity,
+          budgetFriendliness: placeScores.budgetFriendliness,
+          conversation: placeScores.conversation,
+          groupSuitability: placeScores.groupSuitability,
+          dateSuitability: placeScores.dateSuitability,
+          friendsSuitability: placeScores.friendsSuitability,
+          familySuitability: placeScores.familySuitability,
+          weatherSuitability: placeScores.weatherSuitability,
+          uniqueness: placeScores.uniqueness,
+          experienceScore: placeScores.experienceScore,
+          overallScore: placeScores.overall
+        })
+        .from(places)
+        .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
+        .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
+        .leftJoin(placeScores, eq(placeScores.placeId, places.id))
+        .where(
+          and(
+            between(places.lat, zone.lat - latDiff, zone.lat + latDiff),
+            between(places.lng, zone.lng - lngDiff, zone.lng + lngDiff)
+          )
+        );
+    }
 
     const strictCandidates: any[] = [];
     const adjacentCandidates: any[] = [];
@@ -3735,40 +3835,65 @@ async function executePlanningEngine(
       }
     });
 
-    const dbExperiences = await db
-      .select({
-        id: experiences.id,
-        title: experiences.title,
-        description: experiences.description,
-        category: experiences.category,
-        city: experiences.city,
-        latitude: experiences.latitude,
-        longitude: experiences.longitude,
-        startDate: experiences.startDate,
-        endDate: experiences.endDate,
-        ticketPrice: experiences.ticketPrice,
-        capacity: experiences.capacity,
-        source: experiences.source,
-        sourceUrl: experiences.sourceUrl,
-        imageUrl: experiences.imageUrl,
-        rating: experiences.rating,
-        popularityScore: experiences.popularityScore,
-        isRecurring: experiences.isRecurring,
-        isActive: experiences.isActive,
-        trendingScore: experiences.trendingScore,
-        firstSeen: experiences.firstSeen,
-        createdAt: experiences.createdAt,
-        updatedAt: experiences.updatedAt,
-        featuredId: featuredExperiences.id
-      })
-      .from(experiences)
-      .leftJoin(featuredExperiences, eq(featuredExperiences.experienceId, experiences.id))
-      .where(
-        and(
-          eq(experiences.city, 'Mumbai'),
-          eq(experiences.isActive, 1)
-        )
-      );
+    // Experiences read — via worker in D1 mode, local DB otherwise.
+    let dbExperiences: any[] = [];
+    if (isHangoutApiConfigured()) {
+      try {
+        const res = await hangoutApi<any>('/internal/places/experiences');
+        dbExperiences = res?.success && Array.isArray(res.data)
+          ? res.data.map((r: any) => ({
+              ...r,
+              ticketPrice: r.ticketPrice ?? r.ticket_price ?? 0,
+              sourceUrl: r.sourceUrl ?? r.source_url,
+              imageUrl: r.imageUrl ?? r.image_url,
+              popularityScore: r.popularityScore ?? r.popularity_score,
+              isActive: r.isActive ?? r.is_active,
+              startDate: r.startDate ?? r.start_date,
+              endDate: r.endDate ?? r.end_date,
+              firstSeen: r.firstSeen ?? r.first_seen,
+              updatedAt: r.updatedAt ?? r.updated_at,
+              featuredId: r.featuredId ?? null,
+            })).filter((r: any) => r.city === 'Mumbai' && (r.isActive === 1 || r.isActive === true))
+          : [];
+      } catch (err: any) {
+        console.warn('[PLANNER] worker experiences read failed:', err?.message ?? err);
+      }
+    } else {
+      dbExperiences = await db
+        .select({
+          id: experiences.id,
+          title: experiences.title,
+          description: experiences.description,
+          category: experiences.category,
+          city: experiences.city,
+          latitude: experiences.latitude,
+          longitude: experiences.longitude,
+          startDate: experiences.startDate,
+          endDate: experiences.endDate,
+          ticketPrice: experiences.ticketPrice,
+          capacity: experiences.capacity,
+          source: experiences.source,
+          sourceUrl: experiences.sourceUrl,
+          imageUrl: experiences.imageUrl,
+          rating: experiences.rating,
+          popularityScore: experiences.popularityScore,
+          isRecurring: experiences.isRecurring,
+          isActive: experiences.isActive,
+          trendingScore: experiences.trendingScore,
+          firstSeen: experiences.firstSeen,
+          createdAt: experiences.createdAt,
+          updatedAt: experiences.updatedAt,
+          featuredId: featuredExperiences.id
+        })
+        .from(experiences)
+        .leftJoin(featuredExperiences, eq(featuredExperiences.experienceId, experiences.id))
+        .where(
+          and(
+            eq(experiences.city, 'Mumbai'),
+            eq(experiences.isActive, 1)
+          )
+        );
+    }
 
     dbExperiences.forEach((e: any) => {
       // Date verification: Outing date must fall within the experience's start and end date
@@ -4402,11 +4527,15 @@ async function executePlanningEngine(
           finalLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
         }
 
-        if (needsDbUpdate && place.id && !place.isExperience) {
-          void db.update(places)
-            .set({ imageUrl: finalImg })
-            .where(eq(places.id, place.id))
-            .catch((err: any) => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
+        if (needsDbUpdate && place.id && !place.isExperience && !isHangoutApiConfigured()) {
+          // Local-dev only image-url backfill. In D1 mode the worker owns the
+          // places table; skipping is safe (image will re-resolve next run).
+          try {
+            void db.update(places)
+              .set({ imageUrl: finalImg })
+              .where(eq(places.id, place.id))
+              .catch((err: any) => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
+          } catch {}
         }
 
         const duration = getDurationForCategory(place.category);
