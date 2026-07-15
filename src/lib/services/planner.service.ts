@@ -5275,11 +5275,22 @@ export const plannerService = {
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
             console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of â‚¹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
-            const fallbackPlan = await buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
-            fallbackPlan.planIndex = fi;
-            draftPlans.push(fallbackPlan);
+            try {
+              const fallbackPlan = await buildFallbackItineraryData(fi, groupData, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
+              fallbackPlan.planIndex = fi;
+              draftPlans.push(fallbackPlan);
+            } catch (fbErr: any) {
+              // Budget × 1.10 is a hard ceiling — a fallback that can't fit is
+              // rejected, not surfaced. Keep the valid engine plans instead of
+              // failing the whole generation.
+              console.warn(`[FALLBACK GENERATION] Skipping pad index ${fi}: ${fbErr?.message ?? fbErr}`);
+            }
           }
         }
+      }
+
+      if (draftPlans.length === 0) {
+        throw new ValidationError('No itinerary could be generated within the group budget. Try raising the budget or adjusting preferences.');
       }
 
       const context: ItineraryPromptContext = {
@@ -5631,11 +5642,19 @@ export const plannerService = {
         for (let fi = 1; fi <= 4; fi++) {
           if (!existingIndexes.has(fi)) {
             console.log(`[FALLBACK GENERATION] Plan index ${fi} is generated as a fallback itinerary because the DB engine only produced ${draftPlans.length} plans under budget constraint of â‚¹${budget}. Excluding used place IDs: ${Array.from(usedPlaceIds).join(', ')}`);
-            const fallbackPlan = await buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
-            fallbackPlan.planIndex = fi;
-            draftPlans.push(fallbackPlan);
+            try {
+              const fallbackPlan = await buildFallbackItineraryData(fi, group, presentMembers, presentLocations, mLocs, budget, usedPlaceIds, options);
+              fallbackPlan.planIndex = fi;
+              draftPlans.push(fallbackPlan);
+            } catch (fbErr: any) {
+              console.warn(`[FALLBACK GENERATION] Skipping pad index ${fi}: ${fbErr?.message ?? fbErr}`);
+            }
           }
         }
+      }
+
+      if (draftPlans.length === 0) {
+        throw new ValidationError('No itinerary could be generated within the group budget. Try raising the budget or adjusting preferences.');
       }
 
       const context: ItineraryPromptContext = {
