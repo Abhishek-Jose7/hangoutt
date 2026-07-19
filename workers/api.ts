@@ -246,6 +246,7 @@ async function listGroups(request: Request, env: Env) {
         g.outing_time AS outingTime,
         g.is_fast_track AS isFastTrack,
         g.timer_expires_at AS timerExpiresAt,
+        g.voting_deadline AS votingDeadline,
         g.generation_options AS generationOptions,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
@@ -283,6 +284,7 @@ async function getGroupById(db: D1Database, groupId: string) {
         g.outing_time AS outingTime,
         g.is_fast_track AS isFastTrack,
         g.timer_expires_at AS timerExpiresAt,
+        g.voting_deadline AS votingDeadline,
         g.generation_options AS generationOptions,
         g.created_at AS createdAt,
         g.updated_at AS updatedAt,
@@ -1021,6 +1023,44 @@ async function getPlans(request: Request, env: Env, groupId: string) {
   return json({ success: true, data }, { headers: corsHeaders(env) });
 }
 
+// Public, unauthenticated: single plan for share links. No metrics writes.
+async function getSharedPlan(request: Request, env: Env, planId: string) {
+  const plan = await env.DB.prepare(
+    `SELECT
+      p.id, p.group_id AS groupId, p.name, p.tagline, p.meetup_zone AS meetupZone,
+      p.budget_tier AS budgetTier, p.total_estimated_cost_per_head AS totalEstimatedCostPerHead,
+      p.total_duration_minutes AS totalDurationMinutes, p.why_recommended AS whyRecommended,
+      g.name AS groupName, g.outing_date AS outingDate, g.outing_time AS outingTime
+     FROM plans p
+     INNER JOIN groups g ON g.id = p.group_id
+     WHERE p.id = ?`
+  ).bind(planId).first<any>();
+
+  if (!plan) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'Plan not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const slotsRes = await env.DB.prepare(
+    `SELECT
+      slot_order AS slotOrder, venue_id AS venueId, venue_name AS venueName, name, category,
+      arrival_time AS arrivalTime, duration_minutes AS durationMinutes,
+      estimated_cost_per_head AS estimatedCostPerHead, note, image_url AS imageUrl, link
+     FROM plan_slots
+     WHERE plan_id = ?
+     ORDER BY slot_order`
+  ).bind(planId).all<any>();
+
+  let parsedWhy: string[] = [];
+  if (plan.whyRecommended) {
+    try { parsedWhy = typeof plan.whyRecommended === 'string' ? JSON.parse(plan.whyRecommended) : plan.whyRecommended; } catch { parsedWhy = []; }
+  }
+
+  return json({
+    success: true,
+    data: { ...plan, whyRecommended: parsedWhy, slots: slotsRes.results || [] },
+  }, { headers: corsHeaders(env) });
+}
+
 async function castVote(request: Request, env: Env, groupId: string) {
   const body = await readJson<{
     clerkId: string;
@@ -1135,8 +1175,16 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
   }
 
   const member = await env.DB.prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`).bind(groupId, user.id).first<{ role: string }>();
-  if (!member || member.role !== 'ADMIN') {
-    return json({ success: false, error: { code: 'FORBIDDEN', message: 'Only admin can close voting.' } }, { status: 403, headers: corsHeaders(env) });
+  if (!member) {
+    return json({ success: false, error: { code: 'FORBIDDEN', message: 'You are not a member of this group.' } }, { status: 403, headers: corsHeaders(env) });
+  }
+  // Admin can close anytime. Non-admin can trigger auto-lock only if deadline has passed.
+  if (member.role !== 'ADMIN') {
+    const dl = await env.DB.prepare(`SELECT voting_deadline AS d FROM groups WHERE id = ?`).bind(groupId).first<{ d: string | null }>();
+    const deadlinePassed = !!dl?.d && new Date(dl.d).getTime() <= Date.now();
+    if (!deadlinePassed) {
+      return json({ success: false, error: { code: 'FORBIDDEN', message: 'Only admin can close voting before the deadline.' } }, { status: 403, headers: corsHeaders(env) });
+    }
   }
 
   const historyId = uuid();
@@ -1178,6 +1226,113 @@ async function closeVoting(request: Request, env: Env, groupId: string) {
   }
 
   await env.DB.batch(closeStatements);
+
+  return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function setVotingDeadline(request: Request, env: Env, groupId: string) {
+  const body = await readJson<{ clerkId: string; votingDeadline: string | null }>(request);
+
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const member = await env.DB.prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`).bind(groupId, user.id).first<{ role: string }>();
+  if (!member || member.role !== 'ADMIN') {
+    return json({ success: false, error: { code: 'FORBIDDEN', message: 'Only admin can set voting deadline.' } }, { status: 403, headers: corsHeaders(env) });
+  }
+
+  await env.DB
+    .prepare(`UPDATE groups SET voting_deadline = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .bind(body.votingDeadline ?? null, groupId)
+    .run();
+
+  return json({ success: true, data: { votingDeadline: body.votingDeadline ?? null } }, { headers: corsHeaders(env) });
+}
+
+async function getUserHistory(request: Request, env: Env) {
+  const url = new URL(request.url);
+  const clerkId = url.searchParams.get('clerkId');
+  if (!clerkId) {
+    return json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Missing clerkId.' } }, { status: 422, headers: corsHeaders(env) });
+  }
+
+  const user = await findUserByClerkId(env.DB, clerkId);
+  if (!user) {
+    return json({ success: true, data: [] }, { headers: corsHeaders(env) });
+  }
+
+  const res = await env.DB.prepare(
+    `SELECT
+      h.id, h.group_id AS groupId, h.plan_id AS planId, h.outing_date AS outingDate,
+      h.group_name AS groupName, h.plan_name AS planName, h.plan_tagline AS planTagline,
+      h.venues_json AS venuesJson, h.participants_json AS participantsJson,
+      h.total_cost_per_head AS totalCostPerHead, h.winning_categories AS winningCategories,
+      h.winning_budget_tier AS winningBudgetTier, h.winning_activities AS winningActivities,
+      h.created_at AS createdAt
+     FROM history h
+     INNER JOIN group_members gm ON gm.group_id = h.group_id
+     WHERE gm.user_id = ?
+     ORDER BY h.created_at DESC`
+  ).bind(user.id).all<any>();
+
+  return json({ success: true, data: res.results || [] }, { headers: corsHeaders(env) });
+}
+
+async function submitOutingFeedbackWorker(request: Request, env: Env) {
+  const body = await readJson<{
+    clerkId: string;
+    historyId: string;
+    planId?: string | null;
+    overallRating: number;
+    travelRating: number;
+    favoriteSlotId?: string | null;
+    venueRatings: Array<{ placeId: string; rating: number; wouldVisitAgain: boolean }>;
+  }>(request);
+
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO itinerary_feedback (id, history_id, user_id, plan_id, overall_rating, travel_rating, favorite_slot_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, history_id)
+       DO UPDATE SET overall_rating = excluded.overall_rating, travel_rating = excluded.travel_rating, favorite_slot_id = excluded.favorite_slot_id`
+    ).bind(uuid(), body.historyId, user.id, body.planId ?? null, body.overallRating, body.travelRating, body.favoriteSlotId ?? null, now),
+  ];
+
+  for (const vr of body.venueRatings || []) {
+    if (!vr.placeId || vr.rating < 1 || vr.rating > 5) continue;
+    statements.push(env.DB.prepare(
+      `INSERT INTO venue_feedback (id, history_id, user_id, place_id, rating, would_visit_again, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING`
+    ).bind(uuid(), body.historyId, user.id, vr.placeId, vr.rating, vr.wouldVisitAgain ? 1 : 0, now));
+
+    if (vr.rating >= 4 && !vr.placeId.startsWith('fb_') && !vr.placeId.startsWith('fallback_')) {
+      statements.push(env.DB.prepare(
+        `UPDATE place_scores SET popularity = MIN(1.0, popularity + 0.02) WHERE place_id = ?`
+      ).bind(vr.placeId));
+      statements.push(env.DB.prepare(
+        `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+         VALUES (?, 0, 1, 0, 0)
+         ON CONFLICT(place_id)
+         DO UPDATE SET times_viewed = times_viewed + 1`
+      ).bind(vr.placeId));
+    }
+  }
+
+  try {
+    await env.DB.batch(statements);
+  } catch (err) {
+    console.error('Failed to persist outing feedback:', err);
+    return json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to save feedback.' } }, { status: 500, headers: corsHeaders(env) });
+  }
 
   return json({ success: true }, { headers: corsHeaders(env) });
 }
@@ -2171,6 +2326,12 @@ export default {
         return handlePlacePhotoWorker(request, env);
       }
 
+      // Public share links — no auth. GET /public/plans/{planId}
+      const shareMatch = url.pathname.match(/^\/public\/plans\/([^/]+)$/);
+      if (shareMatch && request.method === 'GET') {
+        return getSharedPlan(request, env, shareMatch[1]);
+      }
+
       const unauthorized = await assertAuthorized(request, env);
       if (unauthorized) return unauthorized;
 
@@ -2234,6 +2395,8 @@ export default {
       if (url.pathname === '/groups/join' && request.method === 'POST') return joinGroup(request, env);
       if (url.pathname === '/users' && request.method === 'GET') return getUser(request, env);
       if (url.pathname === '/users/profile' && request.method === 'PATCH') return updateUserProfile(request, env);
+      if (url.pathname === '/users/history' && request.method === 'GET') return getUserHistory(request, env);
+      if (url.pathname === '/internal/feedback/outing' && request.method === 'POST') return submitOutingFeedbackWorker(request, env);
 
       const groupMatch = url.pathname.match(/^\/groups\/([^/]+)(?:\/([^/]+))?$/);
       if (groupMatch) {
@@ -2252,6 +2415,7 @@ export default {
         if (action === 'votes' && request.method === 'GET') return tallyVotes(request, env, groupId);
         if (action === 'votes-user' && request.method === 'GET') return getUserVote(request, env, groupId);
         if (action === 'close-voting' && request.method === 'PATCH') return closeVoting(request, env, groupId);
+        if (action === 'voting-deadline' && request.method === 'PATCH') return setVotingDeadline(request, env, groupId);
       }
 
       return json(

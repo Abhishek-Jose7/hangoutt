@@ -7,8 +7,8 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getGroupDetailsAction } from '@/actions/groups';
 import { getPlansForGroupAction, generatePlan } from '@/actions/planner';
-import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
-import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award, RefreshCw, Trees, Coffee, Utensils, Cake, Gamepad2, Coins, ChevronRight, Star } from 'lucide-react';
+import { createVote, closeVoting, countVotes, getUserVoteForGroup, setVotingDeadline, autoLockIfExpired } from '@/actions/votes';
+import { Clock, DollarSign, Sparkles, Check, Vote, Calendar, ArrowLeft, Loader2, Award, RefreshCw, Trees, Coffee, Utensils, Cake, Gamepad2, Coins, ChevronRight, Star, Share2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useParams } from 'next/navigation';
@@ -34,6 +34,11 @@ export default function PlannerPage() {
   const [isRegenOpen, setIsRegenOpen] = useState(false);
   const [selectedRegenOpts, setSelectedRegenOpts] = useState<string[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [votingDeadline, setVotingDeadlineState] = useState<string | null>(null);
+  const [isDeadlineOpen, setIsDeadlineOpen] = useState(false);
+  const [deadlineInput, setDeadlineInput] = useState('');
+  const [isSettingDeadline, setIsSettingDeadline] = useState(false);
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [scrollIndex, setScrollIndex] = useState(0);
@@ -136,6 +141,8 @@ export default function PlannerPage() {
   useEffect(() => {
     async function loadData() {
       try {
+        // Auto-lock voting if deadline passed before reading state.
+        await autoLockIfExpired(groupId).catch(() => {});
         const [groupRes, plansRes, voteTalliesRes, userVoteRes] = await Promise.all([
           getGroupDetailsAction(groupId),
           getPlansForGroupAction(groupId),
@@ -149,6 +156,7 @@ export default function PlannerPage() {
           setIsAdmin(groupRes.data.currentUser.role === 'ADMIN');
           setCurrentUserId(groupRes.data.currentUser.userId);
           setVotingStatus(groupRes.data.group.votingStatus);
+          setVotingDeadlineState(groupRes.data.group.votingDeadline || null);
           if (groupRes.data.group.generationOptions) {
             try {
               const opts = JSON.parse(groupRes.data.group.generationOptions);
@@ -186,6 +194,46 @@ export default function PlannerPage() {
     }
     loadData();
   }, [groupId]);
+
+  // Countdown ticker; when deadline crosses while OPEN, trigger server auto-lock.
+  useEffect(() => {
+    if (votingStatus !== 'OPEN' || !votingDeadline) return;
+    const iv = setInterval(() => {
+      const t = Date.now();
+      setNowTs(t);
+      if (new Date(votingDeadline).getTime() <= t) {
+        clearInterval(iv);
+        autoLockIfExpired(groupId).then(async (r) => {
+          if (r.success && r.data.locked) {
+            setVotingStatus('CLOSED');
+            const g = await getGroupDetailsAction(groupId);
+            if (g.success) setGroup(g.data.group);
+            toast.info('Voting deadline reached. Winning plan locked.');
+          }
+        }).catch(() => {});
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [votingStatus, votingDeadline, groupId]);
+
+  const handleSetDeadline = async () => {
+    setIsSettingDeadline(true);
+    try {
+      const iso = deadlineInput ? new Date(deadlineInput).toISOString() : null;
+      const res = await setVotingDeadline(groupId, iso);
+      if (!res.success) {
+        toast.error(res.error?.message || 'Failed to set deadline');
+        return;
+      }
+      setVotingDeadlineState(iso);
+      setIsDeadlineOpen(false);
+      toast.success(iso ? 'Voting deadline set.' : 'Deadline cleared.');
+    } catch (_e) {
+      toast.error('An error occurred setting the deadline.');
+    } finally {
+      setIsSettingDeadline(false);
+    }
+  };
 
   const handleRegenerate = async () => {
     setIsRegenerating(true);
@@ -259,6 +307,24 @@ export default function PlannerPage() {
     }
   };
 
+  const handleSharePlan = async (plan: any) => {
+    const url = `${window.location.origin}/share/${plan.id}`;
+    const text = [
+      `${group?.name ? group.name + ' — ' : ''}${plan.name}`,
+      group?.outingDate ? `📅 ${group.outingDate}` : '',
+      plan.totalEstimatedCostPerHead != null ? `💸 ₹${plan.totalEstimatedCostPerHead}/head` : '',
+      '',
+      `View full itinerary: ${url}`,
+    ].filter(Boolean).join('\n');
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: plan.name, text, url });
+        return;
+      } catch { /* fall through */ }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const handleCloseVoting = async () => {
     setIsClosing(true);
     try {
@@ -312,6 +378,20 @@ export default function PlannerPage() {
   const selectedPlan = plans.find(p => p.id === activePlanId) || plans[0];
   const isWinningPlan = group.winningPlanId === selectedPlan.id;
 
+  const deadlineMs = votingDeadline ? new Date(votingDeadline).getTime() : null;
+  const deadlineRemaining = deadlineMs ? deadlineMs - nowTs : null;
+  const formatCountdown = (ms: number) => {
+    if (ms <= 0) return 'EXPIRED';
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (d > 0) return `${d}D ${h}H ${m}M`;
+    if (h > 0) return `${h}H ${m}M ${sec}S`;
+    return `${m}M ${sec}S`;
+  };
+
   return (
     <PageContainer
       title={group.name.toUpperCase()}
@@ -324,6 +404,22 @@ export default function PlannerPage() {
           >
             <ArrowLeft className="h-3.5 w-3.5 text-[#DC143C]" /> BACK TO WORKSPACE
           </Link>
+          {votingStatus === 'OPEN' && deadlineRemaining !== null && (
+            <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 border ${deadlineRemaining <= 0 ? 'border-red-900/50 bg-red-950/45 text-red-500' : 'border-stone-800 bg-stone-950/50 text-neutral-300'}`}>
+              <Clock className="h-3.5 w-3.5 text-[#DC143C]" />
+              {deadlineRemaining <= 0 ? 'LOCKING…' : `CLOSES IN ${formatCountdown(deadlineRemaining)}`}
+            </span>
+          )}
+          {isAdmin && votingStatus === 'OPEN' && (
+            <Button
+              size="sm"
+              onClick={() => { setDeadlineInput(''); setIsDeadlineOpen(true); }}
+              className="bg-stone-900 border border-stone-800 hover:bg-stone-800 hover:text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Clock className="h-3.5 w-3.5 text-[#DC143C]" />
+              {votingDeadline ? 'EDIT DEADLINE' : 'SET DEADLINE'}
+            </Button>
+          )}
           {isAdmin && votingStatus === 'OPEN' && (
             <Button
               size="sm"
@@ -962,13 +1058,13 @@ export default function PlannerPage() {
                   </div>
                 </div>
               </CardContent>
-              {votingStatus === 'OPEN' && (
-                <CardFooter className="p-4 border-t border-stone-900/60 bg-black/15 flex justify-end rounded-b-[12px]">
-                  <Button 
+              <CardFooter className="p-4 border-t border-stone-900/60 bg-black/15 flex gap-2 justify-end rounded-b-[12px]">
+                {votingStatus === 'OPEN' && (
+                  <Button
                     size="sm"
                     disabled={isCasting || userVotedPlanId === plan.id}
                     onClick={() => handleVoteCast(plan.id)}
-                    className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] w-full py-2.5 shadow-md transition-all hover:scale-[101%] active:scale-[99%] cursor-pointer ${
+                    className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] flex-1 py-2.5 shadow-md transition-all hover:scale-[101%] active:scale-[99%] cursor-pointer ${
                       userVotedPlanId === plan.id
                         ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
                         : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
@@ -984,8 +1080,16 @@ export default function PlannerPage() {
                       </>
                     )}
                   </Button>
-                </CardFooter>
-              )}
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSharePlan(plan)}
+                  className={`font-mono font-bold rounded-[8px] uppercase tracking-widest text-[10px] py-2.5 border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 transition-all cursor-pointer ${votingStatus === 'OPEN' ? 'px-3' : 'w-full'}`}
+                >
+                  <Share2 className="mr-1.5 h-3.5 w-3.5 text-[#25D366] inline" /> {votingStatus === 'OPEN' ? 'SHARE' : 'SHARE ITINERARY'}
+                </Button>
+              </CardFooter>
             </Card>
           );
         })}
@@ -1058,6 +1162,69 @@ export default function PlannerPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Voting Deadline Modal */}
+      {isDeadlineOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 font-mono">
+          <Card className="w-full max-w-md border border-stone-900 bg-stone-950 text-white rounded-[12px] shadow-2xl overflow-hidden">
+            <CardHeader className="border-b border-stone-900 pb-4">
+              <CardTitle className="text-sm font-bold uppercase tracking-widest text-[#DC143C] flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Voting Deadline
+              </CardTitle>
+              <CardDescription className="text-[10px] text-neutral-400 font-sans">
+                At the deadline, voting auto-closes and the leading plan is locked as the winner.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              <input
+                type="datetime-local"
+                value={deadlineInput}
+                onChange={(e) => setDeadlineInput(e.target.value)}
+                className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-3 py-2.5 text-xs text-white focus:border-[#DC143C] focus:outline-none"
+              />
+              {votingDeadline && (
+                <p className="text-[10px] text-neutral-500 font-sans">
+                  Current: {new Date(votingDeadline).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+            <CardFooter className="border-t border-stone-900 pt-4 flex gap-2 justify-between">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsDeadlineOpen(false)}
+                disabled={isSettingDeadline}
+                className="border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5"
+              >
+                Cancel
+              </Button>
+              <div className="flex gap-2">
+                {votingDeadline && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setDeadlineInput(''); handleSetDeadline(); }}
+                    disabled={isSettingDeadline}
+                    className="border-red-900/50 bg-red-950/45 text-red-500 hover:bg-red-950/80 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5"
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSetDeadline}
+                  disabled={isSettingDeadline || !deadlineInput}
+                  className="bg-[#DC143C] hover:bg-[#DC143C]/85 text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 flex items-center gap-1.5"
+                >
+                  {isSettingDeadline ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  Save
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
       )}
 
       {/* Regeneration Modal */}

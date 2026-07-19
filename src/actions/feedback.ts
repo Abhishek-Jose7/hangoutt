@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ActionResponse } from '@/lib/types/api.types';
-import { isHangoutApiConfigured, getCurrentApiUser } from '@/lib/cloudflare/hangoutApi';
+import { isHangoutApiConfigured, getCurrentApiUser, hangoutApi } from '@/lib/cloudflare/hangoutApi';
 import { getCurrentUser } from '@/lib/auth/getCurrentUser';
 import { db } from '@/lib/db/client';
 import { itineraryFeedback, venueFeedback, rankingMetrics, placeScores } from '@/lib/db/schema';
@@ -33,14 +33,34 @@ export async function submitOutingFeedback(
     if (!historyId || !groupId) throw new Error('historyId and groupId are required');
     if (data.overallRating < 1 || data.overallRating > 5) throw new Error('overallRating must be 1–5');
 
-    let userId: string;
     if (isHangoutApiConfigured()) {
       const user = await getCurrentApiUser();
-      userId = user.id || user.clerkId;
-    } else {
-      const user = await getCurrentUser();
-      userId = user.id;
+      const response = await hangoutApi<any>('/internal/feedback/outing', {
+        method: 'POST',
+        body: {
+          clerkId: user.clerkId,
+          historyId,
+          planId: planId ?? null,
+          overallRating: data.overallRating,
+          travelRating: data.travelRating,
+          favoriteSlotId: data.favoriteSlotId ?? null,
+          venueRatings: data.venueRatings.map((vr) => ({
+            placeId: vr.placeId,
+            rating: vr.rating,
+            wouldVisitAgain: vr.wouldVisitAgain,
+          })),
+        },
+      });
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to submit feedback');
+      }
+      revalidatePath(`/groups/${groupId}`);
+      revalidatePath('/history');
+      return apiResponse.success(undefined);
     }
+
+    const user = await getCurrentUser();
+    const userId = user.id;
 
     const now = new Date().toISOString();
     const randomUUID = () =>

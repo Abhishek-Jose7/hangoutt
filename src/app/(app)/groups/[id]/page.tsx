@@ -15,6 +15,7 @@ import { submitMemberVibes, updateMemberPresenceAction } from '@/actions/members
 import { generatePlan, getPlansForGroupAction } from '@/actions/planner';
 import { createVote, closeVoting, countVotes, getUserVoteForGroup } from '@/actions/votes';
 import { OutingFeedback } from '@/components/OutingFeedback';
+import LiveDayView from '@/components/LiveDayView';
 import { Users, DollarSign, MapPin, Sparkles, Share2, Shield, ArrowRight, Loader2, Heart, RefreshCw, Award, Vote, Check, X, Clock, Star, BookOpen, Map, Wallet, Coffee, Utensils, Trees, Cake, Gamepad2, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useParams } from 'next/navigation';
@@ -703,6 +704,22 @@ export default function GroupDetailsPage() {
                 const winner = plans.find((p: any) => p.id === group.winningPlanId) || plans[0];
                 return (
                   <>
+                  <LiveDayView
+                    planName={winner.name}
+                    meetupZone={winner.meetupZone}
+                    outingDate={group.outingDate}
+                    slots={(winner.slots ?? []).map((s: any) => ({
+                      slotOrder: s.slotOrder,
+                      name: s.name,
+                      venueName: s.venueName,
+                      category: s.category,
+                      arrivalTime: s.arrivalTime,
+                      durationMinutes: s.durationMinutes,
+                      estimatedCostPerHead: s.estimatedCostPerHead,
+                      note: s.note,
+                      link: s.link,
+                    }))}
+                  />
                   <Card className="relative overflow-hidden border border-[#00E1AB]/20 rounded-[8px] bg-[#0e0e0e]/80 backdrop-blur-md shadow-lg p-6 space-y-6">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E1AB]/5 rounded-full blur-3xl pointer-events-none" />
                     

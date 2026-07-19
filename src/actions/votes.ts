@@ -170,6 +170,66 @@ export async function finalizeVotingAction(groupId: string): ActionResponse<{ su
   return closeVoting(groupId);
 }
 
+// Admin sets an ISO deadline; null clears it.
+export async function setVotingDeadline(groupId: string, votingDeadline: string | null): ActionResponse<{ votingDeadline: string | null }> {
+  try {
+    if (isHangoutApiConfigured()) {
+      const user = await getCurrentApiUser();
+      const response = await hangoutApi<any>(`/groups/${groupId}/voting-deadline`, {
+        method: 'PATCH',
+        body: { clerkId: user.clerkId, votingDeadline },
+      });
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to set voting deadline in D1');
+      }
+      revalidatePath(`/groups/${groupId}`);
+      revalidatePath(`/planner/${groupId}`);
+      return apiResponse.success({ votingDeadline });
+    }
+
+    const { getCurrentUser } = await import('@/lib/auth/getCurrentUser');
+    const { memberRepository } = await import('@/lib/repositories/member.repository');
+    const { db } = await import('@/lib/db/client');
+    const { groups } = await import('@/lib/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const user = await getCurrentUser();
+    const member = await memberRepository.getMember(groupId, user.id);
+    if (!member || member.role !== 'ADMIN') {
+      throw new ForbiddenError('Only admin can set the voting deadline.');
+    }
+    await db.update(groups).set({ votingDeadline }).where(eq(groups.id, groupId));
+    revalidatePath(`/groups/${groupId}`);
+    revalidatePath(`/planner/${groupId}`);
+    return apiResponse.success({ votingDeadline });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+// Auto-lock: if voting OPEN and deadline passed, close it. Safe to call on any page load.
+export async function autoLockIfExpired(groupId: string): ActionResponse<{ locked: boolean }> {
+  try {
+    const { getGroupDetailsAction } = await import('@/actions/groups');
+    const detailsRes = await getGroupDetailsAction(groupId);
+    if (!detailsRes.success) {
+      return apiResponse.success({ locked: false });
+    }
+    const group = detailsRes.data.group;
+    const deadline = group?.votingDeadline;
+    const isOpen = group?.votingStatus === 'OPEN' && group?.status === 'VOTING';
+    if (!isOpen || !deadline) {
+      return apiResponse.success({ locked: false });
+    }
+    if (new Date(deadline).getTime() > Date.now()) {
+      return apiResponse.success({ locked: false });
+    }
+    const res = await closeVoting(groupId);
+    return apiResponse.success({ locked: res.success });
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
 export async function getUserVoteForGroup(groupId: string): ActionResponse<string | null> {
   try {
     if (isHangoutApiConfigured()) {

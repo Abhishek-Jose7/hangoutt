@@ -34,6 +34,7 @@ export const groups = sqliteTable('groups', {
   outingTime: text('outing_time'), // e.g. "18:00"
   isFastTrack: integer('is_fast_track').default(0).notNull(), // 0 = normal, 1 = 30s timers
   timerExpiresAt: text('timer_expires_at'), // ISO timestamp when current phase timer expires
+  votingDeadline: text('voting_deadline'), // ISO timestamp; past deadline => auto-lock winning plan
   generationOptions: text('generation_options'), // JSON string list of selected options for Generate Again
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),

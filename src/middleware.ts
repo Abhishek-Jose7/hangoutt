@@ -11,6 +11,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/health/db',
   '/api/webhooks/clerk(.*)',
   '/api/places/photo(.*)',
+  '/share/(.*)',
+  '/api/share/(.*)',
 ]);
 
 const isAdminRoute = createRouteMatcher([

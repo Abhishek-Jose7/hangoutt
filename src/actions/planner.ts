@@ -14,6 +14,7 @@ export async function generatePlan(groupId: string, options: string[] = []): Act
       const apiUser = await getCurrentApiUser();
       const result = await plannerService.generatePlan(apiUser.id || apiUser.clerkId, groupId, options, {
         clerkId: apiUser.clerkId,
+        email: apiUser.email,
       });
 
       revalidatePath(`/groups/${groupId}`);
@@ -148,6 +149,50 @@ export async function getPlansForGroupAction(groupId: string): ActionResponse<an
     }
 
     return apiResponse.success(plansList);
+  } catch (err) {
+    return apiResponse.error(err);
+  }
+}
+
+// Public, unauthenticated read for share links.
+export async function getSharedPlanAction(planId: string): ActionResponse<any> {
+  try {
+    if (isHangoutApiConfigured()) {
+      const response = await hangoutApi<any>(`/public/plans/${encodeURIComponent(planId)}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Plan not found');
+      }
+      return apiResponse.success(response.data);
+    }
+
+    const { db } = await import('@/lib/db/client');
+    const { plans, planSlots, groups } = await import('@/lib/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    const planRow = await db.select().from(plans).where(eq(plans.id, planId)).get();
+    if (!planRow) {
+      throw new Error('Plan not found');
+    }
+    const groupRow = await db.select().from(groups).where(eq(groups.id, planRow.groupId)).get();
+    const slots = await db.select().from(planSlots).where(eq(planSlots.planId, planId)).orderBy(planSlots.slotOrder);
+
+    let parsedWhy: string[] = [];
+    if ((planRow as any).whyRecommended) {
+      try {
+        parsedWhy = typeof (planRow as any).whyRecommended === 'string'
+          ? JSON.parse((planRow as any).whyRecommended)
+          : (planRow as any).whyRecommended;
+      } catch { parsedWhy = []; }
+    }
+
+    return apiResponse.success({
+      ...planRow,
+      whyRecommended: parsedWhy,
+      groupName: groupRow?.name,
+      outingDate: groupRow?.outingDate,
+      outingTime: groupRow?.outingTime,
+      slots,
+    });
   } catch (err) {
     return apiResponse.error(err);
   }
