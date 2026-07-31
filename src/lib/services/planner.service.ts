@@ -3143,8 +3143,8 @@ function filterValidCandidates(
     // Skip REQUIRED_PREFERENCE relaxation when user has any hard prefs — a
     // museum request must never return a non-museum plan.
     if (constraint === 'REQUIRED_PREFERENCE' && ctx.requiredPreferences.length > 0) continue;
-    // BUDGET_HARD_CEILING, MEAL_CHRONOLOGY, and CATEGORY_VARIETY are NEVER relaxed.
-    if (constraint === 'BUDGET_HARD_CEILING' || constraint === 'MEAL_CHRONOLOGY' || constraint === 'CATEGORY_VARIETY') continue;
+    // BUDGET_HARD_CEILING and MEAL_CHRONOLOGY are NEVER relaxed.
+    if (constraint === 'BUDGET_HARD_CEILING' || constraint === 'MEAL_CHRONOLOGY') continue;
     disabled.add(constraint);
     relaxed.push(constraint);
     survivors = runFilter();
@@ -3343,8 +3343,6 @@ function scorePlanCandidate(plan: any, ctx: PlanScoringContext): number {
     }
   }
 
-  // Add small random noise (+0..0.12) to break deterministic ties & ensure repeated requests generate fresh alternate plans
-  score += Math.random() * 0.12;
   return score;
 }
 
