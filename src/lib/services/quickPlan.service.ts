@@ -250,11 +250,14 @@ export const quickPlanService = {
     // Preflight viability: enough OPEN venues at the outing time, before we
     // pay for a full engine run.
     const areaVenues = await fetchAreaVenues(area.lat, area.lng, area.radiusKm);
-    const within = areaVenues.filter((v: any) =>
-      v.isHidden !== 1
-      && haversineKm({ lat: v.lat, lng: v.lng }, area) <= area.radiusKm
-      && (!area.allowedZoneNames || area.allowedZoneNames.includes(getVenueZone(v.lat, v.lng, v.name, v.address || '')))
-    );
+    const within = areaVenues.filter((v: any) => {
+      if (v.isHidden === 1) return false;
+      if (haversineKm({ lat: v.lat, lng: v.lng }, area) > area.radiusKm) return false;
+      const zone = getVenueZone(v.lat, v.lng, v.name, v.address || '');
+      if (area.name === 'Bandra' && zone === 'BKC') return false;
+      if (area.allowedZoneNames && !area.allowedZoneNames.includes(zone)) return false;
+      return true;
+    });
     const openAtTime = within.filter((v: any) => isVenueOpenAtTime(String(v.category ?? ''), input.outingTime));
     if (openAtTime.length < MIN_VIABLE_VENUES) {
       throw new ValidationError(
@@ -268,11 +271,15 @@ export const quickPlanService = {
     const preferredCategories = mapTagsToCategories(input.tags);
     const vibes = mapTagsToVibes(input.tags);
 
+    // Strict intent mapping: require matching category for explicit tags
+    const requiredPreferences: string[] = [];
+    const lowerTags = input.tags.map(t => t.toLowerCase().trim());
+    if (lowerTags.includes('culture')) requiredPreferences.push('MUSEUM', 'ART_GALLERY');
+    if (lowerTags.includes('outdoors')) requiredPreferences.push('PARK');
+    if (lowerTags.includes('games') || lowerTags.includes('adventure')) requiredPreferences.push('ARCADE', 'BOWLING', 'ESCAPE_ROOM');
+
     const quickId = `quick_${typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : require('crypto').randomUUID()}`;
 
-    // Synthetic group: N members at identical coordinates with a normalized
-    // budget. Every downstream engine stage behaves naturally — no quick-mode
-    // conditionals inside the planner.
     const groupData = {
       id: quickId,
       name: `Quick Plan — ${area.name}`,
@@ -285,7 +292,7 @@ export const quickPlanService = {
       activity: null,
       outingType: null,
       outingIntent: undefined,
-      requiredPreferences: [],
+      requiredPreferences,
     };
 
     const presentMembers = Array.from({ length: input.headcount }, (_, i) => ({

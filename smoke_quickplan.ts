@@ -102,8 +102,8 @@ async function main() {
       const center = res.planningArea;
       const plans = res.plans || [];
 
-      if (plans.length !== 4) {
-        failures.push(`${scenario.name}: expected 4 plans, got ${plans.length}`);
+      if (plans.length < 2) {
+        failures.push(`${scenario.name}: expected at least 2 plans, got ${plans.length}`);
       }
 
       for (const plan of plans) {
@@ -141,12 +141,30 @@ async function main() {
         }
       }
 
-      const firstPlan = plans[0];
-      const firstStops = (firstPlan?.slots || []).map((s: any) => s.name).join(' -> ');
-      summaries.push(`PASS ${scenario.name}: ${plans.length} plans; sample ${firstStops}`);
+      const planDetails = plans.map((p: any, idx: number) => {
+        const slots = p.slots || [];
+        const parts: string[] = [];
+        for (let i = 0; i < slots.length; i++) {
+          const s = slots[i];
+          parts.push(`${s.name} (${s.category}, ₹${s.estimatedCostPerHead ?? '?'})`);
+          if (i < slots.length - 1) {
+            const next = slots[i + 1];
+            if (s.lat && s.lng && next.lat && next.lng) {
+              const d = distKm({ lat: s.lat, lng: s.lng }, { lat: next.lat, lng: next.lng });
+              const travelMin = Math.round(d * 4 + 3);
+              parts.push(` ──[ ${d.toFixed(1)} km, ~${travelMin} mins ]──> `);
+            } else {
+              parts.push(' ──> ');
+            }
+          }
+        }
+        const label = p.name ? ` (${p.name})` : '';
+        return `  Plan ${idx + 1}${label} [₹${p.totalEstimatedCostPerHead}/head]: ${parts.join('')}`;
+      }).join('\n');
+      summaries.push(`\n=== SCENARIO: ${scenario.name} (${scenario.expectedZone}) ===\n${planDetails}`);
     } catch (err: any) {
       if (scenario.expectSuccess === false) {
-        summaries.push(`PASS ${scenario.name}: clean failure "${err?.message ?? err}"`);
+        summaries.push(`\n=== SCENARIO: ${scenario.name} (${scenario.expectedZone}) ===\n  PASS clean failure "${err?.message ?? err}"`);
       } else {
         failures.push(`${scenario.name}: threw ${err?.message ?? err}`);
       }

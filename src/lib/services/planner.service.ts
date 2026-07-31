@@ -2938,15 +2938,15 @@ const ADJACENT_ZONES: Record<string, string[]> = {
 export function getVenueZone(lat: number, lng: number, name: string, address: string): string {
   const addr = (address || '').toLowerCase();
   const n = name.toLowerCase();
-  
+
+  // BKC / Jio World / NMACC override MUST run first so "Bandra East, BKC" resolves to BKC, not Bandra
+  if (addr.includes('bkc') || addr.includes('bandra kurla complex') || n.includes('bkc') || addr.includes('jio world') || n.includes('jio world') || addr.includes('nmacc') || n.includes('nmacc')) {
+    return 'BKC';
+  }
+
   const sortedZones = [...MUMBAI_ZONES].sort((a, b) => b.name.length - a.name.length);
   for (const zone of sortedZones) {
     const zName = zone.name.toLowerCase();
-    if (zName === 'bkc') {
-      if (addr.includes('bkc') || addr.includes('bandra kurla complex')) {
-        return 'BKC';
-      }
-    }
     if (addr.includes(zName) || n.includes(zName)) {
       return zone.name;
     }
@@ -3056,7 +3056,7 @@ function categoriesForPlan(plan: any): string[] {
 function planHasRequiredPreferences(plan: any, requiredPrefs: string[]): boolean {
   if (!requiredPrefs || requiredPrefs.length === 0) return true;
   const cats = new Set(categoriesForPlan(plan));
-  return requiredPrefs.every(pref => cats.has(pref.toUpperCase()));
+  return requiredPrefs.some(pref => cats.has(pref.toUpperCase()));
 }
 
 // Rough opening-hours table. Keeps venue slotting honest — museums close
@@ -3143,9 +3143,8 @@ function filterValidCandidates(
     // Skip REQUIRED_PREFERENCE relaxation when user has any hard prefs — a
     // museum request must never return a non-museum plan.
     if (constraint === 'REQUIRED_PREFERENCE' && ctx.requiredPreferences.length > 0) continue;
-    // BUDGET_HARD_CEILING is NEVER relaxed. If nothing fits, return fewer
-    // plans — better than showing an over-budget plan to a user who set ₹700.
-    if (constraint === 'BUDGET_HARD_CEILING') continue;
+    // BUDGET_HARD_CEILING, MEAL_CHRONOLOGY, and CATEGORY_VARIETY are NEVER relaxed.
+    if (constraint === 'BUDGET_HARD_CEILING' || constraint === 'MEAL_CHRONOLOGY' || constraint === 'CATEGORY_VARIETY') continue;
     disabled.add(constraint);
     relaxed.push(constraint);
     survivors = runFilter();
@@ -3189,6 +3188,56 @@ function planDoubleDessert(plan: any): boolean {
 const MORNING_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'BREAKFAST']);
 const NIGHT_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
 
+export type ItineraryRole =
+  | 'COFFEE_STOP'
+  | 'MAIN_MEAL'
+  | 'DESSERT'
+  | 'ACTIVITY'
+  | 'DRINKS'
+  | 'VIEWPOINT'
+  | 'SHOPPING';
+
+export type MealWeight = 'NONE' | 'LIGHT' | 'MEDIUM' | 'HEAVY';
+
+export function getVenueItineraryRole(v: { name?: string; category?: string; estimatedCostPerHead?: number; address?: string }): { role: ItineraryRole; mealWeight: MealWeight } {
+  const name = (v.name || '').toLowerCase();
+  const cat = (v.category || '').toUpperCase();
+  const cost = v.estimatedCostPerHead || 0;
+
+  // 1. Manual Experience Overrides (Places categorized as CAFE but serve full meals)
+  if (name.includes("ray's cafe") || name.includes("candies") || name.includes("nutcracker") || name.includes("toast bistro") || name.includes("bistro") || name.includes("kitchen") || name.includes("pizzeria") || name.includes("bakehouse")) {
+    return { role: 'MAIN_MEAL', mealWeight: 'HEAVY' };
+  }
+  if (name.includes("blue tokai") || name.includes("stand by coffee") || name.includes("subko") || name.includes("starbucks") || name.includes("third wave") || name.includes("abcoffee") || name.includes("araku")) {
+    return { role: 'COFFEE_STOP', mealWeight: 'LIGHT' };
+  }
+
+  // 2. Category Heuristics
+  if (cat === 'DESSERT' || cat === 'ICE_CREAM' || cat === 'BAKERY') {
+    return { role: 'DESSERT', mealWeight: 'LIGHT' };
+  }
+  if (cat === 'RESTAURANT' || cat === 'DINNER' || cat === 'FOOD_STOP') {
+    return { role: 'MAIN_MEAL', mealWeight: 'HEAVY' };
+  }
+  if (cat === 'CAFE') {
+    if (cost >= 450) {
+      return { role: 'MAIN_MEAL', mealWeight: 'HEAVY' };
+    }
+    return { role: 'COFFEE_STOP', mealWeight: 'LIGHT' };
+  }
+  if (cat === 'PARK' || cat === 'PROMENADE' || cat === 'VIEWPOINT') {
+    return { role: 'VIEWPOINT', mealWeight: 'NONE' };
+  }
+  if (cat === 'ARCADE' || cat === 'BOWLING' || cat === 'ESCAPE_ROOM' || cat === 'MUSEUM' || cat === 'ART_GALLERY' || cat === 'POTTERY') {
+    return { role: 'ACTIVITY', mealWeight: 'NONE' };
+  }
+  if (cat === 'MALL' || cat === 'SHOPPING') {
+    return { role: 'SHOPPING', mealWeight: 'NONE' };
+  }
+
+  return { role: 'MAIN_MEAL', mealWeight: 'MEDIUM' };
+}
+
 function planMealChronologyOk(plan: any, outingHour?: number): boolean {
   if (typeof outingHour !== 'number') return true;
   const slots = plan.slots ?? [];
@@ -3199,9 +3248,6 @@ function planMealChronologyOk(plan: any, outingHour?: number): boolean {
   if (firstCat === 'DESSERT') return false;
 
   if (outingHour < 11) {
-    // Morning: heavy DINNER as the first stop reads wrong. "Restaurant" is
-    // ambiguous here — many places serve breakfast — but we still disallow it
-    // as opener since the archetype's BRUNCH/CAFE role should surface first.
     if (firstCat === 'RESTAURANT') return false;
     if (!MORNING_ALLOWED_OPENER.has(firstCat)) return false;
   }
@@ -3209,15 +3255,25 @@ function planMealChronologyOk(plan: any, outingHour?: number): boolean {
     if (!NIGHT_ALLOWED_OPENER.has(firstCat)) return false;
   }
 
-  // Meal-order: within a plan, RESTAURANT (proper dinner) shouldn't be
-  // followed by CAFE (lighter meal). "Restaurant → Park → Cafe" reads as
-  // dinner-then-coffee — fine. But "Restaurant → Cafe" back-to-back is off.
-  // Only catch the obvious back-to-back case; the archetype system prevents
-  // most of these.
+  const roles = slots.map((s: any) => getVenueItineraryRole(s.place ?? s));
+
+  // Reject multiple COFFEE_STOP slots or multiple MAIN_MEAL slots in a 3-stop outing
+  const coffeeCount = roles.filter(r => r.role === 'COFFEE_STOP').length;
+  const mainMealCount = roles.filter(r => r.role === 'MAIN_MEAL').length;
+  if (coffeeCount >= 2) return false;
+  if (mainMealCount >= 2) return false;
+
   for (let i = 0; i < slots.length - 1; i++) {
-    const a = (slots[i].category ?? '').toUpperCase();
-    const b = (slots[i + 1].category ?? '').toUpperCase();
-    if (a === 'DINNER' && b === 'CAFE') return false;
+    const r1 = roles[i];
+    const r2 = roles[i + 1];
+
+    // Heavy meal followed by heavy meal is strictly forbidden (e.g. Ray's Cafe -> Restaurant)
+    if (r1.mealWeight === 'HEAVY' && r2.mealWeight === 'HEAVY') return false;
+    if (r1.role === 'MAIN_MEAL' && r2.role === 'MAIN_MEAL') return false;
+    if (r1.role === 'MAIN_MEAL' && r2.role === 'COFFEE_STOP') return false;
+    if (r1.role === 'COFFEE_STOP' && r2.role === 'COFFEE_STOP') return false;
+    if (r1.role === 'DESSERT' && (r2.role === 'MAIN_MEAL' || r2.role === 'COFFEE_STOP')) return false;
+    if (r1.role === 'VIEWPOINT' && r2.role === 'VIEWPOINT') return false;
   }
   return true;
 }
@@ -3273,7 +3329,23 @@ function scorePlanCandidate(plan: any, ctx: PlanScoringContext): number {
     0.10 * flowScore +
     0.10 * catDiversityScore;
 
-  return composite - 0.15 * Math.min(1, repetitionPenalty) - budgetHardPenalty;
+  let score = composite - 0.15 * Math.min(1, repetitionPenalty) - budgetHardPenalty;
+
+  // Penalize legs > 2.0 km between consecutive stops for tighter mental locality
+  for (let i = 0; i < slots.length - 1; i++) {
+    const p1 = slots[i].place ?? slots[i];
+    const p2 = slots[i + 1].place ?? slots[i + 1];
+    if (p1.lat && p1.lng && p2.lat && p2.lng) {
+      const legDist = getHaversineDistance({ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng });
+      if (legDist > 2.0) {
+        score -= (legDist - 2.0) * 0.12;
+      }
+    }
+  }
+
+  // Add small random noise (+0..0.12) to break deterministic ties & ensure repeated requests generate fresh alternate plans
+  score += Math.random() * 0.12;
+  return score;
 }
 
 /**
