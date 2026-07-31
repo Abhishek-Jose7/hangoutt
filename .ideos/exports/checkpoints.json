@@ -456,6 +456,54 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-15T20:15:18.826Z"
+    },
+    {
+      "id": "5139c8da-7415-467a-b4b1-23a49029011c",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "huehue",
+      "progress": 0,
+      "files_touched": "[\".clinerules/caveman.md\",\".cursor/rules/caveman.mdc\",\".github/copilot-instructions.md\",\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\".opencode/AGENTS.md\",\".windsurf/rules/caveman.md\",\"AGENTS.md\",\"drizzle/migrations/0020_voting_deadline.sql\",\"local.db\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-19T07:32:23.316Z"
+    },
+    {
+      "id": "0eb659c9-bdd7-48f3-adeb-738f7f326717",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "docs: quick-plan single-location itinerary design spec",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"docs/superpowers/specs/2026-07-21-quick-plan-design.md\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-21T09:20:38.076Z"
+    },
+    {
+      "id": "fb218aac-7c64-4156-bad5-e30a4f45b0ae",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "docs: quick-plan location-lock — all venues stay in chosen location",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"docs/superpowers/specs/2026-07-21-quick-plan-design.md\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-21T09:30:54.143Z"
+    },
+    {
+      "id": "7b577dc9-157a-42c8-aab0-e8dcf6876fe2",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "docs: quick-plan spec refinements — planningArea, requiredVenueId, preflight, regen, metadata",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"docs/superpowers/specs/2026-07-21-quick-plan-design.md\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-21T18:07:45.668Z"
     }
   ]
 }

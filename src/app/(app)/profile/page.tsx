@@ -28,7 +28,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) {
-      setName(user.fullName || '');
+      const nextName = user.fullName || '';
+      queueMicrotask(() => setName(nextName));
     }
   }, [user]);
 

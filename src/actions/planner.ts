@@ -3,11 +3,22 @@
 import { apiResponse } from '@/lib/utils/apiResponse';
 import { ForbiddenError } from '@/lib/errors';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { isHangoutApiConfigured, hangoutApi } from '@/lib/cloudflare/hangoutApi';
 import { ActionResponse } from '@/lib/types/api.types';
 
+async function getRequestIp() {
+  const h = await headers();
+  return h.get('cf-connecting-ip')
+    || h.get('x-real-ip')
+    || (h.get('x-forwarded-for') ?? '').split(',')[0].trim()
+    || undefined;
+}
+
 export async function generatePlan(groupId: string, options: string[] = []): ActionResponse<any> {
   try {
+    const ip = await getRequestIp();
+
     if (isHangoutApiConfigured()) {
       const { getCurrentApiUser } = await import('@/lib/cloudflare/hangoutApi');
       const { plannerService } = await import('@/lib/services/planner.service');
@@ -15,6 +26,7 @@ export async function generatePlan(groupId: string, options: string[] = []): Act
       const result = await plannerService.generatePlan(apiUser.id || apiUser.clerkId, groupId, options, {
         clerkId: apiUser.clerkId,
         email: apiUser.email,
+        ip,
       });
 
       revalidatePath(`/groups/${groupId}`);
@@ -33,7 +45,10 @@ export async function generatePlan(groupId: string, options: string[] = []): Act
     }
 
     // Call service to run calculation and persist plans
-    const result = await plannerService.generatePlan(user.id, groupId, options);
+    const result = await plannerService.generatePlan(user.id, groupId, options, {
+      ip,
+      email: (user as any).email,
+    });
 
     revalidatePath(`/groups/${groupId}`);
     revalidatePath(`/planner/${groupId}`);

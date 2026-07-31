@@ -1270,6 +1270,7 @@ async function getUserHistory(request: Request, env: Env) {
       h.venues_json AS venuesJson, h.participants_json AS participantsJson,
       h.total_cost_per_head AS totalCostPerHead, h.winning_categories AS winningCategories,
       h.winning_budget_tier AS winningBudgetTier, h.winning_activities AS winningActivities,
+      h.source AS source, h.metadata AS metadata,
       h.created_at AS createdAt
      FROM history h
      INNER JOIN group_members gm ON gm.group_id = h.group_id
@@ -1277,7 +1278,26 @@ async function getUserHistory(request: Request, env: Env) {
      ORDER BY h.created_at DESC`
   ).bind(user.id).all<any>();
 
-  return json({ success: true, data: res.results || [] }, { headers: corsHeaders(env) });
+  // Quick plans have no group_members row — group_id is a per-user sentinel
+  // `quickuser_<userId>`, so fetch the caller's quick rows directly.
+  const quickOwn = await env.DB.prepare(
+    `SELECT
+      h.id, h.group_id AS groupId, h.plan_id AS planId, h.outing_date AS outingDate,
+      h.group_name AS groupName, h.plan_name AS planName, h.plan_tagline AS planTagline,
+      h.venues_json AS venuesJson, h.participants_json AS participantsJson,
+      h.total_cost_per_head AS totalCostPerHead, h.winning_categories AS winningCategories,
+      h.winning_budget_tier AS winningBudgetTier, h.winning_activities AS winningActivities,
+      h.source AS source, h.metadata AS metadata,
+      h.created_at AS createdAt
+     FROM history h
+     WHERE h.source = 'QUICK' AND h.group_id = ?
+     ORDER BY h.created_at DESC`
+  ).bind(`quickuser_${user.id}`).all<any>();
+
+  const merged = [...(res.results || []), ...(quickOwn.results || [])]
+    .sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+  return json({ success: true, data: merged }, { headers: corsHeaders(env) });
 }
 
 async function submitOutingFeedbackWorker(request: Request, env: Env) {
@@ -1335,6 +1355,93 @@ async function submitOutingFeedbackWorker(request: Request, env: Env) {
   }
 
   return json({ success: true }, { headers: corsHeaders(env) });
+}
+
+async function saveQuickPlanWorker(request: Request, env: Env) {
+  const body = await readJson<{
+    clerkId: string;
+    plan: {
+      name: string;
+      tagline?: string;
+      meetupZone?: string;
+      budgetTier?: string;
+      totalEstimatedCostPerHead: number;
+      slots: Array<{
+        name: string; category: string; arrivalTime?: string; durationMinutes?: number;
+        estimatedCostPerHead?: number; note?: string; venueId?: string;
+      }>;
+    };
+    outingDate?: string;
+    headcount: number;
+    metadata: any; // original quick-plan request
+  }>(request);
+
+  const user = await findUserByClerkId(env.DB, body.clerkId);
+  if (!user) {
+    return json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } }, { status: 404, headers: corsHeaders(env) });
+  }
+
+  const historyId = uuid();
+  const now = new Date().toISOString();
+  const plan = body.plan;
+  // Per-user sentinel group id — quick plans have no group; getUserHistory
+  // fetches them by this key. plan_id kept unique for the row.
+  const groupId = `quickuser_${user.id}`;
+  const planId = `quickplan_${uuid()}`;
+
+  const venuesJson = JSON.stringify((plan.slots || []).map(s => ({
+    name: s.name,
+    category: s.category,
+    arrivalTime: s.arrivalTime,
+    durationMinutes: s.durationMinutes,
+    estimatedCostPerHead: s.estimatedCostPerHead,
+    note: s.note,
+  })));
+  const participantsJson = JSON.stringify(
+    Array.from({ length: Math.max(1, body.headcount || 1) }, (_, i) => ({
+      userId: i === 0 ? user.id : `${groupId}_m${i}`,
+      name: i === 0 ? (user.name || 'You') : `Guest ${i}`,
+    }))
+  );
+  const categories = JSON.stringify((plan.slots || []).map(s => s.category));
+  const activities = JSON.stringify((plan.slots || []).map(s => s.name));
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO history (
+        id, group_id, plan_id, outing_date, group_name, plan_name, plan_tagline,
+        venues_json, participants_json, total_cost_per_head,
+        winning_categories, winning_budget_tier, winning_activities,
+        source, metadata, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUICK', ?, ?)`
+    ).bind(
+      historyId, groupId, planId,
+      body.outingDate || now.split('T')[0],
+      plan.meetupZone ? `Quick Plan — ${plan.meetupZone}` : 'Quick Plan',
+      plan.name, plan.tagline || '',
+      venuesJson, participantsJson, plan.totalEstimatedCostPerHead,
+      categories, plan.budgetTier || null, activities,
+      JSON.stringify(body.metadata ?? {}), now
+    ).run();
+  } catch (err) {
+    console.error('Failed to save quick plan:', err);
+    return json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to save quick plan.' } }, { status: 500, headers: corsHeaders(env) });
+  }
+
+  // Learning signal: bump usage for real venues in the saved plan.
+  const realVenueIds = (plan.slots || [])
+    .map(s => s.venueId)
+    .filter(id => id && !id.startsWith('fb_') && !id.startsWith('fallback_')) as string[];
+  if (realVenueIds.length > 0) {
+    const stmts = realVenueIds.map(id => env.DB.prepare(
+      `INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
+       VALUES (?, 0, 0, 0, 1)
+       ON CONFLICT(place_id) DO UPDATE SET times_won = times_won + 1`
+    ).bind(id));
+    try { await env.DB.batch(stmts); } catch (err) { console.error('quick-plan metrics bump failed:', err); }
+  }
+
+  return json({ success: true, data: { historyId } }, { headers: corsHeaders(env) });
 }
 
 const DISCOVERY_ZONES = [
@@ -2397,6 +2504,7 @@ export default {
       if (url.pathname === '/users/profile' && request.method === 'PATCH') return updateUserProfile(request, env);
       if (url.pathname === '/users/history' && request.method === 'GET') return getUserHistory(request, env);
       if (url.pathname === '/internal/feedback/outing' && request.method === 'POST') return submitOutingFeedbackWorker(request, env);
+      if (url.pathname === '/internal/quick-plan/save' && request.method === 'POST') return saveQuickPlanWorker(request, env);
 
       const groupMatch = url.pathname.match(/^\/groups\/([^/]+)(?:\/([^/]+))?$/);
       if (groupMatch) {
@@ -2962,7 +3070,9 @@ async function handlePlacesByZone(request: Request, env: Env) {
        INNER JOIN place_categories pc ON pc.place_id = p.id
        INNER JOIN place_costs pcost ON pcost.place_id = p.id
        LEFT JOIN place_scores ps ON ps.place_id = p.id
-       WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?`
+       WHERE p.is_hidden = 0
+         AND COALESCE(p.business_status, 'OPERATIONAL') = 'OPERATIONAL'
+         AND p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?`
     )
     .bind(lat - latDiff, lat + latDiff, lng - lngDiff, lng + lngDiff)
     .all<any>();

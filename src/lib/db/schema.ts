@@ -276,6 +276,8 @@ export const history = sqliteTable('history', {
   winningCategories: text('winning_categories'), // JSON array of category strings for analytics
   winningBudgetTier: text('winning_budget_tier'), // BUDGET_FRIENDLY | BALANCED | PREMIUM
   winningActivities: text('winning_activities'), // JSON array of activity name strings for analytics
+  source: text('source').default('GROUP').notNull(), // GROUP | QUICK
+  metadata: text('metadata'), // JSON — original quick-plan request (location, mode, budget, headcount, tags)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

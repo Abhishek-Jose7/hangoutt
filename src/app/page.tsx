@@ -499,7 +499,8 @@ export default function HomePage() {
     if (filteredPins.length > 0) {
       const isAlreadySelected = filteredPins.some((p) => p.id === selectedPinId);
       if (!isAlreadySelected) {
-        setSelectedPinId(filteredPins[0].id);
+        const nextId = filteredPins[0].id;
+        queueMicrotask(() => setSelectedPinId(nextId));
       }
     }
   }, [activeCategory, filteredPins, selectedPinId]);
@@ -511,10 +512,13 @@ export default function HomePage() {
   // Synchronize map center and zoom when the active venue changes
   useEffect(() => {
     if (activeVenue) {
-      setMapCenter([activeVenue.lng, activeVenue.lat]);
-      setMapZoom(13.5);
+      const center: [number, number] = [activeVenue.lng, activeVenue.lat];
+      queueMicrotask(() => {
+        setMapCenter(center);
+        setMapZoom(13.5);
+      });
     }
-  }, [activeVenue?.id]);
+  }, [activeVenue]);
 
   // Carousel options: display only inactive spots in active category
   const carouselVenues = useMemo(() => {
@@ -842,7 +846,7 @@ export default function HomePage() {
                       Fair Centroid Midpoints
                     </h3>
                     <p className="font-sans font-light text-neutral-400 text-sm leading-relaxed">
-                      Computes travel centroids that minimize overall group commute times, so the furthest members don't bear the full travel burden.
+                      Computes travel centroids that minimize overall group commute times, so the furthest members do not bear the full travel burden.
                     </p>
                   </div>
                 </div>

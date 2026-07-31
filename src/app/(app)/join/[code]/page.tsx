@@ -28,8 +28,10 @@ export default function JoinGroupPage() {
     }
 
     if (!inviteCode) {
-      setStatus('ERROR');
-      setErrorMsg('No invite code provided.');
+      queueMicrotask(() => {
+        setStatus('ERROR');
+        setErrorMsg('No invite code provided.');
+      });
       return;
     }
 
@@ -67,7 +69,10 @@ export default function JoinGroupPage() {
       }
     };
 
-    processJoin();
+    const joinTimer = window.setTimeout(() => {
+      void processJoin();
+    }, 0);
+    return () => window.clearTimeout(joinTimer);
   }, [inviteCode, isLoaded, isSignedIn, router]);
 
   return (

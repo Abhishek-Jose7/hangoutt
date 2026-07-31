@@ -696,7 +696,7 @@ export default function PlannerPage() {
                       {isRainySeason && (
                         <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 font-mono flex items-start gap-1.5 leading-snug">
                           <span className="text-[11px] leading-none">☔</span>
-                          <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
+                          <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with &quot;More Indoor&quot; if weather conditions worsen.</span>
                         </div>
                       )}
 
@@ -1383,7 +1383,7 @@ export default function PlannerPage() {
                 {isRainySeason && (
                   <div className="bg-[#DC143C]/5 border border-[#DC143C]/20 p-2.5 rounded-[6px] text-[8.5px] text-neutral-400 flex items-start gap-1.5 leading-snug">
                     <span className="text-[11px] leading-none">☔</span>
-                    <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with "More Indoor" if weather conditions worsen.</span>
+                    <span><strong>Monsoon Active (July):</strong> Outdoor locations like parks/promenades are susceptible to rain. Re-generate with &quot;More Indoor&quot; if weather conditions worsen.</span>
                   </div>
                 )}
 

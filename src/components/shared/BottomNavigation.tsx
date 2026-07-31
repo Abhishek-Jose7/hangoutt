@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Users, History, User, Settings } from 'lucide-react';
+import { Users, History, User, Settings, Sparkles } from 'lucide-react';
 import { ExpandableTabs } from '@/components/ui/expandable-tabs';
 
 export default function BottomNavigation() {
@@ -10,6 +10,7 @@ export default function BottomNavigation() {
 
   const navigation = [
     { title: 'Lobbies', icon: Users, href: '/groups' },
+    { title: 'Quick', icon: Sparkles, href: '/quick-plan' },
     { title: 'History', icon: History, href: '/history' },
     { title: 'Profile', icon: User, href: '/profile' },
     { title: 'Settings', icon: Settings, href: '/settings' },

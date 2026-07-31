@@ -80,7 +80,7 @@ function calculateMumbaiTravelBreakdown(from: LatLng, to: LatLng, outingTime?: s
   };
 }
 
-function isVenueOpenAtTime(category: string, outingTime?: string | null): boolean {
+export function isVenueOpenAtTime(category: string, outingTime?: string | null): boolean {
   if (!outingTime) return true;
   let hour = 12.0;
   const match24 = outingTime.match(/^(\d{1,2}):(\d{2})$/);
@@ -153,7 +153,7 @@ interface PlaceCandidate {
   isZoneCurated?: boolean;
 }
 
-function validateCoordinates(lat: number, lng: number): boolean {
+export function validateCoordinates(lat: number, lng: number): boolean {
   return lat >= 18.8 && lat <= 19.5 && lng >= 72.6 && lng <= 73.3;
 }
 
@@ -185,6 +185,22 @@ function getFallbackImageUrl(category: string): string {
 
 function isDisallowedItineraryImage(imageUrl?: string | null): boolean {
   return !imageUrl || imageUrl.includes('unsplash.com') || imageUrl.includes('placehold.co');
+}
+
+function isSyntheticVenueId(id?: string | null): boolean {
+  return !id || id.startsWith('fb_') || id.startsWith('fallback_');
+}
+
+function assertDbBackedItineraryPlans(plansToCheck: any[], stage: string) {
+  for (const plan of plansToCheck) {
+    for (const slot of plan.slots ?? []) {
+      if (isSyntheticVenueId(slot.venueId) && !slot.experienceId) {
+        throw new ValidationError(
+          `Planner produced a non-database venue during ${stage}. Try another time, budget, or location.`
+        );
+      }
+    }
+  }
 }
 
 
@@ -369,6 +385,11 @@ const NAME_HARD_REJECT_PATTERNS = [
   ' banquets', ' banquet',
 ];
 
+const GENERIC_ACTIVITY_LABEL_PATTERNS = [
+  ' beach walk ', ' sea view ', ' sunset point ', ' viewpoint ',
+  ' walking track ', ' jogging track ',
+];
+
 function isHangoutWorthyCandidate(candidate: { name: string; category: string; rating?: number | null; reviewCount?: number | null; address?: string | null; isFallback?: boolean; isExperience?: boolean; isZoneCurated?: boolean }) {
   // Fallbacks / featured experiences / zone-curated venues used to be waved
   // straight through. That's how "Kurla Sunlight Guest house and resturant
@@ -393,6 +414,10 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   const strongInAddr = hasAnyPattern(addrLower, STRONG_HANGOUT_NAME_PATTERNS);
   const strongSignal = strongInName;
 
+  // Real venue can still have catalog-spam formatting. Keep ugly scraped pins
+  // out of public itinerary cards instead of cleaning them into something fake.
+  if (candidate.name.includes('_') || candidate.name.includes('{') || candidate.name.includes('}')) return false;
+
   // Hard reject: low-intent chains no matter what.
   if (hasAnyPattern(normalized, LOW_INTENT_CHAIN_PATTERNS)) return false;
 
@@ -401,6 +426,7 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   // WEAK_OR_NON_HANGOUT_PATTERNS which lets 'the art' in "Dragonfly Hotel -
   // The Art Hotel" wave the venue through.
   if (hasAnyPattern(nameLower, NAME_HARD_REJECT_PATTERNS)) return false;
+  if (hasAnyPattern(nameLower, GENERIC_ACTIVITY_LABEL_PATTERNS)) return false;
 
   // Hard reject: weak name patterns unless a strong signal is in the NAME.
   if (hasAnyPattern(normalized, WEAK_OR_NON_HANGOUT_PATTERNS) && !strongInName) return false;
@@ -1407,7 +1433,7 @@ function scoreArchetypeFit(a: Archetype, ctx: PlanningContext): number {
   if (prefs.size > 0) {
     let overlap = 0;
     let specialisedOverlap = 0;
-    let coveredPrefs = new Set<string>();
+    const coveredPrefs = new Set<string>();
     for (const slot of a.slots) {
       const cats = resolveRoleToCategories(slot.role, ctx);
       const upperCats = cats.map(c => c.toUpperCase());
@@ -1834,6 +1860,8 @@ async function buildFallbackItineraryData(
       .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
       .where(
         and(
+          eq(places.isHidden, 0),
+          eq(places.businessStatus, 'OPERATIONAL'),
           between(places.lat, zoneObj.lat - latDiff, zoneObj.lat + latDiff),
           between(places.lng, zoneObj.lng - lngDiff, zoneObj.lng + lngDiff)
         )
@@ -1894,6 +1922,12 @@ async function buildFallbackItineraryData(
         .from(places)
         .innerJoin(placeCategories, eq(placeCategories.placeId, places.id))
         .innerJoin(placeCosts, eq(placeCosts.placeId, places.id))
+        .where(
+          and(
+            eq(places.isHidden, 0),
+            eq(places.businessStatus, 'OPERATIONAL')
+          )
+        )
         .limit(200)
         .catch(() => [] as any[]);
     }
@@ -3541,10 +3575,20 @@ export function computeTransitConnectivity(zoneName: string): number {
 export async function executePlanningEngineForEval(
   groupData: any, presentMembers: any[], budgetSummary: any,
   presentLocations: any[], preferredCategories: string[], vibes: string[],
-  historyEntries: any[], lowestBudget: number, options: string[] = []
+  historyEntries: any[], lowestBudget: number, options: string[] = [],
+  planningArea?: PlanningArea, requiredVenueId?: string
 ): Promise<any[]> {
-  return executePlanningEngine(groupData, presentMembers, budgetSummary, presentLocations, preferredCategories, vibes, historyEntries, lowestBudget, options);
+  return executePlanningEngine(groupData, presentMembers, budgetSummary, presentLocations, preferredCategories, vibes, historyEntries, lowestBudget, options, planningArea, requiredVenueId);
 }
+
+/**
+ * Quick Plan support: a fixed search area. When present the engine skips
+ * multi-zone selection entirely — every candidate venue must sit within
+ * `radiusKm` of the given point, so all generated itineraries stay inside
+ * one locality. The group flow never passes this; behavior there is
+ * unchanged.
+ */
+export type PlanningArea = { lat: number; lng: number; name: string; radiusKm: number; allowedZoneNames?: string[] };
 
 async function executePlanningEngine(
   groupData: any,
@@ -3555,12 +3599,28 @@ async function executePlanningEngine(
   vibes: string[],
   historyEntries: any[],
   lowestBudget: number,
-  options: string[] = []
+  options: string[] = [],
+  planningArea?: PlanningArea,
+  requiredVenueId?: string
 ): Promise<any[]> {
   const city = 'Mumbai';
   const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
+
+  let candidateZones: any[] = [];
+  if (planningArea) {
+    // Single fixed area — no zone sampling, no spacing. All plans build here.
+    candidateZones = [{
+      name: planningArea.name,
+      lat: planningArea.lat,
+      lng: planningArea.lng,
+      radius: planningArea.radiusKm * 1000,
+      radiusKm: planningArea.radiusKm,
+      allowedZoneNames: planningArea.allowedZoneNames,
+      isPlanningArea: true,
+    }];
+  } else {
   const allCandidateZones = selectCandidateZones(memberCoords);
-  
+
   // Randomly sample 4 zones from the larger pool (20) ensuring they are not clustered.
   const shuffledAllZones = [...allCandidateZones];
   for (let i = shuffledAllZones.length - 1; i > 0; i--) {
@@ -3585,7 +3645,6 @@ async function executePlanningEngine(
   });
   shuffledAllZones.sort((a, b) => (zoneRank.get(b.name) ?? 0) - (zoneRank.get(a.name) ?? 0));
 
-  let candidateZones: any[] = [];
   const minSpacings = [4.0, 3.5, 3.0, 2.5];
   for (const spacing of minSpacings) {
     candidateZones = [];
@@ -3604,6 +3663,7 @@ async function executePlanningEngine(
     candidateZones.length = 0;
     candidateZones.push(...shuffledAllZones.slice(0, 4));
   }
+  } // end multi-zone selection (skipped when planningArea is set)
 
   const avgLat = memberCoords.reduce((sum, c) => sum + c.lat, 0) / memberCoords.length;
   const avgLng = memberCoords.reduce((sum, c) => sum + c.lng, 0) / memberCoords.length;
@@ -3674,7 +3734,7 @@ async function executePlanningEngine(
 
     const zoneLowestBudget = Math.max(500, Math.min(...memberAvailableBudgets.map(m => m.availableBudget)));
 
-    const radiusKm = 6.0;
+    const radiusKm = (zone as any).radiusKm ?? 6.0;
     const latDiff = radiusKm / 111.0;
     const lngDiff = radiusKm / (111.0 * Math.cos(zone.lat * Math.PI / 180));
 
@@ -3731,6 +3791,8 @@ async function executePlanningEngine(
         .leftJoin(placeScores, eq(placeScores.placeId, places.id))
         .where(
           and(
+            eq(places.isHidden, 0),
+            eq(places.businessStatus, 'OPERATIONAL'),
             between(places.lat, zone.lat - latDiff, zone.lat + latDiff),
             between(places.lng, zone.lng - lngDiff, zone.lng + lngDiff)
           )
@@ -3780,9 +3842,25 @@ async function executePlanningEngine(
       }
 
       const venueZone = getVenueZone(p.lat, p.lng, p.name, p.address);
-      const isStrictlyInZone = venueZone === zone.name;
-      const adj = ADJACENT_ZONES[zone.name] || [];
-      const isAdjacentZone = adj.includes(venueZone);
+      let isStrictlyInZone: boolean;
+      let isAdjacentZone: boolean;
+      if ((zone as any).isPlanningArea) {
+        // Fixed planning area (Quick Plan): membership is pure distance —
+        // inside the radius or rejected. No adjacent-zone leniency, so every
+        // venue stays within the chosen locality.
+        const distKm = getHaversineDistance({ lat: p.lat, lng: p.lng }, { lat: zone.lat, lng: zone.lng });
+        isStrictlyInZone = distKm <= ((zone as any).radiusKm ?? 6.0);
+        isAdjacentZone = false;
+        const allowedZoneNames = (zone as any).allowedZoneNames as string[] | undefined;
+        if (allowedZoneNames && !allowedZoneNames.includes(venueZone)) {
+          logRejection(p.name, `REJECTED | Reason: Outside requested area "${zone.name}" (zone = ${venueZone})`);
+          return;
+        }
+      } else {
+        isStrictlyInZone = venueZone === zone.name;
+        const adj = ADJACENT_ZONES[zone.name] || [];
+        isAdjacentZone = adj.includes(venueZone);
+      }
 
       if (!isStrictlyInZone && !isAdjacentZone) {
         logRejection(p.name, `REJECTED | Reason: Venue not matching midpoint zone "${zone.name}" nor adjacent zones. (zone = ${venueZone})`);
@@ -3923,9 +4001,28 @@ async function executePlanningEngine(
 
       // Zone matching for experiences
       const expZone = getVenueZone(e.latitude, e.longitude, e.title, e.sourceUrl);
-      const isStrictlyInZone = expZone === zone.name;
-      const adj = ADJACENT_ZONES[zone.name] || [];
-      const isAdjacentZone = adj.includes(expZone);
+      let isStrictlyInZone: boolean;
+      let isAdjacentZone: boolean;
+      if ((zone as any).isPlanningArea) {
+        // Fixed planning area: distance-only membership; featured experiences
+        // outside the radius are excluded too — locality guarantee wins.
+        const distKm = getHaversineDistance({ lat: e.latitude, lng: e.longitude }, { lat: zone.lat, lng: zone.lng });
+        isStrictlyInZone = distKm <= ((zone as any).radiusKm ?? 6.0);
+        isAdjacentZone = false;
+        const allowedZoneNames = (zone as any).allowedZoneNames as string[] | undefined;
+        if (allowedZoneNames && !allowedZoneNames.includes(expZone)) {
+          logRejection(e.title, `Experience outside requested area "${zone.name}" (zone = ${expZone})`);
+          return;
+        }
+        if (!isStrictlyInZone) {
+          logRejection(e.title, `Experience outside planning area "${zone.name}"`);
+          return;
+        }
+      } else {
+        isStrictlyInZone = expZone === zone.name;
+        const adj = ADJACENT_ZONES[zone.name] || [];
+        isAdjacentZone = adj.includes(expZone);
+      }
 
       if (!isStrictlyInZone && !isAdjacentZone && !isFeatured) {
         logRejection(e.title, `REJECTED | Reason: Experience not matching midpoint zone "${zone.name}" nor adjacent zones. (zone = ${expZone})`);
@@ -3979,6 +4076,18 @@ async function executePlanningEngine(
 
     // Handle sparse candidates - apply live fetch or fallbacks first to strictCandidates
     if (strictCandidates.length < 5) {
+      // For a fixed planning area, sparse-fill venues must ALSO sit inside the
+      // radius — zone-name matching alone would leak venues outside the chosen
+      // locality.
+      const withinArea = (f: any) => !(zone as any).isPlanningArea
+        || getHaversineDistance({ lat: f.lat, lng: f.lng }, { lat: zone.lat, lng: zone.lng }) <= ((zone as any).radiusKm ?? 6.0);
+      const matchesZone = (f: any) => {
+        const allowedZoneNames = (zone as any).allowedZoneNames as string[] | undefined;
+        const venueZoneName = getVenueZone(f.lat, f.lng, f.name, f.address);
+        return (zone as any).isPlanningArea
+          ? withinArea(f) && (!allowedZoneNames || allowedZoneNames.includes(venueZoneName))
+          : venueZoneName === zone.name;
+      };
       const existingCats = new Set(strictCandidates.map(c => c.category.toUpperCase()));
       const gaps = PLANNER_REQUIRED_CATEGORIES.filter(cat => !existingCats.has(cat)).slice(0, 3);
 
@@ -3988,7 +4097,7 @@ async function executePlanningEngine(
           if (fetched.length > 0) {
             console.log(`[PLANNER] Reactive fetch added ${fetched.length} venues to ${zone.name}`);
             strictCandidates.push(...fetched
-              .filter(f => getVenueZone(f.lat, f.lng, f.name, f.address) === zone.name)
+              .filter(f => matchesZone(f))
               .map(f => ({
               ...f,
               isStrictlyInZone: true,
@@ -4013,29 +4122,10 @@ async function executePlanningEngine(
       }
 
       if (strictCandidates.length < 5) {
-        const fallbacks = await resolveZoneFallbacks(zone.name, zone.lat, zone.lng);
-        const filteredFallbacks = hasMoviePreference ? fallbacks : fallbacks.filter(f => f.category.toUpperCase() !== 'MOVIE');
-        if (filteredFallbacks.length > 0) {
-          strictCandidates.push(...filteredFallbacks
-            .filter(f => getVenueZone(f.lat, f.lng, f.name, f.address) === zone.name)
-            .map(f => ({
-            ...f,
-            isStrictlyInZone: true,
-            venueZone: zone.name,
-            isZoneCurated: true,
-            popularity: 0.5,
-            budgetFriendliness: 0.5,
-            conversation: 0.5,
-            groupSuitability: 0.5,
-            dateSuitability: 0.5,
-            friendsSuitability: 0.5,
-            familySuitability: 0.5,
-            weatherSuitability: 0.5,
-            uniqueness: 0.5,
-            experienceScore: 0.5,
-            overallScore: 0.5
-          })));
-        }
+        console.warn(
+          `[PLANNER] Zone "${zone.name}" has only ${strictCandidates.length} strict DB candidates after reactive fetch. ` +
+          'Skipping static zone_fallbacks so generated itineraries never contain synthetic venues.'
+        );
       }
     }
 
@@ -4076,6 +4166,16 @@ async function executePlanningEngine(
       }
 
       const dist = getHaversineDistance({ lat: zone.lat, lng: zone.lng }, { lat: c.lat, lng: c.lng });
+      if ((zone as any).isPlanningArea) {
+        // Fixed planning area: hard distance ceiling, no exemptions — the
+        // locality guarantee applies to fallback/curated venues too.
+        const areaRadius = (zone as any).radiusKm ?? 6.0;
+        if (dist > areaRadius) {
+          logRejection(c.name, `REJECTED | Reason: Outside planning area (${dist.toFixed(1)}km > ${areaRadius}km)`);
+          return false;
+        }
+        return true;
+      }
       // If the venue is in an adjacent zone, allow up to 8km travel, otherwise standard bounds
       const isAdj = !strictCandidates.find(sc => sc.id === c.id);
       const maxDistance = isAdj ? 8.0 : (isLessTravel ? 5.0 : 8.0);
@@ -4260,6 +4360,16 @@ async function executePlanningEngine(
       const filterAndUnused = (list: any[]) => allowSharedVenues ? list : list.filter(c => !usedPlaceIds.has(c.id));
       let candidatesPool = filterAndUnused(zoneData.candidates);
 
+      // Quick Plan required venue: it must appear in EVERY plan, so it is
+      // exempt from the cross-plan used-venue exclusion. Resolve it from the
+      // zone's full candidate list.
+      const requiredVenue = requiredVenueId
+        ? (zoneData.candidates as any[]).find((c: any) => c.id === requiredVenueId) ?? null
+        : null;
+      if (requiredVenue && !candidatesPool.some((c: any) => c.id === requiredVenue.id)) {
+        candidatesPool = [requiredVenue, ...candidatesPool];
+      }
+
       const template = getActiveTemplate(templateIdx);
       const slot1Cats = template.slot1;
       const slot1IsActivity = template.slot1Act;
@@ -4312,6 +4422,16 @@ async function executePlanningEngine(
       };
 
       const selectPlaceForSlot = (preferredCats: string[], isActivity: boolean, remainingBudget: number) => {
+        // Required venue (Quick Plan "specific place" mode): the moment a slot
+        // can legally seat it — category matches and it's still in the pool —
+        // it takes the slot. Generated around the mandatory venue, not patched
+        // in afterwards, so scoring/travel/archetypes stay consistent.
+        if (requiredVenue
+          && candidatesPool.some((c: any) => c.id === requiredVenue.id)
+          && preferredCats.includes(String(requiredVenue.category ?? '').toUpperCase())) {
+          if (isChain(requiredVenue.name)) chainCount++;
+          return requiredVenue as PlaceCandidate;
+        }
         let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
         if (chainCount >= 1) {
           matches = matches.filter(c => !isChain(c.name));
@@ -4453,6 +4573,16 @@ async function executePlanningEngine(
         }
       }
 
+      // Quick Plan required venue: a candidate plan is INVALID unless the
+      // mandatory venue appears in it. Enforced at generation time.
+      if (requiredVenueId) {
+        const planVenueIds = [slot1Place.id, slot2Place.id, ...(slot3Place ? [slot3Place.id] : [])];
+        if (!planVenueIds.includes(requiredVenueId)) {
+          logRejection(`plan#${planIndex}`, `Missing required venue ${requiredVenueId}`);
+          continue;
+        }
+      }
+
       const m1 = getMandatoryCost(slot1Place);
       const m2 = getMandatoryCost(slot2Place);
       const m3 = isTwoSlots ? 0 : getMandatoryCost(slot3Place!);
@@ -4485,8 +4615,7 @@ async function executePlanningEngine(
         // photo references — those venues fall through to the text-search
         // getVenueImageUrl below).
         const isGooglePlaceId = place.id
-          && !place.id.startsWith('fb_')
-          && !place.id.startsWith('fallback_')
+          && !isSyntheticVenueId(place.id)
           && !place.id.startsWith('OLA_')
           && !place.isExperience;
         if (isGooglePlaceId) {
@@ -4514,7 +4643,7 @@ async function executePlanningEngine(
           const googleImg = await getVenueImageUrl(place.name, city, place.category);
           if (!isDisallowedItineraryImage(googleImg)) {
             finalImg = googleImg;
-            if (place.id && !place.id.startsWith('fb_') && !place.id.startsWith('fallback_') && !place.isExperience && finalImg !== place.imageUrl) {
+            if (place.id && !isSyntheticVenueId(place.id) && !place.isExperience && finalImg !== place.imageUrl) {
               needsDbUpdate = true;
             }
           }
@@ -4811,7 +4940,11 @@ async function executePlanningEngine(
 
   // Cluster the valid candidates only. Scoring differentiates within a
   // constraint-satisfying set — it is NOT trying to make bad plans better.
-  const finalPlans = clusterAndPickRepresentatives(validCandidates, 2);
+  // Fixed planning area (Quick Plan): the wide-radius fallback pad used by the
+  // group flow would violate the locality guarantee, so pick 4 representatives
+  // straight from the clustered candidates instead of 2 + pads.
+  const representativeCount = planningArea ? 4 : 2;
+  const finalPlans = clusterAndPickRepresentatives(validCandidates, representativeCount);
   finalPlans.forEach((it, idx) => { it.planIndex = idx + 1; });
 
   console.log(`[PLANNER] candidates ${draftItineraries.length} → valid ${validCandidates.length} → clustered → returning ${finalPlans.length}`,
@@ -5289,9 +5422,10 @@ export const plannerService = {
         }
       }
 
-      if (draftPlans.length === 0) {
-        throw new ValidationError('No itinerary could be generated within the group budget. Try raising the budget or adjusting preferences.');
+      if (draftPlans.length < 4) {
+        throw new ValidationError('Could not generate 4 complete database-backed itineraries within the group budget. Try raising the budget or adjusting preferences.');
       }
+      assertDbBackedItineraryPlans(draftPlans.slice(0, 4), 'remote generation');
 
       const context: ItineraryPromptContext = {
         groupName: groupData.name,
@@ -5309,7 +5443,7 @@ export const plannerService = {
         outingTime: groupData.outingTime,
       };
 
-      const groqResult = await generateItineraries(draftPlans, context);
+      const groqResult = await generateItineraries(draftPlans.slice(0, 4), context);
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -5371,24 +5505,24 @@ export const plannerService = {
 
         it.slots.forEach((s: any) => {
           const draftSlot = draft.slots.find((ds: any) => ds.order === s.order) || draft.slots[s.order - 1];
-          const finalVenueId = (draftSlot?.venueId && !draftSlot.venueId.startsWith('fb_') && !draftSlot.venueId.startsWith('fallback_')) ? draftSlot.venueId : null;
+          const finalVenueId = !isSyntheticVenueId(draftSlot?.venueId) ? draftSlot.venueId : null;
           dbSlots.push({
             id: randomUUID(),
             planId,
-            slotOrder: s.order,
+            slotOrder: draftSlot?.order ?? s.order,
             venueId: finalVenueId,
             experienceId: draftSlot?.experienceId || null,
-            venueName: s.name,
-            name: s.name,
-            category: s.category,
-            arrivalTime: s.arrivalTime,
-            durationMinutes: s.durationMinutes,
-            travelToNextMinutes: s.travelToNextMinutes || null,
-            estimatedCostPerHead: s.estimatedCostPerHead,
-            note: s.note,
+            venueName: draftSlot?.name ?? s.name,
+            name: draftSlot?.name ?? s.name,
+            category: draftSlot?.category ?? s.category,
+            arrivalTime: draftSlot?.arrivalTime ?? s.arrivalTime,
+            durationMinutes: draftSlot?.durationMinutes ?? s.durationMinutes,
+            travelToNextMinutes: draftSlot?.travelToNextMinutes ?? s.travelToNextMinutes ?? null,
+            estimatedCostPerHead: draftSlot?.estimatedCostPerHead ?? s.estimatedCostPerHead,
+            note: s.note || draftSlot?.note,
             travelToNextCost: draftSlot?.travelToNextCost || null,
-            imageUrl: s.imageUrl || draftSlot?.imageUrl || null,
-            link: s.link || draftSlot?.link || null
+            imageUrl: draftSlot?.imageUrl || s.imageUrl || null,
+            link: draftSlot?.link || s.link || null
           });
         });
 
@@ -5414,7 +5548,7 @@ export const plannerService = {
       const seenVenueIds = new Set<string>();
       draftPlans.forEach((draft: any) => {
         draft.slots.forEach((ds: any) => {
-          if (ds.venueId && !ds.venueId.startsWith('fb_') && !ds.venueId.startsWith('fallback_') && !seenVenueIds.has(ds.venueId)) {
+          if (!isSyntheticVenueId(ds.venueId) && !seenVenueIds.has(ds.venueId)) {
             seenVenueIds.add(ds.venueId);
             dbVenues.push({
               id: ds.venueId,
@@ -5653,9 +5787,10 @@ export const plannerService = {
         }
       }
 
-      if (draftPlans.length === 0) {
-        throw new ValidationError('No itinerary could be generated within the group budget. Try raising the budget or adjusting preferences.');
+      if (draftPlans.length < 4) {
+        throw new ValidationError('Could not generate 4 complete database-backed itineraries within the group budget. Try raising the budget or adjusting preferences.');
       }
+      assertDbBackedItineraryPlans(draftPlans.slice(0, 4), 'local generation');
 
       const context: ItineraryPromptContext = {
         groupName: group.name,
@@ -5673,7 +5808,7 @@ export const plannerService = {
         outingTime: group.outingTime,
       };
 
-      const groqResult = await generateItineraries(draftPlans, context);
+      const groqResult = await generateItineraries(draftPlans.slice(0, 4), context);
 
       const dbPlans: any[] = [];
       const dbSlots: any[] = [];
@@ -5735,24 +5870,24 @@ export const plannerService = {
 
         it.slots.forEach((s: any) => {
           const draftSlot = draft.slots.find((ds: any) => ds.order === s.order) || draft.slots[s.order - 1];
-          const finalVenueId = (draftSlot?.venueId && !draftSlot.venueId.startsWith('fb_') && !draftSlot.venueId.startsWith('fallback_')) ? draftSlot.venueId : null;
+          const finalVenueId = !isSyntheticVenueId(draftSlot?.venueId) ? draftSlot.venueId : null;
           dbSlots.push({
             id: randomUUID(),
             planId,
-            slotOrder: s.order,
+            slotOrder: draftSlot?.order ?? s.order,
             venueId: finalVenueId,
             experienceId: draftSlot?.experienceId || null,
-            venueName: s.name,
-            name: s.name,
-            category: s.category,
-            arrivalTime: s.arrivalTime,
-            durationMinutes: s.durationMinutes,
-            travelToNextMinutes: s.travelToNextMinutes || null,
-            estimatedCostPerHead: s.estimatedCostPerHead,
-            note: s.note,
+            venueName: draftSlot?.name ?? s.name,
+            name: draftSlot?.name ?? s.name,
+            category: draftSlot?.category ?? s.category,
+            arrivalTime: draftSlot?.arrivalTime ?? s.arrivalTime,
+            durationMinutes: draftSlot?.durationMinutes ?? s.durationMinutes,
+            travelToNextMinutes: draftSlot?.travelToNextMinutes ?? s.travelToNextMinutes ?? null,
+            estimatedCostPerHead: draftSlot?.estimatedCostPerHead ?? s.estimatedCostPerHead,
+            note: s.note || draftSlot?.note,
             travelToNextCost: draftSlot?.travelToNextCost || null,
-            imageUrl: s.imageUrl || draftSlot?.imageUrl || null,
-            link: s.link || draftSlot?.link || null
+            imageUrl: draftSlot?.imageUrl || s.imageUrl || null,
+            link: draftSlot?.link || s.link || null
           });
         });
 
@@ -5796,7 +5931,7 @@ export const plannerService = {
 
           // Increment timesGenerated locally for the places
           for (const slot of dbSlots) {
-            if (slot.venueId && !slot.venueId.startsWith('fb_') && !slot.venueId.startsWith('fallback_')) {
+            if (!isSyntheticVenueId(slot.venueId)) {
               await tx.run(sql`
                 INSERT INTO ranking_metrics (place_id, times_generated, times_viewed, times_voted, times_won)
                 VALUES (${slot.venueId}, 1, 0, 0, 0)

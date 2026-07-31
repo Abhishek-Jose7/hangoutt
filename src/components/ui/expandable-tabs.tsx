@@ -59,7 +59,7 @@ export function ExpandableTabs({
   const [selected, setSelected] = React.useState<number | null>(selectedIndex);
 
   React.useEffect(() => {
-    setSelected(selectedIndex);
+    queueMicrotask(() => setSelected(selectedIndex));
   }, [selectedIndex]);
 
   const outsideClickRef = React.useRef<HTMLDivElement>(null);

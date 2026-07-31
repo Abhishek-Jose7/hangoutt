@@ -8,10 +8,13 @@ const nextConfig: NextConfig = {
   // bundled seed. Next.js only traces JS imports; local.db is opened at
   // runtime by better-sqlite3, so we have to tell it explicitly.
   outputFileTracingIncludes: {
-    '**/*': ['./local.db'],
-    'app/**/*': ['./local.db'],
-    'api/**/*': ['./local.db'],
-    '/api/itinerary/generate': ['./local.db'],
+    '/*': ['./local.db'],
+    '/api/*': ['./local.db'],
+    '/api/*/*': ['./local.db'],
+    '/groups/*': ['./local.db'],
+    '/planner/*': ['./local.db'],
+    '/join/*': ['./local.db'],
+    '/share/*': ['./local.db'],
   },
 };
 

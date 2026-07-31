@@ -267,16 +267,21 @@ export default function GroupDetailsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    const initialLoad = window.setTimeout(() => {
+      void loadData();
+    }, 0);
 
     // Polling interval to reflect live updates (every 5 seconds)
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        loadData();
+        void loadData();
       }
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [groupId]);
 
   const handleVoteCast = async (planId: string) => {
@@ -429,8 +434,8 @@ export default function GroupDetailsPage() {
   const handleLocationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingLocation(true);
-    let lat: number | undefined = parseFloat(latVal);
-    let lng: number | undefined = parseFloat(lngVal);
+    const lat: number | undefined = parseFloat(latVal);
+    const lng: number | undefined = parseFloat(lngVal);
 
     try {
       const res = await saveLocation({
@@ -493,8 +498,8 @@ export default function GroupDetailsPage() {
         travelIncluded,
       });
 
-      let lat: number | undefined = parseFloat(latVal);
-      let lng: number | undefined = parseFloat(lngVal);
+      const lat: number | undefined = parseFloat(latVal);
+      const lng: number | undefined = parseFloat(lngVal);
       const locationRes = await saveLocation({
         groupId: groupId,
         locationName: addressVal || "My Location",

@@ -14,7 +14,7 @@ function resolveLocalDbPath(): string {
   if (configuredPath) {
     return path.isAbsolute(configuredPath)
       ? configuredPath
-      : path.resolve(process.cwd(), configuredPath);
+      : path.resolve(/* turbopackIgnore: true */ process.cwd(), configuredPath);
   }
 
   const isServerlessRO = process.env.VERCEL === '1'
@@ -26,9 +26,9 @@ function resolveLocalDbPath(): string {
   // the project root under .next/server/, and Vercel's launcher can chdir
   // between them. Trying each avoids a single point of failure.
   const candidates = [
-    path.resolve(process.cwd(), 'local.db'),
-    path.resolve(process.cwd(), '.next/server/local.db'),
-    path.resolve(process.cwd(), '..', 'local.db'),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), 'local.db'),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), '.next/server/local.db'),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), '..', 'local.db'),
     '/var/task/local.db',
     '/var/task/.next/server/local.db',
   ];
@@ -56,7 +56,7 @@ function resolveLocalDbPath(): string {
   // production what's missing. Return the first candidate (better-sqlite3
   // will throw a legible error).
   console.error('[db/client] local.db not found. Tried:', candidates.join(', '));
-  console.error('[db/client] cwd =', process.cwd(), 'VERCEL =', process.env.VERCEL);
+  console.error('[db/client] cwd =', /* turbopackIgnore: true */ process.cwd(), 'VERCEL =', process.env.VERCEL);
   return candidates[0];
 }
 

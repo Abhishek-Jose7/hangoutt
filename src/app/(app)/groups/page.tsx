@@ -38,7 +38,10 @@ export default function GroupsPage() {
   };
 
   useEffect(() => {
-    loadGroups();
+    const initialLoad = window.setTimeout(() => {
+      void loadGroups();
+    }, 0);
+    return () => window.clearTimeout(initialLoad);
   }, []);
 
   // Filter & Search Logic
@@ -87,7 +90,22 @@ export default function GroupsPage() {
       }
     >
       <div className="space-y-6 text-sm font-sans">
-        
+
+        {/* Quick Plan shortcut */}
+        <Link href="/quick-plan" className="relative overflow-hidden flex items-center justify-between gap-4 bg-[#0e0e0e]/70 p-4 rounded-[4px] border border-[#353534] hover:border-[#DC143C]/50 backdrop-blur-md transition-all group cursor-pointer">
+          <div className="absolute left-0 top-0 h-full w-1 bg-[#DC143C]" />
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#DC143C]/10 border border-[#DC143C]/20">
+              <Activity className="h-4 w-4 text-[#DC143C]" />
+            </span>
+            <div>
+              <p className="text-[11px] font-mono font-bold uppercase tracking-widest text-white">Quick Plan</p>
+              <p className="text-[10px] text-neutral-400">Already know where you&apos;re going? Get instant itineraries for that spot — no group needed.</p>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-[#DC143C] group-hover:translate-x-1 transition-transform shrink-0" />
+        </Link>
+
         {/* Search & Filter Controls */}
         <div className="relative overflow-hidden flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-[#0e0e0e]/70 p-4 rounded-[4px] border border-[#353534] backdrop-blur-md">
           <div className="absolute left-0 top-0 h-full w-1 bg-[#DC143C]" />
