@@ -88,9 +88,9 @@ export default function PlannerPage() {
   const getFrontendFallbackImage = (category: string) => {
     const cat = (category ?? '').toUpperCase();
     if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
-      return '/images/cafe_active.png';
+      return '/images/cafe_active.webp';
     }
-    return '/images/mumbai_map.png';
+    return '/images/mumbai_map.webp';
   };
 
   const getCategoryIcon = (category: string) => {
@@ -528,6 +528,10 @@ export default function PlannerPage() {
                       <img
                         src={plan.slots?.[0]?.imageUrl || getFrontendFallbackImage(plan.slots?.[0]?.category)}
                         alt={plan.name}
+                        loading="lazy"
+                        decoding="async"
+                        width={105}
+                        height={105}
                         className="w-full h-full object-cover opacity-90"
                       />
                     </div>
@@ -874,6 +878,10 @@ export default function PlannerPage() {
                                   <img
                                     src={slot.imageUrl || getFrontendFallbackImage(slot.category)}
                                     alt={slot.name}
+                                    loading="lazy"
+                                    decoding="async"
+                                    width={144}
+                                    height={112}
                                     className="w-full h-full object-cover opacity-85 hover:opacity-100 transition-opacity duration-300"
                                   />
                                 </div>

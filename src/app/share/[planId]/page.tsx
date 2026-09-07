@@ -59,7 +59,7 @@ export default async function SharePlanPage({ params }: { params: Promise<{ plan
             <div key={slot.id || i} className="border border-stone-900 bg-stone-950/60 rounded-[12px] overflow-hidden">
               {slot.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={slot.imageUrl} alt={slot.name} className="w-full h-40 object-cover" />
+                <img src={slot.imageUrl} alt={slot.name} loading="lazy" decoding="async" width={640} height={160} className="w-full h-40 object-cover" />
               )}
               <div className="p-4 space-y-2">
                 <div className="flex items-start justify-between gap-3">

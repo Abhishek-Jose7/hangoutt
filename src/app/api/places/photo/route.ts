@@ -69,11 +69,11 @@ export async function GET(req: NextRequest) {
     // Legacy Google photo references are no longer resolved. Fresh catalog
     // rows carry direct sourced image URLs; old cached bytes still work above.
     const fallbackRedirect = async () => {
-      return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);
+      return Response.redirect(new URL('/images/mumbai_map.webp', req.url), 307);
     };
     return fallbackRedirect();
   } catch (err: any) {
     console.error('[PHOTO PROXY ERROR]', err);
-    return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);
+    return Response.redirect(new URL('/images/mumbai_map.webp', req.url), 307);
   }
 }

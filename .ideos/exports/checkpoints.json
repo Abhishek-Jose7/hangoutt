@@ -540,6 +540,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-31T22:46:30.667Z"
+    },
+    {
+      "id": "290c40b8-8e6d-4ceb-b6d8-19baad846526",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "hh",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"drizzle/migrations/0022_curated_mumbai_anchors.sql\",\"drizzle/migrations/0023_genz_mumbai_venues.sql\",\"drizzle/migrations/0024_district_web_venues.sql\",\"drizzle/migrations/0025_verified_event_sources.sql\",\"drizzle/migrations/0026_retire_placeholder_events.sql\",\"drizzle/migrations/0027_source_rating_cleanup.sql\",\"drizzle/migrations/0028_admin_indexes_score_floor.sql\",\"drizzle/migrations/0029_remove_legacy_photo_refs.sql\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-09-07T12:07:13.878Z"
     }
   ]
 }

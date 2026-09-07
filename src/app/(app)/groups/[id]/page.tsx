@@ -76,13 +76,13 @@ function getPlanBackgroundImage(plan: any): string {
 function getFallbackImageUrl(category: string): string {
   const cat = (category ?? '').toUpperCase();
   if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
-    return '/images/cafe_active.png';
+    return '/images/cafe_active.webp';
   }
-  return '/images/mumbai_map.png';
+  return '/images/mumbai_map.webp';
 }
 
 function getSlotImageUrl(slot: any): string {
-  if (slot.imageUrl && !slot.imageUrl.includes('unsplash.com') && !slot.imageUrl.includes('placehold.co') && !slot.imageUrl.includes('mumbai_map.png')) {
+  if (slot.imageUrl && !slot.imageUrl.includes('unsplash.com') && !slot.imageUrl.includes('placehold.co') && !slot.imageUrl.includes('mumbai_map.webp')) {
     return slot.imageUrl;
   }
   const name = (slot.name || '').toLowerCase();
@@ -876,6 +876,10 @@ export default function GroupDetailsPage() {
                                 <img
                                   src={orderedSlots.length > 0 ? getSlotImageUrl(orderedSlots[0]) : getFallbackImageUrl('')}
                                   alt={plan.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  width={110}
+                                  height={90}
                                   className="w-full h-full object-cover"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).src = getFallbackImageUrl('');
@@ -1144,6 +1148,10 @@ export default function GroupDetailsPage() {
                                         <img
                                           src={getSlotImageUrl(slot)}
                                           alt={slot.name}
+                                          loading="lazy"
+                                          decoding="async"
+                                          width={84}
+                                          height={48}
                                           className="w-full h-full object-cover"
                                           onError={(e) => {
                                             (e.target as HTMLImageElement).src = getFallbackImageUrl(slot.category);
@@ -1295,6 +1303,10 @@ export default function GroupDetailsPage() {
                                     <img
                                       src={getSlotImageUrl(slot)}
                                       alt={slot.name}
+                                      loading="lazy"
+                                      decoding="async"
+                                      width={84}
+                                      height={48}
                                       className="w-full h-full object-cover"
                                       onError={(e) => {
                                         (e.target as HTMLImageElement).src = getFallbackImageUrl(slot.category);
@@ -1495,7 +1507,7 @@ export default function GroupDetailsPage() {
                       <li key={member.userId} className={`flex items-center gap-3 transition-all ${isSynced ? '' : 'opacity-75'}`}>
                         <div className={`w-9 h-9 border p-0.5 rounded-[4px] flex-shrink-0 ${isSynced ? 'border-[#DC143C] shadow-[0_0_8px_rgba(220,20,60,0.25)] bg-[#DC143C]/5' : 'border-[#353534]'}`}>
                           {member.imageUrl ? (
-                            <img src={member.imageUrl} alt={member.name} className="w-full h-full object-cover rounded-[2px]" />
+                            <img src={member.imageUrl} alt={member.name} loading="lazy" decoding="async" width={36} height={36} className="w-full h-full object-cover rounded-[2px]" />
                           ) : (
                             <div className="w-full h-full bg-stone-900 border border-[#353534] flex items-center justify-center font-mono font-bold text-[10px] uppercase text-[#DC143C] rounded-[2px]">
                               {member.name.charAt(0)}

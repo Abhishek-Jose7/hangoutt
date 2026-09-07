@@ -125,7 +125,7 @@ export default function ProfilePage() {
               <CardContent className="pt-6 flex flex-col items-center">
                 <div className="h-20 w-20 rounded-full bg-[#DC143C]/10 border border-[#DC143C]/30 text-[#DC143C] flex items-center justify-center text-2xl font-campus font-bold overflow-hidden">
                   {user?.imageUrl ? (
-                    <img src={user.imageUrl} alt={name} className="w-full h-full object-cover" />
+                    <img src={user.imageUrl} alt={name} loading="lazy" decoding="async" width={80} height={80} className="w-full h-full object-cover" />
                   ) : (
                     name.split(' ').map((p) => p.charAt(0)).join('').toUpperCase() || 'U'
                   )}

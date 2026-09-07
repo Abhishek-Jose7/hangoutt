@@ -225,7 +225,8 @@ interface PlaceCandidate {
   id: string;
   name: string;
   category: string;
-  rating: number;
+  rating: number | null;
+  reviewCount?: number;
   lat: number;
   lng: number;
   estimatedCostPerHead: number;
@@ -264,9 +265,9 @@ const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; 
 function getFallbackImageUrl(category: string): string {
   const cat = (category ?? '').toUpperCase();
   if (['CAFE', 'RESTAURANT', 'DESSERT'].includes(cat)) {
-    return '/images/cafe_active.png';
+    return '/images/cafe_active.webp';
   }
-  return '/images/mumbai_map.png';
+  return '/images/mumbai_map.webp';
 }
 
 function isDisallowedItineraryImage(imageUrl?: string | null): boolean {
@@ -2991,17 +2992,25 @@ function scorePlaceCandidateRefactored(
     budgetMatch = Math.max(0.0, 1.0 - (place.estimatedCostPerHead - zoneLowestBudget) / 1000);
   }
 
-  let popularity = 0.0;
+  const ratingValue = place.rating == null ? null : Number(place.rating);
+  const ratingScore = ratingValue === null
+    ? 0.5
+    : Math.min(1.0, Math.max(0.0, ratingValue / 5.0));
+  const reviewCount = Math.max(0, Number(place.reviewCount ?? 0));
+  const reviewConfidence = reviewCount > 0
+    ? Math.min(1.0, Math.log10(reviewCount + 1) / 4.0)
+    : 0.25;
+  const sourcedQuality = ratingScore * (0.65 + 0.35 * reviewConfidence);
+  let popularity = sourcedQuality;
   if (metrics && metrics.timesGenerated > 0) {
-    popularity = metrics.timesWon / metrics.timesGenerated;
-  } else {
-    popularity = Math.min(1.0, Math.max(0.0, ((place.rating || 4.0) - 3.5) / 1.5));
+    const observedChoiceRate = Math.min(1.0, Math.max(0.0, metrics.timesWon / metrics.timesGenerated));
+    // Behaviour matters, but cannot erase strong sourced quality when a venue
+    // has sparse voting history.
+    popularity = observedChoiceRate * 0.60 + sourcedQuality * 0.40;
   }
 
   const dist = getHaversineDistance(avgMemberCoords, { lat: place.lat, lng: place.lng });
   const travelFairness = Math.max(0.0, 1.0 - dist / 15.0);
-
-  const ratingScore = Math.min(1.0, Math.max(0.0, (place.rating || 4.0) / 5.0));
 
   // Freshness: reduce weight to 2% because seed venues get heavily decay-penalized
   const firstSeenDate = place.firstSeen ? new Date(place.firstSeen).getTime() : Date.now() - 60 * 24 * 60 * 60 * 1000;
@@ -4167,7 +4176,8 @@ async function executePlanningEngine(
         id: p.id,
         name: p.name,
         category: p.category,
-        rating: p.rating || 4.0,
+        rating: p.rating ?? null,
+        reviewCount: p.reviewCount ?? 0,
         lat: p.lat,
         lng: p.lng,
         estimatedCostPerHead: p.mandatoryCost + p.optionalCostMin,

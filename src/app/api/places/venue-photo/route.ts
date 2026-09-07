@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const category = req.nextUrl.searchParams.get('category') || undefined;
   const maxWidth = req.nextUrl.searchParams.get('maxwidth') || '800';
 
-  const fallback = new URL('/images/mumbai_map.png', req.url);
+  const fallback = new URL('/images/mumbai_map.webp', req.url);
 
   if (!name) {
     return Response.redirect(fallback, 307);
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const resolved = await getVenueImageUrl(name, city, category);
-    if (!resolved || resolved === '/images/mumbai_map.png') {
+    if (!resolved || resolved === '/images/mumbai_map.webp') {
       return Response.redirect(fallback, 307);
     }
     // Keep older relative image URLs working without discovering new venues.

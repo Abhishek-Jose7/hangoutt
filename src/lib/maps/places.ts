@@ -1,7 +1,7 @@
 import 'server-only';
 import type { VenueCategory } from '../types/planner.types';
 
-const DEFAULT_FALLBACK = '/images/mumbai_map.png';
+const DEFAULT_FALLBACK = '/images/mumbai_map.webp';
 
 /**
  * Maps photo/search calls are intentionally disabled.

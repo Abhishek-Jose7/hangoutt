@@ -335,7 +335,7 @@ const CATEGORY_VENUES: Record<string, VenueSeed[]> = {
   ],
 };
 
-const CATEGORY_IMAGES = ['/images/cafe_active.png', '/images/cafe_2.png', '/images/cafe_1.png'];
+const CATEGORY_IMAGES = ['/images/cafe_active.webp', '/images/cafe_2.webp', '/images/cafe_1.webp'];
 
 const ALL_VENUE_PINS: VenuePin[] = Object.entries(CATEGORY_VENUES).flatMap(([category, venues]) =>
   venues.map((venue, index) => ({
@@ -738,7 +738,7 @@ export default function HomePage() {
               className="flex items-center gap-4 px-5 py-3.5 border border-stone-850 bg-stone-950/90 backdrop-blur-md text-left transition-all duration-300 cursor-pointer hover:border-[#00E5A0]/40 hover:bg-stone-900/90 opacity-85 hover:opacity-100 hover:scale-[1.02] rounded-[12px] w-full"
             >
               <div className="relative w-10 h-10 flex-shrink-0">
-                <img src={venue.image} alt={venue.name} className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]" />
+                <img src={venue.image} alt={venue.name} loading="lazy" decoding="async" width={40} height={40} className="w-full h-full rounded-full object-cover grayscale border-2 border-[#00E5A0]" />
                 <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-mono font-bold bg-[#18392B] text-[#00E5A0] border-2 border-[#00E5A0]">{venue.num}</span>
               </div>
               <div className="space-y-1 flex-1 min-w-0">
@@ -771,7 +771,7 @@ export default function HomePage() {
             <Card className="p-3 bg-stone-950/95 border border-stone-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col justify-between w-full sm:w-[380px] h-[140px] sm:h-[145px] backdrop-blur-md rounded-[12px] text-left">
               <div className="flex gap-3 items-start">
                 <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-[8px] overflow-hidden flex-shrink-0 border border-stone-800">
-                  <img src={activeVenue.image} alt={activeVenue.name} className="w-full h-full object-cover grayscale opacity-85" />
+                  <img src={activeVenue.image} alt={activeVenue.name} loading="lazy" decoding="async" width={64} height={64} className="w-full h-full object-cover grayscale opacity-85" />
                   <div className="absolute inset-0 bg-[#DC143C]/10 mix-blend-color" />
                 </div>
                 <div className="space-y-0.5 flex-1 min-w-0">

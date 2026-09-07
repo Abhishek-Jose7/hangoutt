@@ -454,6 +454,10 @@ export default function AdminPlacesPage() {
                               <img 
                                 src={place.imageUrl} 
                                 alt={place.name} 
+                                loading="lazy"
+                                decoding="async"
+                                width={32}
+                                height={32}
                                 className="h-8 w-8 object-cover rounded-[6px] border border-stone-855 bg-stone-900 flex-shrink-0"
                               />
                             ) : (

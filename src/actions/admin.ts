@@ -14,7 +14,7 @@ async function checkAdminAuth() {
 
 // Full admin catalogue changes rarely. Cache short-lived reads so refreshes
 // do not repeatedly scan every D1 place row.
-let adminPlacesCache: { value: ActionResponse<any[]>; expiresAt: number } | null = null;
+let adminPlacesCache: { value: ApiResponse<any[]>; expiresAt: number } | null = null;
 const ADMIN_PLACES_CACHE_MS = 30_000;
 function clearAdminPlacesCache() {
   adminPlacesCache = null;

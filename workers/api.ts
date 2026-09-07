@@ -37,6 +37,9 @@ function clearAdminPlacesMemoryCache() {
   adminPlacesMemoryCache = null;
 }
 
+const zonePlacesMemoryCache = new Map<string, { expiresAt: number; body: string }>();
+const ZONE_PLACES_MEMORY_CACHE_MS = 20_000;
+
 function mumbaiDateString(date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
@@ -2997,6 +3000,11 @@ async function handlePlacesByZone(request: Request, env: Env) {
     return json({ success: false, error: { code: 'VALIDATION', message: 'lat + lng required' } }, { status: 400, headers: corsHeaders(env) });
   }
   const r = typeof radiusKm === 'number' ? radiusKm : 6.0;
+  const cacheKey = `${lat.toFixed(4)}:${lng.toFixed(4)}:${r.toFixed(2)}`;
+  const cached = zonePlacesMemoryCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return new Response(cached.body, { headers: { ...JSON_HEADERS, ...corsHeaders(env) } });
+  }
   const latDiff = r / 111.0;
   const lngDiff = r / (111.0 * Math.cos(lat * Math.PI / 180));
 
@@ -3021,12 +3029,20 @@ async function handlePlacesByZone(request: Request, env: Env) {
        LEFT JOIN place_scores ps ON ps.place_id = p.id
        WHERE p.is_hidden = 0
          AND COALESCE(p.business_status, 'OPERATIONAL') = 'OPERATIONAL'
-         AND p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?`
+         AND p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
+       ORDER BY COALESCE(ps.overall, 0) DESC, COALESCE(p.review_count, 0) DESC
+       LIMIT 400`
     )
     .bind(lat - latDiff, lat + latDiff, lng - lngDiff, lng + lngDiff)
     .all<any>();
 
-  return json({ success: true, data: rs.results ?? [] }, { headers: corsHeaders(env) });
+  const body = JSON.stringify({ success: true, data: rs.results ?? [] });
+  zonePlacesMemoryCache.set(cacheKey, { body, expiresAt: Date.now() + ZONE_PLACES_MEMORY_CACHE_MS });
+  if (zonePlacesMemoryCache.size > 48) {
+    const oldestKey = zonePlacesMemoryCache.keys().next().value;
+    if (oldestKey) zonePlacesMemoryCache.delete(oldestKey);
+  }
+  return new Response(body, { headers: { ...JSON_HEADERS, ...corsHeaders(env) } });
 }
 
 async function handleZoneFallbacks(_request: Request, env: Env) {
