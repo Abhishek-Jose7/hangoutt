@@ -29,6 +29,27 @@ const JSON_HEADERS = {
   'Content-Type': 'application/json',
 };
 
+// Warm Worker isolates can serve the admin catalogue without another full D1
+// scan. Mutations invalidate this short-lived cache.
+let adminPlacesMemoryCache: { expiresAt: number; body: string } | null = null;
+const ADMIN_PLACES_MEMORY_CACHE_MS = 30_000;
+function clearAdminPlacesMemoryCache() {
+  adminPlacesMemoryCache = null;
+}
+
+function mumbaiDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
+}
+
 function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -1635,6 +1656,18 @@ function parseEventLocation(text: string) {
 }
 
 async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number, lng: number, radius: number, apiKey: string, onlyCategory?: string) {
+  // Venue discovery is sourced through web imports, not Maps. Keep legacy function
+  // signature for old callers, but fail closed before any external request.
+  void db;
+  void zoneName;
+  void lat;
+  void lng;
+  void radius;
+  void apiKey;
+  void onlyCategory;
+  return 0;
+
+  /* legacy Maps discovery retained below for migration compatibility only
   // Perturb the search coordinates slightly (within 40% of search radius) to discover different places on each periodic run
   const maxOffsetDegrees = (radius * 0.4) / 111000;
   const angle = Math.random() * 2 * Math.PI;
@@ -1864,7 +1897,7 @@ async function discoverZonePlaces(db: D1Database, zoneName: string, lat: number,
   }
 
   console.log(`[DISCOVERY] ${zoneName}${onlyCategory ? `/${onlyCategory}` : ''}: inserted=${discoveredCount}, existing=${skippedExisting}, weak=${skippedWeak}, low_quality=${skippedQuality}`);
-  return discoveredCount;
+  return discoveredCount; */
 }
 
 function simpleHash(str: string): string {
@@ -1912,63 +1945,9 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
     await db.prepare(`INSERT OR IGNORE INTO experience_categories (id, name) VALUES (?, ?)`).bind(cat, cat).run();
   }
 
-  const mockEvents = [
-    {
-      title: "Sanjay's Clay Pottery Masterclass",
-      description: "Learn traditional clay wheel pottery from master artisan Sanjay in a cozy Bandra studio.",
-      category: "POTTERY",
-      city: "Mumbai",
-      lat: 19.0500,
-      lng: 72.8300,
-      price: 1200,
-      url: "https://bookmyshow.com/mumbai/events/pottery-masterclass",
-      imageUrl: "https://images.unsplash.com/photo-1565192647048-f997ded87958?w=500"
-    },
-    {
-      title: "Canvas Painting Social",
-      description: "Unleash your creativity with guided painting, mocktails, and music in Andheri West.",
-      category: "PAINTING",
-      city: "Mumbai",
-      lat: 19.1329,
-      lng: 72.8147,
-      price: 900,
-      url: "https://bookmyshow.com/mumbai/events/painting-social",
-      imageUrl: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=500"
-    },
-    {
-      title: "Mumbai Standup Showcase",
-      description: "Catch Mumbai's funniest comics live at the Lower Parel comedy club.",
-      category: "STANDUP_COMEDY",
-      city: "Mumbai",
-      lat: 19.0034,
-      lng: 72.8276,
-      price: 499,
-      url: "https://bookmyshow.com/mumbai/events/standup-showcase",
-      imageUrl: "https://images.unsplash.com/photo-1585699324551-f6c309eed262?w=500"
-    },
-    {
-      title: "Art & Soul Exhibition",
-      description: "Exquisite contemporary art installations by local artists at the Worli Gallery.",
-      category: "ART_EXHIBITION",
-      city: "Mumbai",
-      lat: 19.0176,
-      lng: 72.8179,
-      price: 0,
-      url: "https://bookmyshow.com/mumbai/events/art-soul",
-      imageUrl: "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=500"
-    },
-    {
-      title: "Anime & Comic Fan Fest",
-      description: "Celebrate anime, cosplay, and gaming at the Vashi convention center.",
-      category: "ANIME_EVENT",
-      city: "Mumbai",
-      lat: 19.0745,
-      lng: 72.9978,
-      price: 350,
-      url: "https://bookmyshow.com/mumbai/events/anime-fest",
-      imageUrl: "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=500"
-    }
-  ];
+  // Live sources below populate verified events. Do not seed generic mock
+  // events with fabricated prices or booking links.
+  const mockEvents: any[] = [];
 
   let added = 0;
   const nowTime = new Date().toISOString();
@@ -2096,7 +2075,7 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND updated_at < ?`).bind(thirtyDaysAgo).run();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = mumbaiDateString();
     await db.prepare(`UPDATE experiences SET is_active = 0 WHERE is_active = 1 AND end_date < ?`).bind(todayStr).run();
   } catch (err) {
     console.error('Error inactivating events:', err);
@@ -2113,6 +2092,13 @@ async function discoverExperiences(db: D1Database, tavilyApiKey?: string) {
 }
 
 async function handleAdminDiscoverZone(request: Request, env: Env) {
+  void request;
+  return json({
+    success: false,
+    error: { code: 'WEB_CATALOG_ONLY', message: 'Venue discovery uses sourced web imports; Maps discovery is disabled.' },
+  }, { status: 410, headers: corsHeaders(env) });
+
+  /* legacy admin route retained for API compatibility
   const body = await readJson<{ zoneName: string }>(request);
   const zoneName = body.zoneName;
   if (!zoneName) {
@@ -2130,12 +2116,15 @@ async function handleAdminDiscoverZone(request: Request, env: Env) {
   }
 
   const count = await discoverZonePlaces(env.DB, zone.name, zone.lat, zone.lng, zone.radius, apiKey);
-  return json({ success: true, count }, { headers: corsHeaders(env) });
+  return json({ success: true, count }, { headers: corsHeaders(env) }); */
 }
 
 async function handleAdminDiscoverExperiences(request: Request, env: Env) {
-  const count = await discoverExperiences(env.DB, env.OLA_MAPS_API_KEY ? env.OLA_MAPS_API_KEY : undefined); // passes key if configured, or undefined
-  return json({ success: true, count }, { headers: corsHeaders(env) });
+  void request;
+  return json({
+    success: false,
+    error: { code: 'WEB_CATALOG_ONLY', message: 'Experiences require named, dated, source-backed imports; automated discovery is disabled.' },
+  }, { status: 410, headers: corsHeaders(env) });
 }
 
 async function handleAdminCuratePlace(request: Request, env: Env, placeId: string) {
@@ -2160,10 +2149,21 @@ async function handleAdminCuratePlace(request: Request, env: Env, placeId: strin
      WHERE id = ?`
   ).bind(isFeaturedVal, isHiddenVal, boostFactorVal, placeId).run();
 
+  clearAdminPlacesMemoryCache();
   return json({ success: true }, { headers: corsHeaders(env) });
 }
 
 async function getAdminPlacesWorker(request: Request, env: Env) {
+  void request;
+  if (adminPlacesMemoryCache && adminPlacesMemoryCache.expiresAt > Date.now()) {
+    return new Response(adminPlacesMemoryCache.body, {
+      headers: {
+        ...JSON_HEADERS,
+        ...corsHeaders(env),
+        'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+      },
+    });
+  }
   let zonesList: any[] = [];
   try {
     const zonesResult = await env.DB.prepare(`SELECT name, center_lat AS centerLat, center_lng AS centerLng FROM zones`).all<any>();
@@ -2185,17 +2185,23 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
   }
 
   const query = `
+    WITH category_rollup AS (
+      SELECT place_id, group_concat(category, ', ') AS categories
+      FROM place_categories
+      GROUP BY place_id
+    )
     SELECT 
       p.id, p.name, p.address, p.lat, p.lng, p.rating, p.review_count AS reviewCount, 
       p.is_featured AS isFeatured, p.is_hidden AS isHidden, p.boost_factor AS boostFactor,
       p.image_url AS imageUrl,
       c.mandatory_cost AS mandatoryCost, c.optional_cost_min AS optionalCostMin, c.optional_cost_max AS optionalCostMax,
       s.popularity, s.budget_friendliness AS budgetFriendliness, s.overall,
-      (SELECT group_concat(cat.category, ', ') FROM place_categories cat WHERE cat.place_id = p.id) AS categories
+      cr.categories
     FROM places p
     LEFT JOIN place_costs c ON c.place_id = p.id
     LEFT JOIN place_scores s ON s.place_id = p.id
-    ORDER BY p.name ASC
+    LEFT JOIN category_rollup cr ON cr.place_id = p.id
+    ORDER BY p.name COLLATE NOCASE ASC
   `;
   const result = await env.DB.prepare(query).all();
 
@@ -2222,7 +2228,15 @@ async function getAdminPlacesWorker(request: Request, env: Env) {
     };
   });
 
-  return json({ success: true, data }, { headers: corsHeaders(env) });
+  const body = JSON.stringify({ success: true, data });
+  adminPlacesMemoryCache = { body, expiresAt: Date.now() + ADMIN_PLACES_MEMORY_CACHE_MS };
+  return new Response(body, {
+    headers: {
+      ...JSON_HEADERS,
+      ...corsHeaders(env),
+      'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+    },
+  });
 }
 
 async function handleAddPlace(request: Request, env: Env) {
@@ -2292,6 +2306,7 @@ async function handleAddPlace(request: Request, env: Env) {
   }
 
   await env.DB.batch(statements);
+  clearAdminPlacesMemoryCache();
   return json({ success: true, id: placeId }, { headers: corsHeaders(env) });
 }
 
@@ -2390,6 +2405,7 @@ async function handleUpdatePlace(request: Request, env: Env, placeId: string) {
   }
 
   await env.DB.batch(statements);
+  clearAdminPlacesMemoryCache();
   return json({ success: true }, { headers: corsHeaders(env) });
 }
 
@@ -2408,6 +2424,7 @@ async function handleDeletePlace(request: Request, env: Env, placeId: string) {
   ];
 
   await env.DB.batch(statements);
+  clearAdminPlacesMemoryCache();
   return json({ success: true }, { headers: corsHeaders(env) });
 }
 
@@ -2460,25 +2477,11 @@ export default {
 
       if (url.pathname === '/api/admin/discover-zone' && request.method === 'POST') return handleAdminDiscoverZone(request, env);
       if (url.pathname === '/api/admin/trigger-cron' && request.method === 'POST') {
-        const cron = url.searchParams.get('cron') || '0 * * * *';
-        const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
-        if (!apiKey) {
-          return json({ error: 'API key not configured' }, { status: 500, headers: corsHeaders(env) });
-        }
-        if (cron === '0 * * * *') {
-          await consumeDiscoveryQueue(env.DB, apiKey, 10);
-        } else if (cron === '15 */3 * * *') {
-          await refreshStalePlaces(env.DB, apiKey, 25);
-          await computeZoneCoverage(env.DB);
-        } else if (cron === '0 2 * * *') {
-          await computeZoneCoverage(env.DB);
-          await seedDiscoveryQueue(env.DB);
-          await recomputePopularity(env.DB);
-          await runDedupePass(env.DB);
-          await discoverExperiences(env.DB);
-          await resetDailyBudget(env.DB);
-        }
-        return json({ success: true, triggered: cron }, { headers: corsHeaders(env) });
+        void url;
+        return json({
+          success: false,
+          error: { code: 'WEB_CATALOG_ONLY', message: 'Automated Maps discovery is disabled. Import source-backed catalog data instead.' },
+        }, { status: 410, headers: corsHeaders(env) });
       }
       if (url.pathname === '/api/admin/discover-experiences' && request.method === 'POST') return handleAdminDiscoverExperiences(request, env);
       if (url.pathname === '/api/admin/places' && request.method === 'GET') return getAdminPlacesWorker(request, env);
@@ -2540,33 +2543,15 @@ export default {
   },
 
   async scheduled(event: { cron: string }, env: Env, ctx: any) {
+    void ctx;
     console.log(`Scheduled worker triggered with cron: ${event.cron}`);
-    const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
-    if (!apiKey) {
-      console.error('GOOGLE_MAPS_API_KEY or OLA_MAPS_API_KEY is not set. Scheduled run aborted.');
-      return;
-    }
-
     const cron = event.cron;
 
-    // Hourly: consume discovery queue (demand-driven predictive discovery)
-    if (cron === '0 * * * *') {
-      await consumeDiscoveryQueue(env.DB, apiKey, 10);
-    }
-
-    // Every 3 hours: refresh stale places + recompute zone coverage
-    if (cron === '15 */3 * * *') {
-      await refreshStalePlaces(env.DB, apiKey, 25);
-      await computeZoneCoverage(env.DB);
-    }
-
-    // Nightly 2 AM: seed queue with deficit zones, recompute popularity, dedup pass
+    // Keep only catalog-safe maintenance. Venue/event growth comes from reviewed web imports.
     if (cron === '0 2 * * *') {
       await computeZoneCoverage(env.DB);
-      await seedDiscoveryQueue(env.DB);
       await recomputePopularity(env.DB);
       await runDedupePass(env.DB);
-      await discoverExperiences(env.DB);
       await resetDailyBudget(env.DB);
     }
   }
@@ -2575,7 +2560,7 @@ export default {
 // ─── Worker background functions ─────────────────────────────────────────────
 
 async function getApiBudgetRemaining(db: D1Database, source: string): Promise<number> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = mumbaiDateString();
   try {
     const row = await db
       .prepare(`SELECT calls_used, calls_limit FROM api_budget WHERE day_utc = ? AND source = ?`)
@@ -2588,7 +2573,7 @@ async function getApiBudgetRemaining(db: D1Database, source: string): Promise<nu
 }
 
 async function incrementApiBudget(db: D1Database, source: string): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = mumbaiDateString();
   const now = new Date().toISOString();
   const defaultLimit = source === 'predictive' ? 500 : source === 'maintenance' ? 200 : 300;
   try {
@@ -2603,7 +2588,7 @@ async function incrementApiBudget(db: D1Database, source: string): Promise<void>
 }
 
 async function resetDailyBudget(db: D1Database): Promise<void> {
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const yesterday = mumbaiDateString(new Date(Date.now() - 24 * 60 * 60 * 1000));
   try {
     await db.prepare(`DELETE FROM api_budget WHERE day_utc < ?`).bind(yesterday).run();
     console.log('[WORKER] Daily budget reset complete');
@@ -2787,6 +2772,14 @@ async function consumeDiscoveryQueue(db: D1Database, apiKey: string, maxItems: n
 }
 
 async function refreshStalePlaces(db: D1Database, apiKey: string, count: number): Promise<void> {
+  // Existing rows are refreshed through reviewed web imports. Never call a maps
+  // provider from scheduled or legacy maintenance paths.
+  void db;
+  void apiKey;
+  void count;
+  return;
+
+  /* legacy provider refresh retained below for migration reference only
   const remaining = await getApiBudgetRemaining(db, 'maintenance');
   if (remaining <= 0) return;
 
@@ -2850,7 +2843,7 @@ async function refreshStalePlaces(db: D1Database, apiKey: string, count: number)
     console.log(`[WORKER] Refreshed up to ${count} stale places`);
   } catch (e) {
     console.error('[WORKER] refreshStalePlaces failed:', e);
-  }
+  } */
 }
 
 async function recomputePopularity(db: D1Database): Promise<void> {
@@ -2858,12 +2851,17 @@ async function recomputePopularity(db: D1Database): Promise<void> {
     // Update popularity score from ranking_metrics using log-scaled formula
     await db.prepare(
       `UPDATE place_scores SET popularity = (
-         SELECT MIN(1.0, (
-           LOG(1 + rm.times_viewed) * 0.4 +
-           LOG(1 + rm.times_voted) * 0.3 +
-           LOG(1 + rm.times_won) * 0.3
-         ) / 3.0)
-         FROM ranking_metrics rm WHERE rm.place_id = place_scores.place_id
+         SELECT MAX(
+           COALESCE(p.rating / 5.0, 0.5),
+           MIN(1.0, (
+             LOG(1 + rm.times_viewed) * 0.4 +
+             LOG(1 + rm.times_voted) * 0.3 +
+             LOG(1 + rm.times_won) * 0.3
+           ) / 3.0)
+         )
+         FROM ranking_metrics rm
+         JOIN places p ON p.id = rm.place_id
+         WHERE rm.place_id = place_scores.place_id
        )
        WHERE place_id IN (SELECT place_id FROM ranking_metrics WHERE times_generated > 0)`
     ).run();
@@ -2895,16 +2893,6 @@ async function runDedupePass(db: D1Database): Promise<void> {
   }
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -2919,8 +2907,6 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
   try {
     const url = new URL(request.url);
     const ref = url.searchParams.get('ref');
-    const maxWidth = url.searchParams.get('maxwidth') || '300';
-
     if (!ref) {
       return json({ error: 'Missing photo reference ("ref")' }, { status: 400, headers: corsHeaders(env) });
     }
@@ -2984,48 +2970,9 @@ async function handlePlacePhotoWorker(request: Request, env: Env) {
       }
     };
 
-    // 2. Fetch from Google
-    const apiKey = env.GOOGLE_MAPS_API_KEY || env.OLA_MAPS_API_KEY || '';
-    if (!apiKey) {
-      return fallbackRedirect();
-    }
-
-    const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${ref}&key=${apiKey}`;
-
-    const redirectRes = await fetch(googleUrl, { redirect: 'manual' });
-    const redirectUrl = redirectRes.headers.get('location');
-
-    if (!redirectUrl) {
-      return fallbackRedirect();
-    }
-
-    const imageRes = await fetch(redirectUrl);
-    if (!imageRes.ok) {
-      return fallbackRedirect();
-    }
-
-    const imageBuffer = await imageRes.arrayBuffer();
-    const base64 = arrayBufferToBase64(imageBuffer);
-
-    // 3. Cache in DB (save to D1) — use exact match on image_url
-    try {
-      await env.DB.prepare(
-        `UPDATE places SET image_data = ? WHERE image_url = ?`
-      ).bind(base64, expectedImageUrl).run();
-      console.log(`[PHOTO CACHE] Cached image for ref ${ref.substring(0, 30)}...`);
-    } catch (err: any) {
-      console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
-    }
-
-    return new Response(imageBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': imageRes.headers.get('content-type') || 'image/jpeg',
-        'Cache-Control': 'public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400',
-        'Content-Length': String(imageBuffer.byteLength),
-        ...corsHeaders(env)
-      },
-    });
+    // Legacy Google photo references are no longer resolved. Fresh catalog
+    // rows carry direct sourced image URLs; old cached bytes still work above.
+    return fallbackRedirect();
   } catch (err: any) {
     console.error('[PHOTO PROXY ERROR]', err);
     return new Response(null, {
@@ -3061,6 +3008,8 @@ async function handlePlacesByZone(request: Request, env: Env) {
          pcost.mandatory_cost AS mandatoryCost, pcost.optional_cost_min AS optionalCostMin, pcost.optional_cost_max AS optionalCostMax,
          p.last_verified AS lastVerified, p.is_featured AS isFeatured, p.is_hidden AS isHidden,
          p.boost_factor AS boostFactor, p.first_seen AS firstSeen, p.image_url AS imageUrl,
+         p.source_url AS sourceUrl,
+         p.opening_hours_json AS openingHoursJson,
          ps.popularity, ps.budget_friendliness AS budgetFriendliness, ps.conversation,
          ps.group_suitability AS groupSuitability, ps.date_suitability AS dateSuitability,
          ps.friends_suitability AS friendsSuitability, ps.family_suitability AS familySuitability,
@@ -3094,6 +3043,9 @@ async function handleZoneFallbacks(_request: Request, env: Env) {
 }
 
 async function handleExperiencesRead(_request: Request, env: Env) {
+  const todayMumbai = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
   const rs = await env.DB.prepare(
     `SELECT e.id, e.title, e.description, e.category, e.city,
             e.latitude, e.longitude,
@@ -3107,8 +3059,11 @@ async function handleExperiencesRead(_request: Request, env: Env) {
             fe.id AS featuredId
      FROM experiences e
      LEFT JOIN featured_experiences fe ON fe.experience_id = e.id
-     WHERE e.city = 'Mumbai' AND e.is_active = 1`
-  ).all<any>();
+     WHERE e.city = 'Mumbai' AND e.is_active = 1
+       AND e.end_date >= ?
+       AND e.source_url LIKE 'http%'
+       AND e.source_url NOT LIKE '%example.com%'`
+  ).bind(todayMumbai).all<any>();
   return json({ success: true, data: rs.results ?? [] }, { headers: corsHeaders(env) });
 }
 

@@ -2,74 +2,58 @@
 
 import React, { useState } from 'react';
 import PageContainer from '@/components/shared/PageContainer';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { MapPin, Users, Coins, Sparkles, Loader2, Clock, Check, Bookmark, Navigation } from 'lucide-react';
-import { toast } from 'sonner';
 import { generateQuickPlanAction, saveQuickPlanAction } from '@/actions/quickPlan';
 import type { QuickPlanInput, QuickPlanMode } from '@/lib/services/quickPlan.service';
+import {
+  Bookmark,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Coins,
+  Compass,
+  Loader2,
+  MapPin,
+  Navigation,
+  Sparkles,
+  Users,
+  WalletCards,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
-const MODE_LABELS: Record<QuickPlanMode, { label: string; hint: string; placeholder: string }> = {
-  AREA: { label: 'Area', hint: 'A neighbourhood or locality', placeholder: 'e.g. Bandra' },
-  VENUE: { label: 'Specific place', hint: 'A place you must visit', placeholder: 'e.g. Prithvi Theatre' },
-  PIN: { label: 'Exact map location', hint: 'An address or landmark', placeholder: 'e.g. Carter Road Promenade' },
+const MODES: Record<QuickPlanMode, { label: string; hint: string; placeholder: string }> = {
+  AREA: { label: 'Neighbourhood', hint: 'Keep every stop in one local pocket.', placeholder: 'Bandra, Fort, Powai…' },
+  VENUE: { label: 'Must-visit place', hint: 'Build around one place you already picked.', placeholder: 'Prithvi Theatre, Jio World Garden…' },
+  PIN: { label: 'Landmark or address', hint: 'Start from a pin and fan out nearby.', placeholder: 'Carter Road Promenade…' },
 };
 
-const TAGS = ['food', 'date', 'chill', 'adventure', 'creative', 'culture', 'nightlife', 'shopping', 'outdoors'];
+const VIBES = [
+  ['food', 'Good food'], ['date', 'Date night'], ['chill', 'Slow & easy'],
+  ['adventure', 'Something active'], ['creative', 'Make something'], ['culture', 'Art & culture'],
+  ['comedy', 'Live comedy'], ['music', 'Live music'], ['nightlife', 'After dark'], ['outdoors', 'Outside'],
+];
 
-function formatDuration(min: number) {
-  const h = Math.floor((min || 0) / 60);
-  const m = (min || 0) % 60;
-  return `${h}H ${m}M`;
+function formatDuration(value: number) {
+  const hours = Math.floor((value || 0) / 60);
+  const minutes = (value || 0) % 60;
+  return hours ? `${hours}h ${minutes ? `${minutes}m` : ''}`.trim() : `${minutes}m`;
 }
 
-function directionsUrl(slot: any, zone?: string) {
-  if (slot.link) return slot.link;
-  const q = encodeURIComponent(`${slot.venueName || slot.name} ${zone || 'Mumbai'}`);
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+function mapsUrl(slot: any, zone: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${slot.venueName || slot.name}, ${zone}, Mumbai`)}`;
 }
 
-function QuickPlanSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-3 w-56 bg-stone-900/70" />
-        <Skeleton className="h-3 w-24 bg-stone-900/70" />
-      </div>
-      {[0, 1, 2].map((card) => (
-        <Card key={card} className="border border-stone-900/60 bg-stone-950/50 rounded-[12px] overflow-hidden">
-          <CardContent className="p-5 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-4 w-40 bg-stone-900/70" />
-                <Skeleton className="h-3 w-72 max-w-full bg-stone-900/70" />
-              </div>
-              <Skeleton className="h-5 w-24 bg-stone-900/70 rounded-full" />
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <Skeleton className="h-3 w-20 bg-stone-900/70" />
-              <Skeleton className="h-3 w-24 bg-stone-900/70" />
-              <Skeleton className="h-3 w-28 bg-stone-900/70" />
-            </div>
-            <div className="space-y-2">
-              {[0, 1, 2].map((slot) => (
-                <div key={slot} className="flex items-start gap-3 p-3 bg-stone-900/40 border border-stone-900 rounded-[6px]">
-                  <Skeleton className="h-5 w-5 rounded-[4px] bg-stone-800/80 shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-2.5 w-28 bg-stone-800/80" />
-                    <Skeleton className="h-3.5 w-48 max-w-full bg-stone-800/80" />
-                  </div>
-                  <Skeleton className="h-3 w-12 bg-stone-800/80 shrink-0" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
+function venueUrl(slot: any) {
+  return slot.sourceUrl || slot.link || null;
+}
+
+function formatMealType(slot: any) {
+  return slot.mealType
+    ? String(slot.mealType).replaceAll('_', ' ').toLowerCase()
+    : String(slot.category || 'stop').replaceAll('_', ' ').toLowerCase();
+}
+
+function PlanSkeleton() {
+  return <div className="space-y-4" aria-label="Loading plans">{[0, 1].map((item) => <div key={item} className="h-72 animate-pulse rounded-2xl bg-white/5" />)}</div>;
 }
 
 export default function QuickPlanPage() {
@@ -81,255 +65,83 @@ export default function QuickPlanPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [outingDate, setOutingDate] = useState('');
   const [outingTime, setOutingTime] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [areaName, setAreaName] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
+  const toggleTag = (tag: string) => setTags((current) => current.includes(tag)
+    ? current.filter((item) => item !== tag)
+    : [...current, tag]);
+
   const buildInput = (): QuickPlanInput => ({
-    mode,
-    location: location.trim(),
-    headcount,
-    budget,
-    perPerson,
-    tags,
-    outingDate: outingDate || undefined,
-    outingTime: outingTime || undefined,
+    mode, location: location.trim(), headcount, budget, perPerson, tags,
+    outingDate: outingDate || undefined, outingTime: outingTime || undefined,
   });
 
-  const toggleTag = (t: string) =>
-    setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
-
-  const handleGenerate = async () => {
-    if (!location.trim()) { toast.error('Enter a location.'); return; }
+  async function generate() {
+    if (!location.trim()) {
+      toast.error('Add a neighbourhood, landmark, or place first.');
+      return;
+    }
     setLoading(true);
     try {
-      const res = await generateQuickPlanAction(buildInput());
-      if (!res.success) {
-        toast.error(res.error?.message || 'Failed to generate itineraries');
+      const result = await generateQuickPlanAction(buildInput());
+      if (!result.success) {
+        toast.error(result.error?.message || 'Could not build plans.');
         return;
       }
-      setPlans(res.data.plans || []);
-      setAreaName(res.data.planningArea?.name || location);
+      setPlans(result.data.plans || []);
+      setAreaName(result.data.planningArea?.name || location);
       setSavedIds(new Set());
-      if (res.data.requiredVenueMatched === false) {
-        toast.info(`Couldn't find "${res.data.requiredVenueName}" in our catalog — built plans around that spot instead.`);
-      }
-      if ((res.data.plans || []).length === 0) {
-        toast.error('No itineraries could be built. Try a wider area or higher budget.');
-      }
-    } catch (_e) {
-      toast.error('An unexpected error occurred.');
+      if (result.data.requiredVenueMatched === false) toast.info('Could not match that place exactly. Plans still use its neighbourhood.');
+      if (!(result.data.plans || []).length) toast.error('No good-fit plans found. Try a wider area or more budget.');
+    } catch {
+      toast.error('Could not build plans. Try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleSave = async (plan: any) => {
+  async function save(plan: any) {
     setSavingId(plan.id);
     try {
-      const res = await saveQuickPlanAction(plan, buildInput());
-      if (!res.success) {
-        toast.error(res.error?.message || 'Failed to save');
+      const result = await saveQuickPlanAction(plan, buildInput());
+      if (!result.success) {
+        toast.error(result.error?.message || 'Could not save plan.');
         return;
       }
-      setSavedIds(prev => new Set(prev).add(plan.id));
-      toast.success('Saved to your history.');
-    } catch (_e) {
-      toast.error('An error occurred saving.');
+      setSavedIds((current) => new Set(current).add(plan.id));
+      toast.success('Saved to history.');
+    } catch {
+      toast.error('Could not save plan.');
     } finally {
       setSavingId(null);
     }
-  };
+  }
 
   return (
-    <PageContainer
-      title="Quick Plan"
-      subtitle="ONE LOCATION // INSTANT ITINERARIES — SAME ENGINE, NO GROUP SETUP"
-    >
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 font-mono">
-        {/* Form */}
-        <Card className="border border-stone-900 bg-stone-950/60 rounded-[12px] h-fit lg:sticky lg:top-4">
-          <CardContent className="p-5 space-y-6">
-            {/* Location mode */}
-            <div className="space-y-2.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-[#DC143C]">Where are you going?</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(MODE_LABELS) as QuickPlanMode[]).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={`px-2 py-2 rounded-[6px] border text-[9px] font-bold uppercase tracking-wider transition-all ${
-                      mode === m ? 'border-[#DC143C]/50 bg-[#DC143C]/10 text-white' : 'border-stone-800 bg-stone-950 text-neutral-400 hover:bg-stone-900'
-                    }`}
-                  >
-                    {MODE_LABELS[m].label}
-                  </button>
-                ))}
-              </div>
-              <input
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder={MODE_LABELS[mode].placeholder}
-                className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-3 py-2.5 text-xs text-white focus:border-[#DC143C] focus:outline-none"
-              />
-              <p className="text-[9px] text-neutral-500 font-sans">{MODE_LABELS[mode].hint}</p>
-            </div>
+    <PageContainer title="Make a plan" subtitle="One place to start. A full outing to follow.">
+      <div className="grid gap-7 lg:grid-cols-[minmax(300px,380px)_1fr]">
+        <section className="h-fit rounded-2xl border border-white/10 bg-[#131315] p-5 shadow-[0_8px_28px_rgba(0,0,0,0.28)] sm:p-6 lg:sticky lg:top-24">
+          <div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#DC143C]">Quick plan</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">What sounds good?</h2></div><div className="rounded-xl bg-[#DC143C]/10 p-2 text-[#DC143C]"><Compass size={20} /></div></div>
+          <div className="space-y-6">
+            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Start from</label><div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">{(Object.keys(MODES) as QuickPlanMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-lg px-2 py-2.5 text-[11px] font-semibold transition ${mode === item ? 'bg-[#DC143C]/15 text-[#ff6b7e] shadow-sm' : 'text-neutral-500 hover:text-white'}`}>{MODES[item].label}</button>)}</div><input value={location} onChange={(event) => setLocation(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && generate()} placeholder={MODES[mode].placeholder} className="mt-3 w-full rounded-xl border border-white/15 bg-transparent px-3.5 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-[#DC143C] focus:outline-none" /><p className="mt-2 text-xs text-neutral-500">{MODES[mode].hint}</p></div>
+            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Who is coming?</label><div className="flex items-center gap-3 rounded-xl border border-white/15 px-3.5 py-3"><Users size={17} className="text-[#DC143C]" /><input type="number" min={1} max={20} value={headcount} onChange={(event) => setHeadcount(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-full bg-transparent text-sm text-white focus:outline-none" /><span className="text-xs text-neutral-500">people</span></div></div>
+            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Your spend</label><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setPerPerson(true)} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${perPerson ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500'}`}>Per person</button><button type="button" onClick={() => setPerPerson(false)} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${!perPerson ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500'}`}>Total group</button></div><div className="relative mt-2"><WalletCards size={16} className="absolute left-3.5 top-3.5 text-[#DC143C]" /><input type="number" min={50} step={100} value={budget} onChange={(event) => setBudget(Math.max(50, Number(event.target.value) || 50))} className="w-full rounded-xl border border-white/15 bg-transparent py-3 pl-10 pr-3 text-sm text-white focus:border-[#DC143C] focus:outline-none" /><span className="absolute right-3.5 top-3 text-xs text-neutral-500">₹</span></div></div>
+            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Set the mood <span className="font-normal text-neutral-500">optional</span></label><div className="flex flex-wrap gap-2">{VIBES.map(([value, label]) => <button key={value} type="button" onClick={() => toggleTag(value)} className={`rounded-full border px-3 py-2 text-xs font-medium transition ${tags.includes(value) ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500 hover:border-white/30'}`}>{label}</button>)}</div></div>
+            <div className="grid grid-cols-2 gap-2"><label className="text-xs font-semibold text-neutral-500">Date<input type="date" value={outingDate} onChange={(event) => setOutingDate(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/15 bg-transparent px-3 py-2.5 text-xs font-normal text-white focus:outline-none" /></label><label className="text-xs font-semibold text-neutral-500">Start time<input type="time" value={outingTime} onChange={(event) => setOutingTime(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/15 bg-transparent px-3 py-2.5 text-xs font-normal text-white focus:outline-none" /></label></div>
+            <p className="-mt-3 text-[11px] leading-4 text-neutral-500">Leave date or time blank to use Mumbai local system time when generating.</p>
+            <button type="button" onClick={generate} disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#DC143C] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(220,20,60,0.22)] transition hover:-translate-y-0.5 hover:bg-[#B80F2E] active:translate-y-0 disabled:cursor-wait disabled:opacity-60">{loading ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}{loading ? 'Finding a good route…' : plans.length ? 'Try another mix' : 'Build my outing'}<ChevronRight size={16} /></button>
+          </div>
+        </section>
 
-            {/* People */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-300 flex items-center gap-1.5"><Users className="h-3 w-3 text-[#DC143C]" /> People</label>
-              <input
-                type="number" min={1} max={20} value={headcount}
-                onChange={e => setHeadcount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-3 py-2.5 text-xs text-white focus:border-[#DC143C] focus:outline-none"
-              />
-            </div>
-
-            {/* Budget */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-300 flex items-center gap-1.5"><Coins className="h-3 w-3 text-[#DC143C]" /> Budget (₹)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setPerPerson(true)}
-                  className={`px-2 py-2 rounded-[6px] border text-[9px] font-bold uppercase tracking-wider transition-all ${perPerson ? 'border-[#DC143C]/50 bg-[#DC143C]/10 text-white' : 'border-stone-800 bg-stone-950 text-neutral-400 hover:bg-stone-900'}`}
-                >Per person</button>
-                <button
-                  onClick={() => setPerPerson(false)}
-                  className={`px-2 py-2 rounded-[6px] border text-[9px] font-bold uppercase tracking-wider transition-all ${!perPerson ? 'border-[#DC143C]/50 bg-[#DC143C]/10 text-white' : 'border-stone-800 bg-stone-950 text-neutral-400 hover:bg-stone-900'}`}
-                >Total</button>
-              </div>
-              <input
-                type="number" min={50} step={100} value={budget}
-                onChange={e => setBudget(Math.max(50, parseInt(e.target.value) || 50))}
-                className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-3 py-2.5 text-xs text-white focus:border-[#DC143C] focus:outline-none"
-              />
-            </div>
-
-            {/* Tags */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-300">What are you looking for?</label>
-              <div className="flex flex-wrap gap-1.5">
-                {TAGS.map(t => (
-                  <button
-                    key={t}
-                    onClick={() => toggleTag(t)}
-                    className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-all ${
-                      tags.includes(t) ? 'border-[#DC143C]/50 bg-[#DC143C]/10 text-white' : 'border-stone-800 bg-stone-950 text-neutral-400 hover:bg-stone-900'
-                    }`}
-                  >{t}</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Optional date/time */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-500">Date</label>
-                <input type="date" value={outingDate} onChange={e => setOutingDate(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-2 py-2 text-[11px] text-white focus:border-[#DC143C] focus:outline-none" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-bold uppercase tracking-widest text-neutral-500">Time</label>
-                <input type="time" value={outingTime} onChange={e => setOutingTime(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-[8px] px-2 py-2 text-[11px] text-white focus:border-[#DC143C] focus:outline-none" />
-              </div>
-            </div>
-
-            <Button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="w-full bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-bold uppercase tracking-widest rounded-[8px] py-3 flex items-center justify-center gap-2"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {plans.length > 0 ? 'Generate Again' : 'Generate'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Results */}
-        <div className="space-y-4">
-          {loading && (<>
-            <QuickPlanSkeleton />
-            <div className="hidden flex-col items-center justify-center py-20 text-neutral-500">
-              <Loader2 className="h-8 w-8 animate-spin text-[#DC143C] mb-3" />
-              <p className="text-[10px] uppercase tracking-widest">Building itineraries in {location || 'your area'}…</p>
-            </div>
-          </>)}
-
-          {!loading && plans.length === 0 && (
-            <Card className="border border-stone-900 bg-stone-950/45 rounded-[12px] p-10 text-center">
-              <MapPin className="h-8 w-8 text-[#DC143C] mx-auto mb-4" />
-              <p className="text-xs font-mono uppercase tracking-widest text-neutral-400">
-                Pick a spot, set your budget and vibe, then generate. Every stop stays in that locality.
-              </p>
-            </Card>
-          )}
-
-          {!loading && plans.length > 0 && (
-            <>
-              <p className="text-[10px] uppercase tracking-widest text-neutral-500">
-                {plans.length} itineraries in <span className="text-white">{areaName}</span> · every stop stays here
-              </p>
-              {plans.map((plan) => (
-                <Card key={plan.id} className="border border-stone-900/60 bg-stone-950/50 rounded-[12px] overflow-hidden">
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">{plan.name}</h3>
-                        {plan.tagline && <p className="text-[11px] text-neutral-400 font-sans mt-0.5">{plan.tagline}</p>}
-                      </div>
-                      <Badge className="bg-stone-900 text-neutral-300 border border-stone-800 text-[9px] font-bold uppercase shrink-0">
-                        {(plan.budgetTier || '').replace('_', ' ')}
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-4 text-[10px] text-neutral-300">
-                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3 text-[#DC143C]" />{formatDuration(plan.totalDurationMinutes)}</span>
-                      <span className="inline-flex items-center gap-1"><Coins className="h-3 w-3 text-[#DC143C]" />₹{plan.totalEstimatedCostPerHead}/head</span>
-                      <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3 text-[#DC143C]" />{plan.meetupZone}</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {(plan.slots || []).sort((a: any, b: any) => a.slotOrder - b.slotOrder).map((slot: any, i: number) => (
-                        <div key={slot.id || i} className="flex items-start gap-3 p-3 bg-stone-900/40 border border-stone-900 rounded-[6px]">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-[4px] bg-[#DC143C]/10 text-[#DC143C] text-[10px] font-bold border border-[#DC143C]/20 shrink-0">{i + 1}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[9px] uppercase tracking-widest text-neutral-500">{slot.arrivalTime} · {slot.category}</p>
-                            <p className="text-xs font-bold text-white truncate">{slot.name}</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-[10px] text-neutral-300">₹{slot.estimatedCostPerHead}</span>
-                            <a href={directionsUrl(slot, plan.meetupZone)} target="_blank" rel="noreferrer" className="text-[9px] text-[#DC143C] uppercase tracking-widest inline-flex items-center gap-0.5">
-                              <Navigation className="h-2.5 w-2.5" />Map
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="p-4 border-t border-stone-900/60 bg-black/15 flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={() => handleSave(plan)}
-                      disabled={savingId === plan.id || savedIds.has(plan.id)}
-                      className={`text-[10px] font-bold uppercase tracking-widest rounded-[8px] py-2.5 px-4 flex items-center gap-1.5 ${
-                        savedIds.has(plan.id)
-                          ? 'bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0]'
-                          : 'bg-[#DC143C] hover:bg-[#B80F2E] text-white'
-                      }`}
-                    >
-                      {savingId === plan.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedIds.has(plan.id) ? <Check className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
-                      {savedIds.has(plan.id) ? 'Saved' : 'Save to History'}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </>
-          )}
-        </div>
+        <section aria-live="polite" className="min-w-0">
+          {loading && <PlanSkeleton />}
+          {!loading && !plans.length && <div className="flex min-h-[560px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#111316] px-8 text-center"><div className="mb-5 rounded-2xl bg-[#DC143C]/10 p-4 text-[#DC143C]"><MapPin size={27} /></div><h2 className="text-2xl font-semibold tracking-[-0.04em] text-white">Good plans start with one detail</h2><p className="mt-3 max-w-md text-sm leading-6 text-neutral-400">Choose a place, tell us who is coming, and we’ll line up a realistic mix of things to do, eat, and linger over.</p><div className="mt-7 grid w-full max-w-lg grid-cols-3 gap-2 text-left text-xs text-neutral-400"><div className="rounded-xl bg-white/5 p-3"><MapPin size={15} className="mb-2 text-[#DC143C]" />Stay local</div><div className="rounded-xl bg-white/5 p-3"><Coins size={15} className="mb-2 text-[#DC143C]" />Respect budget</div><div className="rounded-xl bg-white/5 p-3"><CalendarDays size={15} className="mb-2 text-[#DC143C]" />Fit the day</div></div></div>}
+          {!loading && plans.length > 0 && <><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#DC143C]">Made for {areaName}</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">Pick your kind of day</h2></div><p className="text-xs text-neutral-500">{plans.length} routes · stops kept nearby</p></div><div className="space-y-5">{plans.map((plan, planIndex) => <article key={plan.id} className="overflow-hidden rounded-2xl border border-white/10 bg-[#131315] shadow-[0_8px_28px_rgba(0,0,0,0.28)]"><div className="border-b border-white/10 px-5 py-5 sm:px-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="mb-2 flex items-center gap-2"><span className="rounded-md bg-[#DC143C]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ff6b7e]">Route {String(planIndex + 1).padStart(2, '0')}</span>{plan.budgetTier && <span className="text-xs text-neutral-500">{String(plan.budgetTier).replaceAll('_', ' ')}</span>}</div><h3 className="text-xl font-semibold tracking-[-0.03em] text-white">{plan.name}</h3>{plan.tagline && <p className="mt-1 max-w-xl text-sm text-neutral-400">{plan.tagline}</p>}</div><div className="flex gap-4 text-xs text-neutral-400"><span className="inline-flex items-center gap-1.5"><CalendarDays size={14} className="text-[#DC143C]" />{formatDuration(plan.totalDurationMinutes)}</span><span className="inline-flex items-center gap-1.5"><Coins size={14} className="text-[#DC143C]" />₹{plan.totalEstimatedCostPerHead}/head</span></div></div></div><div className="divide-y divide-white/10 px-5 sm:px-6">{(plan.slots || []).slice().sort((a: any, b: any) => (a.slotOrder ?? a.order ?? 0) - (b.slotOrder ?? b.order ?? 0)).map((slot: any, index: number) => <div key={slot.id || index} className="group flex items-start gap-3 py-4"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#DC143C]/10 text-xs font-bold text-[#ff6b7e]">{String(index + 1).padStart(2, '0')}</div><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-neutral-500">{slot.arrivalTime || 'Flexible'} · {formatMealType(slot)}</p><p className="mt-1 truncate text-base font-semibold text-white">{slot.name || slot.venueName}</p>{slot.note && <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-400">{slot.note}</p>}<p className="mt-1 text-xs text-neutral-500">₹{slot.estimatedCostPerHead || 0} per person</p></div><div className="mt-1 flex shrink-0 items-center gap-3"><a href={mapsUrl(slot, areaName)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#ff6b7e] opacity-80 transition group-hover:opacity-100">Directions <Navigation size={13} /></a>{venueUrl(slot) && <a href={venueUrl(slot)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-neutral-400 transition hover:text-white">Venue page</a>}</div></div>)}</div><div className="flex items-center justify-between gap-3 bg-[#111316] px-5 py-4 sm:px-6"><p className="text-xs text-neutral-500">Meals and breaks follow your start time.</p><button type="button" onClick={() => save(plan)} disabled={savingId === plan.id || savedIds.has(plan.id)} className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition ${savedIds.has(plan.id) ? 'bg-[#DC143C]/15 text-[#ff6b7e]' : 'bg-[#24272d] text-white hover:bg-[#30353d]'}`}>{savingId === plan.id ? <Loader2 size={14} className="animate-spin" /> : savedIds.has(plan.id) ? <Check size={14} /> : <Bookmark size={14} />}{savedIds.has(plan.id) ? 'Saved' : 'Save route'}</button></div></article>)}</div></>}
+        </section>
       </div>
     </PageContainer>
   );

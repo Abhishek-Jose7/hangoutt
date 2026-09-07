@@ -12,21 +12,59 @@ async function checkAdminAuth() {
   }
 }
 
+// Full admin catalogue changes rarely. Cache short-lived reads so refreshes
+// do not repeatedly scan every D1 place row.
+let adminPlacesCache: { value: ActionResponse<any[]>; expiresAt: number } | null = null;
+const ADMIN_PLACES_CACHE_MS = 30_000;
+function clearAdminPlacesCache() {
+  adminPlacesCache = null;
+}
+
 export async function getAdminPlaces(): ActionResponse<any[]> {
   try {
     await checkAdminAuth();
+    if (adminPlacesCache && adminPlacesCache.expiresAt > Date.now()) {
+      return adminPlacesCache.value;
+    }
     if (isHangoutApiConfigured()) {
       // Fetch from Cloudflare worker
       const res = await hangoutApi<ApiResponse<any[]>>('/api/admin/places');
+      if (res.success) adminPlacesCache = { value: res, expiresAt: Date.now() + ADMIN_PLACES_CACHE_MS };
       return res;
     }
 
     // Otherwise, fetch from local SQLite
     const { db } = await import('@/lib/db/client');
     const { places, placeCosts, placeScores, placeCategories, zones } = await import('@/lib/db/schema');
-    const { eq } = await import('drizzle-orm');
+    const { asc, eq } = await import('drizzle-orm');
 
-    const dbPlaces = await db.select().from(places);
+    // One joined read replaces the old 3-query-per-place loop. At 4k+ rows this
+    // removes thousands of SQLite round trips while preserving category labels.
+    const joinedPlaces = await db.select({
+      id: places.id,
+      name: places.name,
+      address: places.address,
+      lat: places.lat,
+      lng: places.lng,
+      rating: places.rating,
+      reviewCount: places.reviewCount,
+      isFeatured: places.isFeatured,
+      isHidden: places.isHidden,
+      boostFactor: places.boostFactor,
+      imageUrl: places.imageUrl,
+      mandatoryCost: placeCosts.mandatoryCost,
+      optionalCostMin: placeCosts.optionalCostMin,
+      optionalCostMax: placeCosts.optionalCostMax,
+      popularity: placeScores.popularity,
+      budgetFriendliness: placeScores.budgetFriendliness,
+      overall: placeScores.overall,
+      category: placeCategories.category,
+    })
+      .from(places)
+      .leftJoin(placeCosts, eq(placeCosts.placeId, places.id))
+      .leftJoin(placeScores, eq(placeScores.placeId, places.id))
+      .leftJoin(placeCategories, eq(placeCategories.placeId, places.id))
+      .orderBy(asc(places.name));
     const dbZones = await db.select().from(zones).catch(() => []);
 
     function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -41,46 +79,54 @@ export async function getAdminPlaces(): ActionResponse<any[]> {
       return R * c;
     }
     
-    // Fetch costs, scores, categories and join them in memory to keep it simple and correct
-    const results = await Promise.all(dbPlaces.map(async (p: any) => {
-      const costs = await db.select().from(placeCosts).where(eq(placeCosts.placeId, p.id)).limit(1);
-      const scores = await db.select().from(placeScores).where(eq(placeScores.placeId, p.id)).limit(1);
-      const cats = await db.select().from(placeCategories).where(eq(placeCategories.placeId, p.id));
-      
+    const byId = new Map<string, any>();
+    for (const row of joinedPlaces as any[]) {
+      const existing = byId.get(row.id);
+      if (existing) {
+        if (row.category) existing.categories.add(row.category);
+        continue;
+      }
       let zoneName = 'Mumbai';
       let minD = Infinity;
       for (const z of dbZones) {
-        const d = getDistance(p.lat, p.lng, z.centerLat, z.centerLng);
+        const d = getDistance(row.lat, row.lng, z.centerLat, z.centerLng);
         if (d < minD) {
           minD = d;
           zoneName = z.name;
         }
       }
 
-      return {
-        id: p.id,
-        name: p.name,
-        address: p.address,
-        lat: p.lat,
-        lng: p.lng,
-        rating: p.rating,
-        reviewCount: p.reviewCount,
-        isFeatured: p.isFeatured === 1 || p.isFeatured === true ? 1 : 0,
-        isHidden: p.isHidden === 1 || p.isHidden === true ? 1 : 0,
-        boostFactor: typeof p.boostFactor === 'number' ? p.boostFactor : 1.0,
-        imageUrl: p.imageUrl,
-        mandatoryCost: costs[0]?.mandatoryCost ?? 0,
-        optionalCostMin: costs[0]?.optionalCostMin ?? 0,
-        optionalCostMax: costs[0]?.optionalCostMax ?? 0,
-        popularity: scores[0]?.popularity ?? 0,
-        budgetFriendliness: scores[0]?.budgetFriendliness ?? 0,
-        overall: scores[0]?.overall ?? 0,
-        categories: cats.map((c: any) => rCategoryToVibe(c.category)).join(', '),
-        zoneName
-      };
+      byId.set(row.id, {
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        lat: row.lat,
+        lng: row.lng,
+        rating: row.rating,
+        reviewCount: row.reviewCount,
+        isFeatured: row.isFeatured === 1 || row.isFeatured === true ? 1 : 0,
+        isHidden: row.isHidden === 1 || row.isHidden === true ? 1 : 0,
+        boostFactor: typeof row.boostFactor === 'number' ? row.boostFactor : 1.0,
+        imageUrl: row.imageUrl,
+        mandatoryCost: row.mandatoryCost ?? 0,
+        optionalCostMin: row.optionalCostMin ?? 0,
+        optionalCostMax: row.optionalCostMax ?? 0,
+        popularity: row.popularity ?? 0,
+        budgetFriendliness: row.budgetFriendliness ?? 0,
+        overall: row.overall ?? 0,
+        categories: new Set(row.category ? [rCategoryToVibe(row.category)] : []),
+        zoneName,
+      });
+    }
+
+    const results = Array.from(byId.values()).map((row) => ({
+      ...row,
+      categories: Array.from(row.categories).join(', '),
     }));
 
-    return apiResponse.success(results);
+    const response = apiResponse.success(results);
+    adminPlacesCache = { value: response, expiresAt: Date.now() + ADMIN_PLACES_CACHE_MS };
+    return response;
   } catch (err) {
     return apiResponse.error(err);
   }
@@ -132,6 +178,7 @@ export async function curatePlaceAction(
       })
       .where(eq(places.id, placeId));
 
+    clearAdminPlacesCache();
     return apiResponse.success(undefined);
   } catch (err) {
     return apiResponse.error(err);
@@ -266,6 +313,7 @@ export async function addPlaceAction(data: any): ActionResponse<string> {
       }
     }
 
+    clearAdminPlacesCache();
     return apiResponse.success(placeId);
   } catch (err) {
     return apiResponse.error(err);
@@ -402,6 +450,7 @@ export async function updatePlaceAction(placeId: string, data: any): ActionRespo
       }
     }
 
+    clearAdminPlacesCache();
     return apiResponse.success(undefined);
   } catch (err) {
     return apiResponse.error(err);
@@ -433,9 +482,9 @@ export async function deletePlaceAction(placeId: string): ActionResponse<void> {
     await db.delete(rankingMetrics).where(eq(rankingMetrics.placeId, placeId));
     await db.delete(places).where(eq(places.id, placeId));
 
+    clearAdminPlacesCache();
     return apiResponse.success(undefined);
   } catch (err) {
     return apiResponse.error(err);
   }
 }
-

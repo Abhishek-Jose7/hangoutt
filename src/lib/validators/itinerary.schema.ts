@@ -16,6 +16,10 @@ const imageUrlSchema = z.string().refine(
   'Image URL must be absolute or app-relative.'
 );
 
+const mealTypeSchema = z.enum([
+  'BREAKFAST', 'BRUNCH', 'LUNCH', 'SNACKS', 'DINNER', 'LATE_NIGHT_BITE', 'DESSERT',
+]).nullable().optional();
+
 export const slotSchema = z.object({
   order: z.number().int().min(1).max(5),
   venueId: z.string().nullable().optional(),
@@ -23,6 +27,7 @@ export const slotSchema = z.object({
   name: z.string().min(1),
   category: categoryEnum,
   arrivalTime: z.string().min(1),
+  mealType: mealTypeSchema,
   durationMinutes: z.number().int().min(15).max(300),
   travelToNextMinutes: z.number().int().min(0).max(120).nullable(),
   estimatedCostPerHead: z.number().int().min(0),

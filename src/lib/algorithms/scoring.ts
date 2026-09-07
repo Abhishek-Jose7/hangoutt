@@ -56,7 +56,7 @@ export function rankVenues(
   minBudget: number,
   preferredCategories: string[]
 ): (Venue & { score: number })[] {
-  return venues
+  const ranked = venues
     .map(v => {
       const { finalScore } = scoreVenue(v, avgBudget, minBudget, preferredCategories);
       return {
@@ -65,6 +65,22 @@ export function rankVenues(
       };
     })
     .sort((a, b) => b.score - a.score);
+
+  // A good outing is a sequence, not six versions of same cafe. Preserve
+  // score quality while rotating categories through top of list. This keeps
+  // itinerary templates from repeating one venue type when catalog is dense.
+  const picked: typeof ranked = [];
+  const deferred: typeof ranked = [];
+  const categoryCounts = new Map<string, number>();
+  for (const venue of ranked) {
+    const count = categoryCounts.get(venue.category) ?? 0;
+    if (count >= 2 && picked.length < 8) deferred.push(venue);
+    else {
+      picked.push(venue);
+      categoryCounts.set(venue.category, count + 1);
+    }
+  }
+  return [...picked, ...deferred];
 }
 
 // 8-Factor Experience Scoring Engine

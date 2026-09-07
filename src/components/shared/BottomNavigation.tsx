@@ -37,7 +37,7 @@ export default function BottomNavigation() {
         activeColor="text-[#DC143C]"
         selectedIndex={selectedIndex !== -1 ? selectedIndex : null}
         onChange={handleSelect}
-        className="w-full justify-around bg-black/80 border border-stone-850/80 backdrop-blur-md px-2 py-1.5 shadow-xl rounded-2xl"
+        className="w-full justify-around bg-[#131315]/95 border border-white/10 backdrop-blur-md px-2 py-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.42)] rounded-2xl"
       />
     </nav>
   );

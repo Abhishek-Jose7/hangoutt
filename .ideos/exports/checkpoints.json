@@ -516,6 +516,30 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-07-31T13:32:26.216Z"
+    },
+    {
+      "id": "f98e3a2c-ca5e-48de-a5b5-a709d49b254d",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "intelligence",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"smoke_quickplan.ts\",\"src/lib/services/planner.service.ts\",\"src/lib/services/quickPlan.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-31T16:56:41.977Z"
+    },
+    {
+      "id": "181c7a19-edfa-451e-bc15-ef97941b4da6",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "fix(planner): remove invalid CATEGORY_VARIETY type check in filterValidCandidates",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/lib/services/planner.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-07-31T22:46:30.667Z"
     }
   ]
 }

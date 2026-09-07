@@ -4,10 +4,8 @@ import { getVenueImageUrl } from '@/lib/maps/places';
 export const dynamic = 'force-dynamic';
 
 /**
- * Resolves a venue name (+ optional city/category) to a real Google Places
- * photo and redirects to the internal /api/places/photo proxy, which streams
- * the actual image bytes. Used as a CSS background-image src for itinerary
- * plan cards so real venue imagery replaces stock placeholders.
+ * Compatibility endpoint for older cards. New catalog rows already carry
+ * direct, source-backed image URLs; unknown venue names use local fallback.
  */
 export async function GET(req: NextRequest) {
   const name = req.nextUrl.searchParams.get('name');
@@ -26,8 +24,7 @@ export async function GET(req: NextRequest) {
     if (!resolved || resolved === '/images/mumbai_map.png') {
       return Response.redirect(fallback, 307);
     }
-    // resolved is either a relative "/api/places/photo?ref=..." URL or absolute.
-    // Rewrite maxwidth so background usage gets a higher-quality asset.
+    // Keep older relative image URLs working without discovering new venues.
     let target = resolved;
     if (target.startsWith('/api/places/photo')) {
       const u = new URL(target, req.url);

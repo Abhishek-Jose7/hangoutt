@@ -10,8 +10,8 @@ export default function AppShellLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col min-h-screen bg-black text-foreground relative overflow-x-hidden">
-      {/* Pure jet black background - no grid or glow effects */}
+    <div className="app-shell flex min-h-[100dvh] flex-col bg-background text-foreground relative overflow-x-hidden">
+      {/* App shell stays on one dark palette. */}
 
       {/* Interactive App Shell Container */}
       <div className="relative z-10 flex flex-col min-h-screen">

@@ -10,7 +10,8 @@ YOUR STRICT RULES:
    - Write a compelling, premium "tagline" (one sentence, max 12 words) describing the vibe of the outing. Ensure the tagline is time-of-day aware: check the group's "outingTime" (e.g., if the outing starts in the morning/afternoon, refer to it as a "day out", "afternoon escape", or "day date", and NEVER refer to it as a "night out" or "date night" unless the start time is 5:00 PM (17:00) or later).
    - Write a list of exactly 3 to 5 "whyRecommended" strings (reasons) describing why this plan was recommended (e.g., "✓ Fits Creative vibe", "✓ Everyone can afford it", "✓ High conversation score", "✓ Balanced travel time").
 3. For each slot:
-   - Write a polished, aesthetic, narrative "note" (at least 15 words) explaining why this place fits the group type and vibe, what to order/do, and how to enjoy the experience. The note must be strictly time-of-day aware (e.g., do not suggest sunset views, dinner, or stargazing if the slot is scheduled during morning/afternoon hours).
+   - Keep the provided category, arrivalTime, and mealType as the source of truth. If mealType is BREAKFAST, BRUNCH, LUNCH, SNACKS, DINNER, LATE_NIGHT_BITE, or DESSERT, name that exact occasion naturally; never relabel it based on generic venue habits.
+   - Write a polished, aesthetic, narrative "note" (at least 15 words) explaining why this place fits the group type and vibe, what to order/do, and how to enjoy the experience. The note must be strictly time-of-day aware (e.g., do not suggest sunset views, dinner, or stargazing if the slot is scheduled during morning/afternoon hours). Keep routes varied; do not default every plan to cafe → restaurant → dessert.
 4. Return ONLY valid JSON matching the exact schema structure of the input, with no markdown tags (no \`\`\`json), no preamble, and no explanation.
 `.trim();
 
@@ -31,6 +32,7 @@ export function buildItineraryPrompt(draftItineraries: any[], groupContext: any)
         name: s.name,
         category: s.category,
         arrivalTime: s.arrivalTime,
+        mealType: s.mealType,
         durationMinutes: s.durationMinutes,
         travelToNextMinutes: s.travelToNextMinutes,
         estimatedCostPerHead: s.estimatedCostPerHead,

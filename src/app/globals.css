@@ -132,6 +132,25 @@
   }
 }
 
+.app-shell {
+  --app-ink: #f5f5f4;
+  --app-muted: #a3a3a3;
+  --app-line: rgba(255,255,255,.10);
+  --app-accent: #DC143C;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.022) 0.7px, transparent 0.7px);
+  background-size: 9px 9px;
+}
+
+.app-shell input,
+.app-shell button,
+.app-shell a { -webkit-tap-highlight-color: transparent; }
+
+.app-shell :focus-visible { outline: 3px solid rgba(198, 91, 61, .35); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
 .font-campus {
   font-family: var(--font-serif-campus);
 }

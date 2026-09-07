@@ -332,6 +332,7 @@ export const places = sqliteTable('places', {
   businessStatus: text('business_status').default('OPERATIONAL').notNull(),
   openingHoursJson: text('opening_hours_json'),
   phone: text('phone'),
+  sourceUrl: text('source_url'),
   imageUrl: text('image_url'),
   imageData: text('image_data'), // base64-encoded JPEG cached from Google Places
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),

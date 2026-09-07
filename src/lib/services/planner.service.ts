@@ -16,7 +16,7 @@ import { eq, sql, and, between } from 'drizzle-orm';
 import { InsufficientLocationsError, NotFoundError, ValidationError, ForbiddenError } from '../errors';
 import { ItineraryPromptContext, VenueCategory } from '../types/planner.types';
 import { validateStatusTransition } from './group.service';
-import { getVenueImageUrl, getVenueDetails, searchTextVenues, searchNearbyVenues } from '../maps/places';
+import { searchNearbyVenues } from '../maps/places';
 
 function calculateMumbaiTravelBreakdown(from: LatLng, to: LatLng, outingTime?: string | null) {
   let isPeakTraffic = false;
@@ -80,7 +80,52 @@ function calculateMumbaiTravelBreakdown(from: LatLng, to: LatLng, outingTime?: s
   };
 }
 
-export function isVenueOpenAtTime(category: string, outingTime?: string | null): boolean {
+function parseClockMinutes(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function openingHoursMatch(openingHoursJson: unknown, outingTime: string, outingDate?: string | null): boolean | null {
+  if (!openingHoursJson) return null;
+  try {
+    const metadata = typeof openingHoursJson === 'string' ? JSON.parse(openingHoursJson) : openingHoursJson;
+    const entries = Array.isArray((metadata as any)?.openingHours) ? (metadata as any).openingHours : [];
+    if (entries.length === 0) return null;
+
+    const weekday = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata', weekday: 'long',
+    }).format(outingDate ? new Date(`${outingDate}T12:00:00+05:30`) : new Date());
+    const todayEntries = entries.filter((entry: any) => {
+      const days = Array.isArray(entry?.dayOfWeek) ? entry.dayOfWeek : [entry?.dayOfWeek];
+      return days.some((day: unknown) => String(day ?? '').toLowerCase().includes(weekday.toLowerCase()));
+    });
+    if (todayEntries.length === 0) return null;
+
+    const minutes = parseClockMinutes(outingTime);
+    if (minutes === null) return null;
+    return todayEntries.some((entry: any) => {
+      const opens = parseClockMinutes(entry?.opens);
+      const closes = parseClockMinutes(entry?.closes);
+      if (opens === null || closes === null) return false;
+      if (opens === closes) return true;
+      return opens < closes ? minutes >= opens && minutes <= closes : minutes >= opens || minutes <= closes;
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function isVenueOpenAtTime(
+  category: string,
+  outingTime?: string | null,
+  openingHoursJson?: unknown,
+  outingDate?: string | null,
+): boolean {
   if (!outingTime) return true;
   let hour = 12.0;
   const match24 = outingTime.match(/^(\d{1,2}):(\d{2})$/);
@@ -97,6 +142,9 @@ export function isVenueOpenAtTime(category: string, outingTime?: string | null):
     }
   }
 
+  const sourcedHours = openingHoursMatch(openingHoursJson, outingTime, outingDate);
+  if (sourcedHours !== null) return sourcedHours;
+
   const cat = category.toUpperCase();
   if (cat === 'MUSEUM' || cat === 'ART_GALLERY' || cat === 'ART_EXHIBITION') {
     return hour >= 10.0 && hour <= 18.0; // 10 AM to 6 PM
@@ -110,17 +158,54 @@ export function isVenueOpenAtTime(category: string, outingTime?: string | null):
   if (cat === 'COMIC_CON' || cat === 'ANIME_EVENT') {
     return hour >= 10.0 && hour <= 20.0; // 10 AM to 8 PM
   }
+  if (cat === 'COMEDY') {
+    return hour >= 16.0 && hour <= 23.75;
+  }
+  if (cat === 'LIVE_MUSIC') {
+    return hour >= 17.0 && hour <= 23.75;
+  }
+  if (cat === 'CAFE') {
+    return hour >= 7.0 && hour <= 23.75;
+  }
+  if (cat === 'RESTAURANT') {
+    return hour >= 7.0 && hour <= 23.75;
+  }
+  if (cat === 'DESSERT') {
+    return hour >= 11.0 && hour <= 23.75;
+  }
   return true;
+}
+
+/** Mumbai-local defaults keep omitted outing fields useful instead of silently
+ * turning every request into a noon plan. Date/time inputs remain authoritative. */
+export function getDefaultMumbaiOutingTime(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = parts.find(p => p.type === 'hour')?.value ?? '12';
+  const minute = parts.find(p => p.type === 'minute')?.value ?? '00';
+  return `${hour}:${minute}`;
+}
+
+export function getDefaultMumbaiOutingDate(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find(p => p.type === 'year')?.value ?? '2026';
+  const month = parts.find(p => p.type === 'month')?.value ?? '01';
+  const day = parts.find(p => p.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
 }
 
 const CATEGORY_WEIGHTS: Record<string, Record<string, number>> = {
   DATE: {
     CAFE: 10, RESTAURANT: 10, DESSERT: 10, POTTERY: 9, MUSEUM: 8, ART_GALLERY: 8,
-    PARK: 8, MOVIE: 6, MALL: 6, ARCADE: 5, BOWLING: 5, ESCAPE_ROOM: 5, SPORTS: 5
+    PARK: 8, MOVIE: 6, MALL: 6, ARCADE: 5, BOWLING: 5, ESCAPE_ROOM: 5, SPORTS: 5,
+    COMEDY: 7, LIVE_MUSIC: 7
   },
   FRIENDS: {
     BOWLING: 10, ARCADE: 10, ESCAPE_ROOM: 9, SPORTS: 9, CAFE: 8, RESTAURANT: 8, DESSERT: 8,
-    MOVIE: 7, MALL: 7, POTTERY: 6, PARK: 5, MUSEUM: 5
+    MOVIE: 7, MALL: 7, POTTERY: 6, PARK: 5, MUSEUM: 5, COMEDY: 9, LIVE_MUSIC: 10
   },
   FAMILY: {
     MUSEUM: 10, PARK: 9, ARCADE: 8, RESTAURANT: 8, DESSERT: 8, CAFE: 7, BOWLING: 7, MALL: 7,
@@ -149,6 +234,7 @@ interface PlaceCandidate {
   isExperience?: boolean;
   sourceUrl?: string;
   imageUrl?: string;
+  openingHoursJson?: string | null;
   isFallback?: boolean;
   isZoneCurated?: boolean;
 }
@@ -290,15 +376,43 @@ export const isChain = (name: string): boolean => {
   return POPULAR_CHAINS.some(chain => lower.includes(chain));
 };
 
+/**
+ * Branch-aware names must still be unique inside one itinerary. Source feeds
+ * often contain both a generic Google branch label and a venue-specific
+ * listing such as "1 BHK - Brew House Kitchen".
+ */
+function venueBrandKey(name: string, address = ''): string {
+  let key = String(name || '').toLowerCase().replace(/&/g, ' and ');
+  key = key.replace(/\s*[-|/]\s*.*/g, '');
+  key = key.replace(/\s*,\s*.*/g, '');
+  key = key.replace(/\b(the|bar|brew|house|kitchen|restaurant|cafe|cafÃ©|mumbai|vashi|goregaon|andheri)\b/g, ' ');
+  key = key.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!key) key = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // Preserve a little location context for unrelated venues with the same
+  // short name, while normalising known branch labels.
+  if (key === '1bhk' || key === '1 bhk') return '1bhk';
+  const locality = String(address || '').toLowerCase().match(/\b(vashi|goregaon|bandra|andheri|thane|bhandup|powai)\b/);
+  return locality ? `${key}|${locality[1]}` : key;
+}
+
 const SELECTABLE_PLACE_CATEGORIES = new Set([
   'CAFE', 'RESTAURANT', 'ARCADE', 'PARK', 'ESCAPE_ROOM', 'DESSERT',
   'BOWLING', 'MUSEUM', 'ART_GALLERY', 'MALL', 'MOVIE', 'SPORTS',
-  'POTTERY', 'WORKSHOP', 'PAINTING'
+  'POTTERY', 'WORKSHOP', 'PAINTING', 'COMEDY', 'LIVE_MUSIC'
 ]);
 
 const ROLE_ONLY_PLACE_CATEGORIES = new Set([
   'FOOD_STOP', 'PRIMARY_EXPERIENCE', 'OPTIONAL_STOP'
 ]);
+
+function plannerCategoryForExperience(category: string): string {
+  const normalized = String(category || '').toUpperCase();
+  if (normalized === 'STANDUP_COMEDY' || normalized === 'COMEDY_SHOW') return 'COMEDY';
+  if (normalized === 'CONCERT' || normalized === 'MUSIC_SHOW') return 'LIVE_MUSIC';
+  if (normalized === 'EXHIBITION' || normalized === 'ART_EXHIBITION') return 'ART_GALLERY';
+  return normalized;
+}
 
 const STRONG_HANGOUT_NAME_PATTERNS = [
   'social', 'cafe', 'cafÃ©', 'coffee', 'bistro', 'bakery', 'patisserie',
@@ -309,7 +423,9 @@ const STRONG_HANGOUT_NAME_PATTERNS = [
   'museum', 'gallery', 'art', 'studio', 'pottery', 'workshop',
   'promenade', 'beach', 'lake', 'garden', 'fort', 'national park',
   'nature park', 'waterfront', 'viewpoint', 'cinema', 'pvr', 'inox',
-  'cinepolis', 'theatre', 'mall'
+  'cinepolis', 'theatre', 'mall', 'cat cafe', 'leaping windows', 'bastian',
+  'ammakai', 'coffee house', 'drawing room', 'habitat', 'antisocial',
+  'anti-social', 'live music', 'comedy', 'nmacc'
 ];
 
 const WEAK_OR_NON_HANGOUT_PATTERNS = [
@@ -340,6 +456,15 @@ const GENERIC_WEAK_FOOD_PATTERNS = [
   'family restaurant', 'veg restaurant', 'pure veg', 'hotel ', 'fast food',
   'snacks corner', 'sweets', 'caterers', 'biryani', 'chinese foods',
   'juice centre', 'cold drinks', 'tea stall', 'dhaba', 'mess'
+];
+
+// Food availability alone is not hangout intent. Keep roadside, takeaway,
+// and family-dining pins out of default plans; users can still find them in
+// the admin catalogue or through an explicit food-only workflow.
+const NON_HANGOUT_FOOD_PATTERNS = [
+  'dhaba', 'family restaurant', 'fast food', 'food centre', 'food center',
+  'juice centre', 'juice center', 'snacks corner', 'roadside', 'takeaway only',
+  'food court stall', 'mess ',
 ];
 
 const LOW_INTENT_CHAIN_PATTERNS = [
@@ -421,6 +546,10 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   // Hard reject: low-intent chains no matter what.
   if (hasAnyPattern(normalized, LOW_INTENT_CHAIN_PATTERNS)) return false;
 
+  // A high review count must not turn a dhaba or fast-food counter into a
+  // social destination by accident.
+  if (hasAnyPattern(normalized, NON_HANGOUT_FOOD_PATTERNS)) return false;
+
   // Hard reject: name-level markers that CANNOT be rescued by any strong
   // signal — hotels, guest houses, lodges, residences. This is stricter than
   // WEAK_OR_NON_HANGOUT_PATTERNS which lets 'the art' in "Dragonfly Hotel -
@@ -498,6 +627,12 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
     const isSportEntertainment = hasAnyPattern(nameLower, ['smaaash', 'trampoline', 'karting', 'go karting', 'sky jumper', 'zorbing', 'paintball', 'laser tag']);
     if (!isSportEntertainment && !strongSignal) return false;
     return strongSignal || isSportEntertainment || strongRated;
+  }
+
+  if (category === 'COMEDY' || category === 'LIVE_MUSIC') {
+    // Event-led venues have sparse rating data and should be judged by their
+    // recognisable programme/venue signal, not rejected as generic pins.
+    return strongSignal || highlyReviewed || strongRated;
   }
 
   // Allow strong-in-addr to help ONLY when the venue is also well reviewed —
@@ -628,7 +763,7 @@ const CULTURE_CATS = new Set(['MUSEUM', 'ART_GALLERY']);
 
 function familyOfLead(cat: string): ArchetypeFamily {
   const c = (cat || '').toUpperCase();
-  if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'].includes(c)) return 'ACTIVITY_FIRST';
+  if (['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'COMEDY', 'LIVE_MUSIC'].includes(c)) return 'ACTIVITY_FIRST';
   if (c === 'MOVIE') return 'ENTERTAINMENT_FIRST';
   if (['MUSEUM', 'ART_GALLERY'].includes(c)) return 'CULTURE_FIRST';
   if (c === 'PARK') return 'SCENIC_FIRST';
@@ -1372,8 +1507,9 @@ function resolveRoleToCategories(role: SlotRole, ctx: PlanningContext): string[]
       // ART_GALLERY intentionally excluded — that's CULTURE_STOP's territory.
       return ['POTTERY', 'WORKSHOP', 'PAINTING'];
     case 'ENERGETIC_ACTIVITY':
-      // BOWLING / ESCAPE_ROOM thin — include SPORTS + ARCADE fallbacks.
-      return ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS'];
+      // BOWLING / ESCAPE_ROOM thin — include sports, comedy, and live music
+      // so plans can feel like a real night out instead of chain defaults.
+      return ['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'COMEDY', 'LIVE_MUSIC'];
     case 'SHOPPING_STROLL':
       return ['MALL'];
     case 'MOVIE_STOP':
@@ -1596,7 +1732,7 @@ export function debugPickArchetypes(ctx: PlanningContext, count = 4) {
 const OVERLAY_ACTIVITY_CATS = new Set([
   'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MUSEUM', 'SPORTS',
   'POTTERY', 'PAINTING', 'WORKSHOP', 'MOVIE', 'ART_GALLERY',
-  'MALL', 'PARK'
+  'MALL', 'PARK', 'COMEDY', 'LIVE_MUSIC'
 ]);
 
 /**
@@ -1618,7 +1754,7 @@ const SPECIALIZED_SLOT_CATEGORIES = new Set([
   'POTTERY', 'WORKSHOP', 'PAINTING',        // creative hands
   'MUSEUM', 'ART_GALLERY', 'ART_EXHIBITION', // culture stop
   'PARK',                                     // scenic stroll
-  'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', // energetic activity
+  'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'COMEDY', 'LIVE_MUSIC', // energetic activity
   'MALL',                                     // shopping stroll
   'MOVIE',                                    // movie stop
 ]);
@@ -1733,12 +1869,41 @@ export function generateWhyRecommended(plan: any, groupData: any): string[] {
 }
 
 
-function getSlotDescription(slotName: string, category: string, zoneName: string): string {
+export type MealType = 'BREAKFAST' | 'BRUNCH' | 'LUNCH' | 'SNACKS' | 'DINNER' | 'LATE_NIGHT_BITE' | 'DESSERT' | null;
+
+export function getMealTypeForSlot(category: string, arrivalTime?: string | null): MealType {
   const cat = category.toUpperCase();
+  if (cat === 'DESSERT') return 'DESSERT';
+  if (!['CAFE', 'RESTAURANT'].includes(cat)) return null;
+  const hour = parseOutingHour(arrivalTime);
+  if (hour < 10) return 'BREAKFAST';
+  if (hour < 12) return 'BRUNCH';
+  if (hour < 16) return cat === 'CAFE' ? 'SNACKS' : 'LUNCH';
+  if (hour < 22) return cat === 'CAFE' ? 'SNACKS' : 'DINNER';
+  return 'LATE_NIGHT_BITE';
+}
+
+function getMealCopy(mealType: MealType): string {
+  switch (mealType) {
+    case 'BREAKFAST': return 'Start with breakfast';
+    case 'BRUNCH': return 'Ease into brunch';
+    case 'LUNCH': return 'Stop for lunch';
+    case 'SNACKS': return 'Take a snack break';
+    case 'DINNER': return 'Settle in for dinner';
+    case 'LATE_NIGHT_BITE': return 'Grab a late-night bite';
+    case 'DESSERT': return 'Finish with something sweet';
+    default: return '';
+  }
+}
+
+function getSlotDescription(slotName: string, category: string, zoneName: string, arrivalTime?: string | null): string {
+  const cat = category.toUpperCase();
+  const mealType = getMealTypeForSlot(cat, arrivalTime);
+  const mealCopy = getMealCopy(mealType);
   const descriptions: Record<string, string> = {
-    'CAFE': `Grab some coffee at ${slotName}, check out the menu, and chat while everyone gathers.`,
-    'RESTAURANT': `Recharge at ${slotName} and share stories over delicious dishes together.`,
-    'PARK': `Catch the evening breeze at ${slotName}, walk around, and take group photos.`,
+    'CAFE': `${mealCopy} at ${slotName}; order something easy to share and leave time for a proper catch-up.`,
+    'RESTAURANT': `${mealCopy} at ${slotName}; share a few plates so the group can actually try the menu.`,
+    'PARK': `Take a slower walk through ${slotName}, with room for photos, people-watching, and a reset between stops.`,
     'MALL': `Window shop at ${slotName}, cool off in the AC, and explore group hangouts.`,
     'DESSERT': `Grab milkshakes, ice cream, or waffles at ${slotName} for a great final chat.`,
     'ARCADE': `Unleash your competitive streak at ${slotName} with simulator games and group challenges.`,
@@ -1749,8 +1914,11 @@ function getSlotDescription(slotName: string, category: string, zoneName: string
     'MOVIE': `Catch a movie at ${slotName} with the group.`,
     'POTTERY': `Get creative at ${slotName} with a hands-on pottery session.`,
     'WORKSHOP': `Learn something new at ${slotName} with a fun group workshop.`,
+    'PAINTING': `Make something worth taking home at ${slotName} in a guided painting session.`,
+    'COMEDY': `Catch a live comedy set at ${slotName}; arrive early enough to settle in before the show.`,
+    'LIVE_MUSIC': `Hear a live set at ${slotName}; keep the rest of the night loose around the music.`,
   };
-  return descriptions[cat] || `Meet up at ${slotName} in ${zoneName} to hang out with the group.`;
+  return descriptions[cat] || `Meet up at ${slotName} in ${zoneName} and keep the pace easy for everyone.`;
 }
 
 export async function buildFallbackItineraryDataForEval(
@@ -1775,6 +1943,8 @@ function getDurationForCategory(category: string): number {
   if (cat === 'ARCADE' || cat === 'BOWLING') return 120;
   if (cat === 'ESCAPE_ROOM') return 90;
   if (cat === 'MUSEUM') return 120;
+  if (cat === 'COMEDY') return 105;
+  if (cat === 'LIVE_MUSIC') return 135;
   if (cat === 'SPORTS' || cat === 'POTTERY' || cat === 'WORKSHOP') return 120;
   return 90;
 }
@@ -1791,6 +1961,11 @@ async function buildFallbackItineraryData(
   globalUsedPlaceIds?: Set<string>,
   options: string[] = []
 ) {
+  groupData = {
+    ...groupData,
+    outingDate: groupData?.outingDate || getDefaultMumbaiOutingDate(),
+    outingTime: groupData?.outingTime || getDefaultMumbaiOutingTime(),
+  };
   const budgetTiers = ['TRAVEL_FRIENDLY', 'BUDGET_FRIENDLY', 'BALANCED', 'EXPERIENCE_FIRST'] as const;
   const budgetTier = budgetTiers[(planIndex - 1) % 4];
 
@@ -1850,6 +2025,8 @@ async function buildFallbackItineraryData(
         lat: places.lat,
         lng: places.lng,
         imageUrl: places.imageUrl,
+        sourceUrl: places.sourceUrl,
+        openingHoursJson: places.openingHoursJson,
         address: places.address,
         mandatoryCost: placeCosts.mandatoryCost,
         optionalCostMin: placeCosts.optionalCostMin,
@@ -1883,7 +2060,9 @@ async function buildFallbackItineraryData(
       mandatoryCost: p.mandatoryCost,
       optionalCostMin: p.optionalCostMin,
       optionalCostMax: p.optionalCostMax,
-      imageUrl: p.imageUrl || null
+      imageUrl: p.imageUrl || null,
+      sourceUrl: p.sourceUrl || null
+      ,openingHoursJson: p.openingHoursJson || null
     }))
     .filter((c: any) => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
     .filter((c: any) => isHangoutWorthyCandidate(c));
@@ -1914,6 +2093,8 @@ async function buildFallbackItineraryData(
           lat: places.lat,
           lng: places.lng,
           imageUrl: places.imageUrl,
+          sourceUrl: places.sourceUrl,
+          openingHoursJson: places.openingHoursJson,
           address: places.address,
           mandatoryCost: placeCosts.mandatoryCost,
           optionalCostMin: placeCosts.optionalCostMin,
@@ -1946,7 +2127,9 @@ async function buildFallbackItineraryData(
         mandatoryCost: p.mandatoryCost,
         optionalCostMin: p.optionalCostMin,
         optionalCostMax: p.optionalCostMax,
-        imageUrl: p.imageUrl || null
+        imageUrl: p.imageUrl || null,
+        sourceUrl: p.sourceUrl || null
+        ,openingHoursJson: p.openingHoursJson || null
       }))
       .filter((c: any) => hasMoviePreference || c.category.toUpperCase() !== 'MOVIE')
       .filter((c: any) => isHangoutWorthyCandidate(c));
@@ -1987,7 +2170,17 @@ async function buildFallbackItineraryData(
 
   function pickAffordableSlots(): PlaceCandidate[] {
     const used = new Set<string>();
+    const usedBrands = new Set<string>();
     const picks: PlaceCandidate[] = [];
+    const baseOutingTime = groupData.outingTime || getDefaultMumbaiOutingTime();
+
+    const projectedArrivalTime = () => {
+      let time = baseOutingTime;
+      for (const picked of picks) {
+        time = addMinutesToTimeString(time, getDurationForCategory(picked.category) + 15);
+      }
+      return time;
+    };
 
     let requiredCats: string[] = [];
     let maxCosts: number[] = [Infinity, Infinity, Infinity];
@@ -2036,8 +2229,9 @@ async function buildFallbackItineraryData(
         c.category.toUpperCase() === cat &&
         !used.has(c.id) &&
         !globalUsed.has(c.id) &&
+        !usedBrands.has(venueBrandKey(c.name, c.address)) &&
         c.estimatedCostPerHead <= maxC &&
-        isVenueOpenAtTime(c.category, groupData.outingTime)
+        isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
       );
       
       let candidate: PlaceCandidate | undefined = matchingCandidates[Math.floor(Math.random() * Math.min(3, matchingCandidates.length))];
@@ -2047,7 +2241,8 @@ async function buildFallbackItineraryData(
           c.category.toUpperCase() === cat &&
           !used.has(c.id) &&
           !globalUsed.has(c.id) &&
-          isVenueOpenAtTime(c.category, groupData.outingTime)
+          !usedBrands.has(venueBrandKey(c.name, c.address)) &&
+          isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
         );
         if (relaxedMatches.length > 0) {
           candidate = relaxedMatches[Math.floor(Math.random() * Math.min(3, relaxedMatches.length))];
@@ -2058,8 +2253,9 @@ async function buildFallbackItineraryData(
         const anyCatMatches = candidates.filter((c: any) =>
           !used.has(c.id) &&
           !globalUsed.has(c.id) &&
+          !usedBrands.has(venueBrandKey(c.name, c.address)) &&
           c.estimatedCostPerHead <= maxC &&
-          isVenueOpenAtTime(c.category, groupData.outingTime)
+          isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
         );
         if (anyCatMatches.length > 0) {
           candidate = anyCatMatches[Math.floor(Math.random() * Math.min(3, anyCatMatches.length))];
@@ -2069,21 +2265,30 @@ async function buildFallbackItineraryData(
       if (candidate) {
         picks.push(candidate);
         used.add(candidate.id);
+        usedBrands.add(venueBrandKey(candidate.name, candidate.address));
         globalUsed.add(candidate.id);
       }
     }
 
     while (picks.length < 3) {
-      const pad = candidates.find((c: any) => !used.has(c.id) && !globalUsed.has(c.id));
+      const pad = candidates.find((c: any) =>
+        !used.has(c.id) && !globalUsed.has(c.id) &&
+        !usedBrands.has(venueBrandKey(c.name, c.address)) &&
+        isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
+      );
       if (pad) {
         picks.push(pad);
         used.add(pad.id);
+        usedBrands.add(venueBrandKey(pad.name, pad.address));
         globalUsed.add(pad.id);
       } else {
-        const padRelaxed = candidates.find((c: any) => !used.has(c.id));
+        const padRelaxed = candidates.find((c: any) =>
+          !used.has(c.id) && !usedBrands.has(venueBrandKey(c.name, c.address))
+        );
         if (padRelaxed) {
           picks.push(padRelaxed);
           used.add(padRelaxed.id);
+          usedBrands.add(venueBrandKey(padRelaxed.name, padRelaxed.address));
         } else {
           break;
         }
@@ -2148,6 +2353,7 @@ async function buildFallbackItineraryData(
       name: place.name,
       category: place.category,
       arrivalTime,
+      mealType: getMealTypeForSlot(place.category, arrivalTime),
       durationMinutes: duration,
       travelToNextMinutes: slotIdx === 2 ? null : 15,
       // Show what the user WILL spend on average (mandatory + typical
@@ -2159,7 +2365,7 @@ async function buildFallbackItineraryData(
       optionalCostMax,
       imageUrl: isDisallowedItineraryImage(place.imageUrl) ? getFallbackImageUrl(place.category) : place.imageUrl,
       link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`,
-      note: getSlotDescription(place.name, place.category, activeZoneObj.name),
+      note: getSlotDescription(place.name, place.category, activeZoneObj.name, arrivalTime),
       lat: place.lat,
       lng: place.lng,
       address: place.address || ''
@@ -2184,6 +2390,8 @@ async function buildFallbackItineraryData(
       trainMin: hop.trainTime,
     };
     next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + hop.totalTime);
+    next.mealType = getMealTypeForSlot(next.category, next.arrivalTime);
+    next.note = getSlotDescription(next.name, next.category, activeZoneObj.name, next.arrivalTime);
   }
 
   const memberTravelsForPlan: any[] = [];
@@ -2988,7 +3196,7 @@ const ANCHOR_CATEGORIES = new Set([
   'MUSEUM', 'ART_GALLERY', 'PARK',
   'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS',
   'POTTERY', 'WORKSHOP', 'PAINTING',
-  'MALL', 'MOVIE',
+  'MALL', 'MOVIE', 'COMEDY', 'LIVE_MUSIC',
   'RESTAURANT', 'CAFE',
 ]);
 const SUPPORTING_CATEGORIES = new Set(['DESSERT']);
@@ -3066,14 +3274,21 @@ function planHasRequiredPreferences(plan: any, requiredPrefs: string[]): boolean
 function planOpeningHoursOk(plan: any, outingHour?: number): boolean {
   if (typeof outingHour !== 'number') return true;
   const slots = plan.slots ?? [];
-  // Slot i is expected to happen roughly outingHour + i * 2h into the day.
+  // Prefer engine-propagated arrival times. The old slot-index estimate made
+  // long activities look later than they were and short hops look earlier.
   for (let i = 0; i < slots.length; i++) {
     const cat = (slots[i].category ?? '').toUpperCase();
-    const approxSlotHour = outingHour + i * 2;
-    if ((cat === 'MUSEUM' || cat === 'ART_GALLERY') && approxSlotHour >= 18) return false;
-    if (cat === 'PARK' && approxSlotHour >= 21) return false;
-    if ((cat === 'POTTERY' || cat === 'WORKSHOP' || cat === 'PAINTING') && approxSlotHour >= 21) return false;
-    if ((cat === 'MALL') && approxSlotHour >= 22) return false;
+    const approxSlotHour = slots[i].arrivalTime
+      ? parseOutingHour(slots[i].arrivalTime)
+      : outingHour + i * 2;
+    if ((cat === 'MUSEUM' || cat === 'ART_GALLERY') && (approxSlotHour < 10 || approxSlotHour >= 18)) return false;
+    if (cat === 'PARK' && (approxSlotHour < 6 || approxSlotHour >= 19)) return false;
+    if ((cat === 'POTTERY' || cat === 'WORKSHOP' || cat === 'PAINTING') && (approxSlotHour < 9 || approxSlotHour >= 21)) return false;
+    if ((cat === 'MALL') && (approxSlotHour < 10 || approxSlotHour >= 22)) return false;
+    if (cat === 'COMEDY' && (approxSlotHour < 16 || approxSlotHour >= 24)) return false;
+    if (cat === 'LIVE_MUSIC' && (approxSlotHour < 17 || approxSlotHour >= 24)) return false;
+    if ((cat === 'CAFE' || cat === 'RESTAURANT') && (approxSlotHour < 7 || approxSlotHour >= 24)) return false;
+    if (cat === 'DESSERT' && (approxSlotHour < 11 || approxSlotHour >= 24)) return false;
   }
   return true;
 }
@@ -3186,7 +3401,7 @@ function planDoubleDessert(plan: any): boolean {
 //
 // Also: DESSERT should never open a plan.
 const MORNING_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'PARK', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'BREAKFAST']);
-const NIGHT_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
+const NIGHT_ALLOWED_OPENER = new Set(['CAFE', 'RESTAURANT', 'DESSERT', 'COMEDY', 'LIVE_MUSIC', 'ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'MOVIE']);
 
 export type ItineraryRole =
   | 'COFFEE_STOP'
@@ -3228,7 +3443,7 @@ export function getVenueItineraryRole(v: { name?: string; category?: string; est
   if (cat === 'PARK' || cat === 'PROMENADE' || cat === 'VIEWPOINT') {
     return { role: 'VIEWPOINT', mealWeight: 'NONE' };
   }
-  if (cat === 'ARCADE' || cat === 'BOWLING' || cat === 'ESCAPE_ROOM' || cat === 'MUSEUM' || cat === 'ART_GALLERY' || cat === 'POTTERY') {
+  if (cat === 'ARCADE' || cat === 'BOWLING' || cat === 'ESCAPE_ROOM' || cat === 'MUSEUM' || cat === 'ART_GALLERY' || cat === 'POTTERY' || cat === 'COMEDY' || cat === 'LIVE_MUSIC') {
     return { role: 'ACTIVITY', mealWeight: 'NONE' };
   }
   if (cat === 'MALL' || cat === 'SHOPPING') {
@@ -3243,23 +3458,27 @@ function planMealChronologyOk(plan: any, outingHour?: number): boolean {
   const slots = plan.slots ?? [];
   if (slots.length === 0) return true;
   const firstCat = (slots[0].category ?? '').toUpperCase();
+  const firstSlotHour = slots[0].arrivalTime
+    ? parseOutingHour(slots[0].arrivalTime)
+    : outingHour;
 
   // Universal: dessert should never open a plan. It's a supporting closer.
   if (firstCat === 'DESSERT') return false;
 
-  if (outingHour < 11) {
-    if (firstCat === 'RESTAURANT') return false;
+  if (firstSlotHour < 11) {
+    const firstMeal = getMealTypeForSlot(firstCat, slots[0].arrivalTime);
+    if (firstCat === 'RESTAURANT' && firstMeal !== 'BREAKFAST' && firstMeal !== 'BRUNCH') return false;
     if (!MORNING_ALLOWED_OPENER.has(firstCat)) return false;
   }
-  if (outingHour >= 20) {
+  if (firstSlotHour >= 20) {
     if (!NIGHT_ALLOWED_OPENER.has(firstCat)) return false;
   }
 
   const roles = slots.map((s: any) => getVenueItineraryRole(s.place ?? s));
 
   // Reject multiple COFFEE_STOP slots or multiple MAIN_MEAL slots in a 3-stop outing
-  const coffeeCount = roles.filter(r => r.role === 'COFFEE_STOP').length;
-  const mainMealCount = roles.filter(r => r.role === 'MAIN_MEAL').length;
+  const coffeeCount = roles.filter((r: { role: string }) => r.role === 'COFFEE_STOP').length;
+  const mainMealCount = roles.filter((r: { role: string }) => r.role === 'MAIN_MEAL').length;
   if (coffeeCount >= 2) return false;
   if (mainMealCount >= 2) return false;
 
@@ -3309,7 +3528,7 @@ function scorePlanCandidate(plan: any, ctx: PlanScoringContext): number {
   const catDiversityScore = uniqueCats.size / cats.length;
 
   const foodCats = new Set(['CAFE', 'RESTAURANT', 'DESSERT']);
-  const activityCats = new Set(['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING', 'MALL', 'MOVIE', 'PARK']);
+  const activityCats = new Set(['ARCADE', 'BOWLING', 'ESCAPE_ROOM', 'SPORTS', 'MUSEUM', 'ART_GALLERY', 'POTTERY', 'WORKSHOP', 'PAINTING', 'MALL', 'MOVIE', 'PARK', 'COMEDY', 'LIVE_MUSIC']);
   const hasFood = cats.some((c: string) => foodCats.has(c));
   const hasActivity = cats.some((c: string) => activityCats.has(c));
   const flowScore = (hasFood ? 0.5 : 0) + (hasActivity ? 0.5 : 0);
@@ -3673,6 +3892,11 @@ async function executePlanningEngine(
   planningArea?: PlanningArea,
   requiredVenueId?: string
 ): Promise<any[]> {
+  groupData = {
+    ...groupData,
+    outingDate: groupData?.outingDate || getDefaultMumbaiOutingDate(),
+    outingTime: groupData?.outingTime || getDefaultMumbaiOutingTime(),
+  };
   const city = 'Mumbai';
   const memberCoords = presentLocations.map(loc => ({ lat: loc.lat, lng: loc.lng }));
 
@@ -3843,6 +4067,8 @@ async function executePlanningEngine(
           boostFactor: places.boostFactor,
           firstSeen: places.firstSeen,
           imageUrl: places.imageUrl,
+          sourceUrl: places.sourceUrl,
+          openingHoursJson: places.openingHoursJson,
           popularity: placeScores.popularity,
           budgetFriendliness: placeScores.budgetFriendliness,
           conversation: placeScores.conversation,
@@ -3956,6 +4182,8 @@ async function executePlanningEngine(
         boostFactor: p.boostFactor,
         firstSeen: p.firstSeen,
         imageUrl: p.imageUrl,
+        sourceUrl: p.sourceUrl,
+        openingHoursJson: p.openingHoursJson,
         venueZone,
         
         // Joined placeScores metrics
@@ -4043,19 +4271,21 @@ async function executePlanningEngine(
         );
     }
 
+    const requestedOutingDate = (groupData?.outingDate || getDefaultMumbaiOutingDate()).split('T')[0];
     dbExperiences.forEach((e: any) => {
-      // Date verification: Outing date must fall within the experience's start and end date
-      if (groupData.outingDate) {
-        const outingDateStr = groupData.outingDate.split('T')[0];
-        const startStr = e.startDate.split('T')[0];
-        const endStr = e.endDate.split('T')[0];
-        if (outingDateStr < startStr || outingDateStr > endStr) {
-          logRejection(e.title, `Event not active on outing date (${outingDateStr})`);
-          return; // Skip ineligible experience
-        }
+      // Events need both a real source and a date window that contains the
+      // requested outing date. This also hides expired rows when no date was
+      // entered and the planner falls back to Mumbai system time.
+      const startStr = String(e.startDate || '').split('T')[0];
+      const endStr = String(e.endDate || '').split('T')[0];
+      if (!/^https?:\/\//i.test(String(e.sourceUrl || '')) || !startStr || !endStr
+        || requestedOutingDate < startStr || requestedOutingDate > endStr) {
+        logRejection(e.title, `Event unavailable on outing date (${requestedOutingDate})`);
+        return;
       }
 
       const isFeatured = e.featuredId !== null;
+      const plannerCategory = plannerCategoryForExperience(e.category);
 
       // Workshop/pottery/class experiences are niche â€” only include them when the group
       // explicitly wants creative activities, otherwise they crowd out cafes, arcades, parks.
@@ -4103,12 +4333,12 @@ async function executePlanningEngine(
       const candidateObj = {
         id: e.id,
         name: e.title,
-        category: e.category,
+        category: plannerCategory,
         rating: e.rating || 4.5,
         lat: e.latitude,
         lng: e.longitude,
         estimatedCostPerHead: e.ticketPrice,
-        address: e.sourceUrl || '',
+        address: e.description || e.sourceUrl || '',
         openNow: true,
         isExperience: true,
         imageUrl: e.imageUrl || undefined,
@@ -4214,7 +4444,7 @@ async function executePlanningEngine(
     }
 
     const openCandidates = candidatesPool.filter(c => {
-      const isOpen = isVenueOpenAtTime(c.category, groupData.outingTime);
+      const isOpen = isVenueOpenAtTime(c.category, groupData.outingTime, c.openingHoursJson, groupData.outingDate);
       if (!isOpen) {
         logRejection(c.name, `Closed at outing time (${groupData.outingTime})`);
       }
@@ -4450,7 +4680,17 @@ async function executePlanningEngine(
 
       // Track categories already picked in this plan to avoid e.g. CAFE+CAFE in same plan
       const selectedPlanCats = new Set<string>();
+      const selectedPlanBrands = new Set<string>();
+      const plannedPlaces: PlaceCandidate[] = [];
       let chainCount = 0;
+
+      const projectedArrivalTime = () => {
+        let time = groupData.outingTime || getDefaultMumbaiOutingTime();
+        for (const picked of plannedPlaces) {
+          time = addMinutesToTimeString(time, getDurationForCategory(picked.category) + 15);
+        }
+        return time;
+      };
 
       const getMandatoryCost = (place: PlaceCandidate) => {
         if ((place as any).mandatoryCost !== undefined) {
@@ -4498,11 +4738,17 @@ async function executePlanningEngine(
         // in afterwards, so scoring/travel/archetypes stay consistent.
         if (requiredVenue
           && candidatesPool.some((c: any) => c.id === requiredVenue.id)
-          && preferredCats.includes(String(requiredVenue.category ?? '').toUpperCase())) {
+          && !selectedPlanBrands.has(venueBrandKey(requiredVenue.name, requiredVenue.address))
+          && preferredCats.includes(String(requiredVenue.category ?? '').toUpperCase())
+          && isVenueOpenAtTime(requiredVenue.category, projectedArrivalTime(), requiredVenue.openingHoursJson, groupData.outingDate)) {
           if (isChain(requiredVenue.name)) chainCount++;
           return requiredVenue as PlaceCandidate;
         }
-        let matches = candidatesPool.filter(c => preferredCats.includes(c.category.toUpperCase()));
+        let matches = candidatesPool.filter(c =>
+          preferredCats.includes(c.category.toUpperCase()) &&
+          !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
+          isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
+        );
         if (chainCount >= 1) {
           matches = matches.filter(c => !isChain(c.name));
         }
@@ -4564,16 +4810,27 @@ async function executePlanningEngine(
           if (isActivity) {
             // Activities: skip food AND skip categories already used in this
             // plan. If that empties the pool, drop the used-category filter.
-            const nonFood = candidatesPool.filter(c => !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()));
+            const nonFood = candidatesPool.filter(c =>
+              !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()) &&
+              !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
+              isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
+            );
             const unusedNonFood = nonFood.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
             fallbackPool = unusedNonFood.length > 0 ? unusedNonFood : nonFood;
           } else {
             const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
             fallbackPool = candidatesPool.filter(c =>
-              FOOD_CATS.includes(c.category.toUpperCase()) && !selectedPlanCats.has(c.category.toUpperCase())
+              FOOD_CATS.includes(c.category.toUpperCase()) &&
+              !selectedPlanCats.has(c.category.toUpperCase()) &&
+              !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
+              isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
             );
             if (fallbackPool.length === 0) {
-              fallbackPool = candidatesPool.filter(c => FOOD_CATS.includes(c.category.toUpperCase()));
+              fallbackPool = candidatesPool.filter(c =>
+                FOOD_CATS.includes(c.category.toUpperCase()) &&
+                !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
+                isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
+              );
             }
           }
           if (chainCount >= 1) {
@@ -4622,14 +4879,22 @@ async function executePlanningEngine(
 
       const slot1Place = selectPlaceForSlot(slot1Cats, slot1IsActivity, remainingBudget);
       if (!slot1Place) continue;
+      plannedPlaces.push(slot1Place);
       selectedPlanCats.add(slot1Place.category.toUpperCase());
-      candidatesPool = candidatesPool.filter(c => c.id !== slot1Place.id);
+      selectedPlanBrands.add(venueBrandKey(slot1Place.name, slot1Place.address));
+      candidatesPool = candidatesPool.filter(c =>
+        c.id !== slot1Place.id && !selectedPlanBrands.has(venueBrandKey(c.name, c.address))
+      );
       remainingBudget -= (getMandatoryCost(slot1Place) + getOptionalCostMin(slot1Place));
 
       const slot2Place = selectPlaceForSlot(slot2Cats, slot2IsActivity, remainingBudget);
       if (!slot2Place) continue;
+      plannedPlaces.push(slot2Place);
       selectedPlanCats.add(slot2Place.category.toUpperCase());
-      candidatesPool = candidatesPool.filter(c => c.id !== slot2Place.id);
+      selectedPlanBrands.add(venueBrandKey(slot2Place.name, slot2Place.address));
+      candidatesPool = candidatesPool.filter(c =>
+        c.id !== slot2Place.id && !selectedPlanBrands.has(venueBrandKey(c.name, c.address))
+      );
       remainingBudget -= (getMandatoryCost(slot2Place) + getOptionalCostMin(slot2Place));
 
       let slot3Place: PlaceCandidate | null = null;
@@ -4638,8 +4903,12 @@ async function executePlanningEngine(
         if (!slot3Place) {
           isTwoSlots = true;
         } else {
+          plannedPlaces.push(slot3Place);
           selectedPlanCats.add(slot3Place.category.toUpperCase());
-          candidatesPool = candidatesPool.filter(c => c.id !== slot3Place!.id);
+          selectedPlanBrands.add(venueBrandKey(slot3Place.name, slot3Place.address));
+          candidatesPool = candidatesPool.filter(c =>
+            c.id !== slot3Place!.id && !selectedPlanBrands.has(venueBrandKey(c.name, c.address))
+          );
         }
       }
 
@@ -4678,46 +4947,7 @@ async function executePlanningEngine(
       const slotsPromises = selectedPlaces.map(async (place, slotIdx) => {
         let finalImg = place.imageUrl || null;
         let finalLink = place.sourceUrl || null;
-        let needsDbUpdate = false;
-        
-        // Real Google Places photo lookup. Skipped for fallback venues and
-        // for OLA-prefixed ids (Ola's places API doesn't return Google
-        // photo references — those venues fall through to the text-search
-        // getVenueImageUrl below).
-        const isGooglePlaceId = place.id
-          && !isSyntheticVenueId(place.id)
-          && !place.id.startsWith('OLA_')
-          && !place.isExperience;
-        if (isGooglePlaceId) {
-          try {
-            const actualPlaceId = place.id.startsWith('GOOGLE_')
-              ? place.id.slice(7)
-              : place.id;
-            const details = await getVenueDetails(actualPlaceId);
-            if (details && details.photos && details.photos.length > 0) {
-              const photoRef = details.photos[0].photo_reference;
-              if (photoRef) {
-                finalImg = `/api/places/photo?ref=${encodeURIComponent(photoRef)}`;
-                if (finalImg !== place.imageUrl) {
-                  needsDbUpdate = true;
-                }
-              }
-            }
-            if (details && details.website) {
-              finalLink = details.website;
-            }
-          } catch (err) {}
-        }
-
-        if (isDisallowedItineraryImage(finalImg)) {
-          const googleImg = await getVenueImageUrl(place.name, city, place.category);
-          if (!isDisallowedItineraryImage(googleImg)) {
-            finalImg = googleImg;
-            if (place.id && !isSyntheticVenueId(place.id) && !place.isExperience && finalImg !== place.imageUrl) {
-              needsDbUpdate = true;
-            }
-          }
-        }
+        // Photos and links come from catalog rows. No runtime Maps lookups.
         // Final fallback: never show third-party stock imagery for real itinerary cards.
         if (isDisallowedItineraryImage(finalImg)) {
           finalImg = getFallbackImageUrl(place.category);
@@ -4726,16 +4956,6 @@ async function executePlanningEngine(
           finalLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + place.address)}`;
         }
 
-        if (needsDbUpdate && place.id && !place.isExperience && !isHangoutApiConfigured()) {
-          // Local-dev only image-url backfill. In D1 mode the worker owns the
-          // places table; skipping is safe (image will re-resolve next run).
-          try {
-            void db.update(places)
-              .set({ imageUrl: finalImg })
-              .where(eq(places.id, place.id))
-              .catch((err: any) => console.warn(`Failed to update imageUrl in DB for place ${place.id}:`, err));
-          } catch {}
-        }
 
         const duration = getDurationForCategory(place.category);
         let arrivalTime = groupData.outingTime || '11:00 AM';
@@ -4758,6 +4978,7 @@ async function executePlanningEngine(
           category: place.category,
           rating: place.rating ?? null,
           arrivalTime,
+          mealType: getMealTypeForSlot(place.category, arrivalTime),
           durationMinutes: duration,
           travelToNextMinutes: slotIdx === 2 ? null : 15,
           // Honest per-slot spend: mandatory + typical optional min. Matches
@@ -4769,7 +4990,7 @@ async function executePlanningEngine(
           optionalCostMax: getOptionalCostMax(place),
           imageUrl: finalImg,
           link: finalLink,
-          note: getSlotDescription(place.name, place.category, zoneObj.name),
+          note: getSlotDescription(place.name, place.category, zoneObj.name, arrivalTime),
           lat: place.lat,
           lng: place.lng,
           address: place.address || ''
@@ -4802,6 +5023,8 @@ async function executePlanningEngine(
           };
           // Propagate corrected arrival time to the next slot
           next.arrivalTime = addMinutesToTimeString(current.arrivalTime, current.durationMinutes + hop.totalTime);
+          next.mealType = getMealTypeForSlot(next.category, next.arrivalTime);
+          next.note = getSlotDescription(next.name, next.category, zoneObj.name, next.arrivalTime);
         }
 
         const memberTravelsForPlan: any[] = [];
@@ -5351,7 +5574,12 @@ export const plannerService = {
         throw new Error(detailsRes.error?.message || 'Failed to fetch group details from D1');
       }
 
-      const { group: groupData, members, budgetSummary, locations, currentUser } = detailsRes.data;
+      const { group: rawGroupData, members, budgetSummary, locations, currentUser } = detailsRes.data;
+      const groupData = {
+        ...rawGroupData,
+        outingDate: rawGroupData?.outingDate || getDefaultMumbaiOutingDate(),
+        outingTime: rawGroupData?.outingTime || getDefaultMumbaiOutingTime(),
+      };
       if (currentUser.role !== 'ADMIN') {
         throw new ForbiddenError('Only the group admin can generate itineraries.');
       }
@@ -5684,10 +5912,15 @@ export const plannerService = {
     }
 
     // 1. Verify group exists
-    const group = await groupRepository.findById(groupId);
-    if (!group || group.status === 'DELETED') {
+    const groupRecord = await groupRepository.findById(groupId);
+    if (!groupRecord || groupRecord.status === 'DELETED') {
       throw new NotFoundError('The specified planning group does not exist.');
     }
+    const group = {
+      ...groupRecord,
+      outingDate: groupRecord.outingDate || getDefaultMumbaiOutingDate(),
+      outingTime: groupRecord.outingTime || getDefaultMumbaiOutingTime(),
+    };
 
     // 2. Verify caller is ADMIN
     const callerMember = await memberRepository.getMember(groupId, userId);

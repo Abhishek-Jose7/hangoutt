@@ -3,7 +3,6 @@ import { db } from '@/lib/db/client';
 import { places } from '@/lib/db/schema';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { isHangoutApiConfigured } from '@/lib/cloudflare/hangoutApi';
-import { recordCost } from '@/lib/services/costLedger';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,58 +66,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 2. Not cached — fetch from Google
+    // Legacy Google photo references are no longer resolved. Fresh catalog
+    // rows carry direct sourced image URLs; old cached bytes still work above.
     const fallbackRedirect = async () => {
       return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);
     };
-
-    // 2. Not cached — fetch from Google
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      return fallbackRedirect();
-    }
-
-    const googleUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${ref}&key=${apiKey}`;
-
-    // Follow the redirect manually to get the actual image
-    const redirectRes = await fetch(googleUrl, { redirect: 'manual' });
-    // Only bill when we actually hit Google (misses only — cached hits above
-    // never reach this line, so PLACES_PHOTO accurately reflects paid calls).
-    recordCost({ operation: 'PLACES_PHOTO', provider: 'GOOGLE_PLACES' });
-    const redirectUrl = redirectRes.headers.get('location');
-
-    if (!redirectUrl) {
-      return fallbackRedirect();
-    }
-
-    // Fetch the actual image bytes from the CDN URL
-    const imageRes = await fetch(redirectUrl);
-    if (!imageRes.ok) {
-      return fallbackRedirect();
-    }
-
-    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
-    const base64 = imageBuffer.toString('base64');
-
-    // 3. Cache in DB
-    try {
-      const updateResult = await db.update(places)
-        .set({ imageData: base64 })
-        .where(eq(places.imageUrl, expectedImageUrl));
-      console.log(`[PHOTO CACHE] Cached image for ref ${ref.substring(0, 30)}... Result:`, updateResult);
-    } catch (err: any) {
-      console.warn('[PHOTO CACHE] Failed to cache image:', err.message);
-    }
-
-    // 4. Serve the image
-    return new Response(imageBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': imageRes.headers.get('content-type') || 'image/jpeg',
-        'Cache-Control': 'public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400',
-        'Content-Length': String(imageBuffer.length),
-      },
-    });
+    return fallbackRedirect();
   } catch (err: any) {
     console.error('[PHOTO PROXY ERROR]', err);
     return Response.redirect(new URL('/images/mumbai_map.png', req.url), 307);

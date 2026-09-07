@@ -4,6 +4,8 @@ import { ValidationError } from '../errors';
 import { isHangoutApiConfigured, hangoutApi } from '../cloudflare/hangoutApi';
 import {
   executePlanningEngineForEval,
+  getDefaultMumbaiOutingDate,
+  getDefaultMumbaiOutingTime,
   getVenueZone,
   isVenueOpenAtTime,
   validateCoordinates,
@@ -44,7 +46,7 @@ const MODE_RADIUS_KM: Record<QuickPlanMode, number> = {
 
 // Minimum open venues the area must have at the outing time before we spend a
 // full engine run on it.
-const MIN_VIABLE_VENUES = 8;
+const MIN_VIABLE_VENUES = 5;
 
 // Plain-language tags → planner categories. Same vocabulary the group planner
 // scores against; no new planner concepts.
@@ -58,7 +60,13 @@ const TAG_CATEGORY_MAP: Record<string, string[]> = {
   games: ['ARCADE', 'BOWLING', 'ESCAPE_ROOM'],
   creative: ['POTTERY', 'WORKSHOP', 'PAINTING', 'ART_GALLERY'],
   culture: ['MUSEUM', 'ART_GALLERY'],
-  nightlife: ['RESTAURANT', 'BOWLING', 'ARCADE'],
+  nightlife: ['RESTAURANT', 'BOWLING', 'ARCADE', 'COMEDY', 'LIVE_MUSIC'],
+  comedy: ['COMEDY'],
+  music: ['LIVE_MUSIC'],
+  'live music': ['LIVE_MUSIC'],
+  pets: ['CAFE'],
+  'cat cafe': ['CAFE'],
+  comics: ['CAFE'],
   shopping: ['MALL'],
   movie: ['MOVIE'],
   outdoors: ['PARK'],
@@ -140,6 +148,11 @@ async function fetchAreaVenues(lat: number, lng: number, radiusKm: number): Prom
       reviewCount: places.reviewCount,
       category: placeCategories.category,
       mandatoryCost: placeCosts.mandatoryCost,
+      optionalCostMin: placeCosts.optionalCostMin,
+      optionalCostMax: placeCosts.optionalCostMax,
+      imageUrl: places.imageUrl,
+      sourceUrl: places.sourceUrl,
+      openingHoursJson: places.openingHoursJson,
       isHidden: places.isHidden,
     })
     .from(places)
@@ -246,6 +259,8 @@ export const quickPlanService = {
 
     const resolved = await resolveLocation(input);
     const { area } = resolved;
+    const effectiveOutingTime = input.outingTime || getDefaultMumbaiOutingTime();
+    const effectiveOutingDate = input.outingDate || getDefaultMumbaiOutingDate();
 
     // Preflight viability: enough OPEN venues at the outing time, before we
     // pay for a full engine run.
@@ -258,10 +273,15 @@ export const quickPlanService = {
       if (area.allowedZoneNames && !area.allowedZoneNames.includes(zone)) return false;
       return true;
     });
-    const openAtTime = within.filter((v: any) => isVenueOpenAtTime(String(v.category ?? ''), input.outingTime));
+    const openAtTime = within.filter((v: any) => isVenueOpenAtTime(
+      String(v.category ?? ''),
+      effectiveOutingTime,
+      v.openingHoursJson,
+      effectiveOutingDate,
+    ));
     if (openAtTime.length < MIN_VIABLE_VENUES) {
       throw new ValidationError(
-        `Not enough open venues near ${area.name}${input.outingTime ? ` at ${input.outingTime}` : ''}. ` +
+        `Not enough open venues near ${area.name} at ${effectiveOutingTime}. ` +
         `Try a wider area, a different time, or a nearby landmark.`
       );
     }
@@ -277,6 +297,8 @@ export const quickPlanService = {
     if (lowerTags.includes('culture')) requiredPreferences.push('MUSEUM', 'ART_GALLERY');
     if (lowerTags.includes('outdoors')) requiredPreferences.push('PARK');
     if (lowerTags.includes('games') || lowerTags.includes('adventure')) requiredPreferences.push('ARCADE', 'BOWLING', 'ESCAPE_ROOM');
+    if (lowerTags.includes('comedy')) requiredPreferences.push('COMEDY');
+    if (lowerTags.includes('music') || lowerTags.includes('live music')) requiredPreferences.push('LIVE_MUSIC');
 
     const quickId = `quick_${typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : require('crypto').randomUUID()}`;
 
@@ -286,8 +308,8 @@ export const quickPlanService = {
       groupType,
       vibes: JSON.stringify(vibes),
       status: 'READY_TO_GENERATE',
-      outingDate: input.outingDate ?? new Date().toISOString().split('T')[0],
-      outingTime: input.outingTime ?? '12:00',
+      outingDate: effectiveOutingDate,
+      outingTime: effectiveOutingTime,
       generationOptions: null,
       activity: null,
       outingType: null,

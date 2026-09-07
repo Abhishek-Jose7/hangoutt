@@ -28,7 +28,7 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-stone-900 bg-stone-950/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[#0A0A0C]/92 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         
         {/* Logo */}
@@ -48,10 +48,10 @@ export default function Navbar() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "text-[10px] font-mono uppercase tracking-widest font-bold transition-all py-1.5 px-3 rounded-[6px] flex items-center gap-2",
+                    "text-[10px] uppercase tracking-[0.12em] font-bold transition-all py-2 px-3 rounded-[7px] flex items-center gap-2",
                     isActive 
-                      ? "bg-stone-900 text-[#DC143C] border border-stone-800" 
-                      : "text-neutral-400 hover:bg-stone-900/50 hover:text-white"
+                    ? "bg-[#DC143C]/10 text-[#ff6b7e] border border-[#DC143C]/30"
+                    : "text-neutral-400 hover:bg-white/5 hover:text-white"
                   )}
                 >
                   <item.icon className="h-3.5 w-3.5" />
@@ -67,7 +67,7 @@ export default function Navbar() {
           <Button
             onClick={() => setIsCreateOpen(true)}
             size="sm"
-            className="hidden sm:flex bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+            className="hidden sm:flex bg-[#DC143C] hover:bg-[#B80F2E] text-white text-[10px] font-bold uppercase tracking-[0.12em] rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:-translate-y-0.5 active:scale-95 cursor-pointer shadow-[0_8px_24px_rgba(220,20,60,0.18)]"
           >
             <Plus className="h-3.5 w-3.5" />
             New Group
@@ -77,17 +77,17 @@ export default function Navbar() {
             onClick={() => setIsJoinOpen(true)}
             size="sm"
             variant="outline"
-            className="border-stone-800 bg-stone-950/50 hover:bg-stone-900 text-neutral-300 text-[10px] font-mono font-bold uppercase tracking-widest rounded-[8px] px-4 py-2.5 gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            className="border-white/15 bg-transparent hover:bg-white/5 text-neutral-300 text-[10px] font-bold uppercase tracking-[0.12em] rounded-[8px] px-4 py-2.5 gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
             <LogIn className="h-3.5 w-3.5 text-[#DC143C]" />
             Join Group
           </Button>
 
-          <div className="pl-2 border-l border-stone-900">
+          <div className="pl-2 border-l border-white/10">
             <UserButton 
               appearance={{
                 elements: {
-                  userButtonAvatarBox: 'w-8.5 h-8.5 border border-stone-850 rounded-[8px] overflow-hidden',
+                  userButtonAvatarBox: 'w-8.5 h-8.5 border border-white/15 rounded-[8px] overflow-hidden',
                 }
               }}
             />

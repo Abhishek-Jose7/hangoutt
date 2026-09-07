@@ -8,30 +8,8 @@ export interface GeocodingResult {
 }
 
 export async function geocodeAddress(address: string): Promise<GeocodingResult> {
-  console.log(`Geocoding query address: ${address}`);
-  
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (apiKey) {
-    try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json() as any;
-        if (data.status === 'OK' && data.results && data.results[0]) {
-          const first = data.results[0];
-          return {
-            lat: first.geometry.location.lat,
-            lng: first.geometry.location.lng,
-            formattedAddress: first.formatted_address || address,
-          };
-        }
-      }
-    } catch (err) {
-      console.error('Google Maps Geocoding failed, falling back to simulator:', err);
-    }
-  }
-
-  // Simulation fallback matching prominent hubs in Mumbai, Navi Mumbai, and Thane
+  // Catalog planning is intentionally API-free. Resolve known Mumbai hubs locally;
+  // reject unknown text instead of silently moving the user to a wrong place.
   const lower = address.toLowerCase().trim();
   const coordinateMatch = lower.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
   if (coordinateMatch) {

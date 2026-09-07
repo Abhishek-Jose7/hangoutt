@@ -127,6 +127,76 @@
       "when": 1782828144761,
       "tag": "0017_nosy_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788710400000,
+      "tag": "0022_curated_mumbai_anchors",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788796800000,
+      "tag": "0023_genz_mumbai_venues",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1788796800001,
+      "tag": "0024_district_web_venues",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1788796800002,
+      "tag": "0025_verified_event_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1788796800003,
+      "tag": "0026_retire_placeholder_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1788796800004,
+      "tag": "0027_source_rating_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1788796800005,
+      "tag": "0028_admin_indexes_score_floor",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1788796800006,
+      "tag": "0029_remove_legacy_photo_refs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1788796800007,
+      "tag": "0030_hangout_intent_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1788796800008,
+      "tag": "0031_1522_source_price_fix",
+      "breakpoints": true
     }
   ]
 }

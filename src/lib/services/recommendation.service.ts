@@ -2,9 +2,8 @@ import 'server-only';
 import { Venue, VenueCategory } from '../types/planner.types';
 import { experienceRepository, type Experience } from '../repositories/experience.repository';
 import { rankVenues, rankExperiences } from '../algorithms/scoring';
-import { MOCK_VENUES } from '../utils/mockData';
 import { db } from '../db/client';
-import { venuesCache, experienceCategories, experienceSources } from '../db/schema';
+import { venuesCache } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { searchNearbyVenues } from '../maps/places';
 import { getHaversineDistance } from '../algorithms/zoneSelection';
@@ -160,119 +159,15 @@ export const recommendationService = {
     outingDate?: string | null
   ): Promise<(Experience & { distanceKm: number; score: number })[]> {
     // Fetch experiences near midpoint from the catalog
-    let catalogExperiences = await experienceRepository.findExperiencesNearMidpoint(
+    const catalogExperiences = await experienceRepository.findExperiencesNearMidpoint(
       city,
       lat,
       lng,
       15 // 15km search radius
     );
 
-    // If local catalog is empty, pre-populate with nice mock experience candidates
-    if (catalogExperiences.length === 0) {
-      const mockEvents = [
-        {
-          title: 'Clay Pottery Taster Session',
-          description: 'Get hands-on with a private pottery wheel taster class — perfect for building shared memories.',
-          category: 'POTTERY',
-          ticketPrice: 250,
-          source: 'INTERNAL',
-          sourceUrl: 'https://example.com/pottery',
-          isRecurring: true,
-        },
-        {
-          title: 'Sunset Jazz & Wine Concert',
-          description: 'An intimate sunset concert featuring modern jazz ensembles in an outdoor amphitheatre.',
-          category: 'LIVE_MUSIC',
-          ticketPrice: 600,
-          source: 'BOOKMYSHOW',
-          sourceUrl: 'https://example.com/jazz',
-          isRecurring: false,
-        },
-        {
-          title: 'Comic Con Convention',
-          description: 'The annual comic books, gaming tournaments, and pop culture exhibition.',
-          category: 'COMIC_CON',
-          ticketPrice: 800,
-          source: 'INTERNAL',
-          sourceUrl: 'https://example.com/comiccon',
-          isRecurring: false,
-        },
-        {
-          title: 'Heritage Walk: Old City Walkways',
-          description: 'A quiet, guided morning stroll discovering historical street murals and stories.',
-          category: 'FREE_EXPERIENCE',
-          ticketPrice: 0,
-          source: 'INTERNAL',
-          sourceUrl: 'https://example.com/heritagewalk',
-          isRecurring: true,
-        },
-        {
-          title: 'Contemporary Art Exhibition',
-          description: 'A display of digital canvas works and abstract sculptures from independent local artists.',
-          category: 'EXHIBITION',
-          ticketPrice: 150,
-          source: 'TAVILY',
-          sourceUrl: 'https://example.com/art',
-          isRecurring: false,
-        },
-      ];
-
-      const uuid = () => {
-        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-          return crypto.randomUUID();
-        }
-        return require('crypto').randomUUID();
-      };
-
-      // Ensure mock categories exist to satisfy foreign key constraints
-      const uniqueCats = Array.from(new Set(mockEvents.map(e => e.category)));
-      for (const cat of uniqueCats) {
-        try {
-          await db
-            .insert(experienceCategories)
-            .values({ id: cat, name: cat.replace('_', ' ') })
-            .onConflictDoNothing();
-        } catch (e) {}
-      }
-
-      // Ensure mock sources exist to satisfy foreign key constraints
-      const uniqueSources = Array.from(new Set(mockEvents.map(e => e.source)));
-      for (const src of uniqueSources) {
-        try {
-          await db
-            .insert(experienceSources)
-            .values({ id: src, name: src })
-            .onConflictDoNothing();
-        } catch (e) {}
-      }
-
-      // Ingest these catalog experiences first
-      for (const event of mockEvents) {
-        const id = uuid();
-        try {
-          await experienceRepository.upsertExperience({
-            id,
-            title: event.title,
-            description: event.description,
-            category: event.category,
-            city,
-            latitude: lat + (Math.random() - 0.5) * 0.05,
-            longitude: lng + (Math.random() - 0.5) * 0.05,
-            startDate: new Date().toISOString(),
-            endDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-            ticketPrice: event.ticketPrice,
-            source: 'INTERNAL',
-            sourceUrl: event.sourceUrl,
-            popularityScore: Number(Math.random().toFixed(2)),
-            isRecurring: event.isRecurring ? 1 : 0,
-          });
-        } catch (err) {
-          console.error('Error inserting mock experience:', err);
-        }
-      }
-
-      catalogExperiences = await experienceRepository.findExperiencesNearMidpoint(city, lat, lng, 15);
-    }
+    // Empty catalog stays empty. Never fabricate event names, dates, prices,
+    // or example.com booking links when no verified listing exists.
 
     // Filters out experiences exceeding the group's maxBudget cap
     let budgetFiltered = catalogExperiences.filter(e => e.ticketPrice <= maxBudget);
