@@ -253,13 +253,13 @@ const REACTIVE_CATEGORY_COSTS: Record<string, { mandatory: number; min: number; 
   RESTAURANT:  { mandatory: 0,   min: 300, max: 1000 },
   DESSERT:     { mandatory: 0,   min: 150, max: 400  },
   PARK:        { mandatory: 0,   min: 0,   max: 0    },
-  ARCADE:      { mandatory: 300, min: 100, max: 500  },
-  BOWLING:     { mandatory: 350, min: 100, max: 400  },
-  ESCAPE_ROOM: { mandatory: 700, min: 0,   max: 0    },
+  ARCADE:      { mandatory: 100, min: 50,  max: 100  },
+  BOWLING:     { mandatory: 200, min: 50,  max: 150  },
+  ESCAPE_ROOM: { mandatory: 400, min: 0,   max: 100  },
   MUSEUM:      { mandatory: 150, min: 0,   max: 0    },
   MALL:        { mandatory: 0,   min: 100, max: 500  },
-  SPORTS:      { mandatory: 300, min: 0,   max: 200  },
-  MOVIE:       { mandatory: 350, min: 0,   max: 100  },
+  SPORTS:      { mandatory: 150, min: 50,  max: 100  },
+  MOVIE:       { mandatory: 250, min: 0,   max: 100  },
 };
 
 function getFallbackImageUrl(category: string): string {
@@ -516,6 +516,16 @@ const GENERIC_ACTIVITY_LABEL_PATTERNS = [
   ' walking track ', ' jogging track ',
 ];
 
+const NON_HANGOUT_SPOT_PATTERNS = [
+  'cloud kitchen', 'home-bakery', 'home bakery', 'cake shop', 'cakeshop',
+  'cake studio', 'cake order', 'custom cake', 'bake for mee', 'cakes & chocolates',
+  'drawing', 'elementary', 'intermediate', 'nid', 'uceed', 'nift', 'nata',
+  'entrance exam', 'coaching', 'classes', 'tuition', 'institute', 'academy',
+  'mindseed', 'preschool', 'school', 'learning centre', 'learning center',
+  'hobby classes', 'art institute', 'art castle', 'exam prep', 'tutorial',
+  'tuitions', 'coaching center', 'coaching centre'
+];
+
 function isHangoutWorthyCandidate(candidate: { name: string; category: string; rating?: number | null; reviewCount?: number | null; address?: string | null; isFallback?: boolean; isExperience?: boolean; isZoneCurated?: boolean }) {
   // Fallbacks / featured experiences / zone-curated venues used to be waved
   // straight through. That's how "Kurla Sunlight Guest house and resturant
@@ -532,6 +542,9 @@ function isHangoutWorthyCandidate(candidate: { name: string; category: string; r
   const nameLower = ` ${candidate.name.toLowerCase()} `; // pad for word-boundary substr checks
   const addrLower = (candidate.address ?? '').toLowerCase();
   const normalized = `${candidate.name} ${candidate.address ?? ''}`.toLowerCase();
+
+  // Hard reject: cloud kitchens, coaching classes, entrance exam prep institutes, takeaway cake studios
+  if (hasAnyPattern(normalized, NON_HANGOUT_SPOT_PATTERNS)) return false;
 
   // STRONG signal must come from the NAME. Previously any strong pattern in
   // the address (e.g. a Bandra cafe strip) would rescue an unrelated hotel
@@ -4175,6 +4188,15 @@ async function executePlanningEngine(
         return;
       }
 
+      let mandatoryCost = p.mandatoryCost;
+      let optionalCostMin = p.optionalCostMin;
+      let optionalCostMax = p.optionalCostMax;
+      if (p.category === 'ARCADE' || /gaming|game zone|game center|game centre|pc gaming|ps5|vr|esports/i.test(p.name)) {
+        mandatoryCost = Math.min(mandatoryCost || 150, 150);
+        optionalCostMin = Math.min(optionalCostMin || 50, 50);
+        optionalCostMax = Math.min(optionalCostMax || 100, 100);
+      }
+
       const candidateObj = {
         id: p.id,
         name: p.name,
@@ -4183,12 +4205,12 @@ async function executePlanningEngine(
         reviewCount: p.reviewCount ?? 0,
         lat: p.lat,
         lng: p.lng,
-        estimatedCostPerHead: p.mandatoryCost + p.optionalCostMin,
+        estimatedCostPerHead: mandatoryCost + optionalCostMin,
         address: p.address || '',
         openNow: true,
-        mandatoryCost: p.mandatoryCost,
-        optionalCostMin: p.optionalCostMin,
-        optionalCostMax: p.optionalCostMax,
+        mandatoryCost,
+        optionalCostMin,
+        optionalCostMax,
         lastVerified: p.lastVerified,
         isFeatured: p.isFeatured,
         isHidden: p.isHidden,
@@ -4766,28 +4788,17 @@ async function executePlanningEngine(
           matches = matches.filter(c => !isChain(c.name));
         }
 
-        // Realism: prefer NOT to repeat a category that's already in this plan
-        // (no CAFE → CAFE → CAFE, no DESSERT → CAFE where CAFE already ran).
-        // We only apply this at the primary-match layer — if it empties the
-        // pool, we fall through to the existing broad fallbacks which will
-        // still cover an already-used category if that's genuinely all that
-        // fits the slot.
-        const uniqueMatches = matches.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
-        if (uniqueMatches.length > 0) matches = uniqueMatches;
+        // Realism: strictly disallow repeating an exact category that's already in this plan
+        // (no CAFE → CAFE, no RESTAURANT → RESTAURANT).
+        const nonDuplicateMatches = matches.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
+        if (nonDuplicateMatches.length > 0) {
+          matches = nonDuplicateMatches;
+        }
 
         const getSlotCost = (place: PlaceCandidate) => {
           return getMandatoryCost(place) + getOptionalCostMin(place);
         };
 
-        // Prefer venues whose category isn't already in the plan (extra
-        // guarantee on top of uniqueMatches — if two venues tie on score,
-        // the unused-category one wins). Keeps within-plan category diversity
-        // high without derailing budget/score.
-        // Layered sort: (1) preferred-category venues first (user asked
-        // for Museum + Park → we aggressively surface those), (2) unused
-        // category next (no CAFE→CAFE), (3) fall back to caller ordering
-        // (which is DB score ranking). This is what turns "sprinkle prefs
-        // as a scoring nudge" into "aggressively search for the pref".
         const userPrefSet = new Set(
           (preferredCategories || []).map(c => c.toUpperCase())
         );
@@ -4818,18 +4829,16 @@ async function executePlanningEngine(
             else selected = top3[2];
           }
         } else {
-          // 2. If no preferred category matches under budget constraint, fallback to broad category checks under budget
+          // 2. Fallback check under budget: skip categories already used in this plan
           let fallbackPool: PlaceCandidate[] = [];
           if (isActivity) {
-            // Activities: skip food AND skip categories already used in this
-            // plan. If that empties the pool, drop the used-category filter.
             const nonFood = candidatesPool.filter(c =>
               !['CAFE', 'RESTAURANT', 'DESSERT'].includes(c.category.toUpperCase()) &&
+              !selectedPlanCats.has(c.category.toUpperCase()) &&
               !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
               isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
             );
-            const unusedNonFood = nonFood.filter(c => !selectedPlanCats.has(c.category.toUpperCase()));
-            fallbackPool = unusedNonFood.length > 0 ? unusedNonFood : nonFood;
+            fallbackPool = nonFood;
           } else {
             const FOOD_CATS = ['CAFE', 'RESTAURANT', 'DESSERT'];
             fallbackPool = candidatesPool.filter(c =>
@@ -4838,13 +4847,6 @@ async function executePlanningEngine(
               !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
               isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
             );
-            if (fallbackPool.length === 0) {
-              fallbackPool = candidatesPool.filter(c =>
-                FOOD_CATS.includes(c.category.toUpperCase()) &&
-                !selectedPlanBrands.has(venueBrandKey(c.name, c.address)) &&
-                isVenueOpenAtTime(c.category, projectedArrivalTime(), c.openingHoursJson, groupData.outingDate)
-              );
-            }
           }
           if (chainCount >= 1) {
             fallbackPool = fallbackPool.filter(c => !isChain(c.name));

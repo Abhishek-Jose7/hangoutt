@@ -36,32 +36,13 @@ const VIBES = [
   ['comedy', 'Live comedy'], ['music', 'Live music'], ['nightlife', 'After dark'], ['outdoors', 'Outside'],
 ];
 
-const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
-  CAFE: 'https://images.unsplash.com/photo-1498804103079-a6351b050096?w=500&auto=format&fit=crop&q=80',
-  RESTAURANT: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=500&auto=format&fit=crop&q=80',
-  DESSERT: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80',
-  PARK: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=500&auto=format&fit=crop&q=80',
-  MUSEUM: 'https://images.unsplash.com/photo-1536924940846-227afb31e2a5?w=500&auto=format&fit=crop&q=80',
-  ART_GALLERY: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&auto=format&fit=crop&q=80',
-  ARCADE: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=80',
-  BOWLING: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=80',
-  ESCAPE_ROOM: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=80',
-  LIVE_MUSIC: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-  COMEDY: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-  NIGHTLIFE: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=500&auto=format&fit=crop&q=80',
-  DEFAULT: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=500&auto=format&fit=crop&q=80',
-};
-
-function getSlotImageUrl(slot: any): string {
+function getSlotImageUrl(slot: any): string | null {
   const url = slot.imageUrl;
-  if (url && !url.includes('mumbai_map.webp') && !url.includes('placehold.co')) {
-    return url;
+  if (!url || typeof url !== 'string') return null;
+  if (url.includes('unsplash.com') || url.includes('placehold.co') || url.includes('mumbai_map.webp') || url.includes('cafe_active.webp')) {
+    return null;
   }
-  const cat = String(slot.category || slot.mealType || '').toUpperCase();
-  for (const [key, fallbackUrl] of Object.entries(CATEGORY_FALLBACK_IMAGES)) {
-    if (cat.includes(key)) return fallbackUrl;
-  }
-  return CATEGORY_FALLBACK_IMAGES.DEFAULT;
+  return url;
 }
 
 function formatDuration(value: number) {
@@ -439,78 +420,91 @@ export default function QuickPlanPage() {
                         </div>
                       </div>
 
-                      {/* Places List with Visible Pictures */}
+                      {/* Places List */}
                       <div className="space-y-3 p-4 sm:p-5">
                         {(plan.slots || [])
                           .slice()
                           .sort((a: any, b: any) => (a.slotOrder ?? a.order ?? 0) - (b.slotOrder ?? b.order ?? 0))
-                          .map((slot: any, index: number) => (
-                            <div
-                              key={slot.id || index}
-                              className="group flex flex-col sm:flex-row items-stretch gap-3 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-3 transition hover:border-white/15 hover:bg-white/[0.04]"
-                            >
-                              {/* Visible Place Image Thumbnail */}
-                              <div className="relative w-full sm:w-36 h-32 sm:h-auto shrink-0 overflow-hidden rounded-lg bg-neutral-900">
-                                <img
-                                  src={getSlotImageUrl(slot)}
-                                  alt={slot.name || slot.venueName}
-                                  loading="lazy"
-                                  decoding="async"
-                                  onError={(e) => {
-                                    const cat = String(slot.category || slot.mealType || '').toUpperCase();
-                                    (e.target as HTMLImageElement).src = CATEGORY_FALLBACK_IMAGES[cat] || CATEGORY_FALLBACK_IMAGES.DEFAULT;
-                                  }}
-                                  className="h-full w-full object-cover opacity-90 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
-                                />
-                                <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-[#DC143C] text-[10px] font-bold text-white shadow-md">
-                                  {String(index + 1).padStart(2, '0')}
-                                </span>
-                              </div>
-
-                              {/* Place Content */}
-                              <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
-                                <div>
-                                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-                                    <span className="text-[#ff6b7e]">
-                                      {slot.arrivalTime || 'Flexible'} · {formatMealType(slot)}
-                                    </span>
-                                    <span className="text-neutral-300 font-normal">
-                                      ₹{slot.estimatedCostPerHead || 0} / person
+                          .map((slot: any, index: number) => {
+                            const imageUrl = getSlotImageUrl(slot);
+                            return (
+                              <div
+                                key={slot.id || index}
+                                className="group flex flex-col sm:flex-row items-stretch gap-3 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-3 transition hover:border-white/15 hover:bg-white/[0.04]"
+                              >
+                                {/* Venue Image Thumbnail or Styled Badge Header */}
+                                {imageUrl ? (
+                                  <div className="relative w-full sm:w-36 h-32 sm:h-auto shrink-0 overflow-hidden rounded-lg bg-neutral-900">
+                                    <img
+                                      src={imageUrl}
+                                      alt={slot.name || slot.venueName}
+                                      loading="lazy"
+                                      decoding="async"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                      className="h-full w-full object-cover opacity-90 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
+                                    />
+                                    <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-[#DC143C] text-[10px] font-bold text-white shadow-md">
+                                      {String(index + 1).padStart(2, '0')}
                                     </span>
                                   </div>
-                                  <h4 className="mt-1 truncate text-sm font-semibold text-white group-hover:text-[#ff6b7e] transition-colors">
-                                    {slot.name || slot.venueName}
-                                  </h4>
-                                  {slot.note && (
-                                    <p className="mt-1 text-xs leading-4 text-neutral-400 line-clamp-2 font-sans">
-                                      {slot.note}
-                                    </p>
-                                  )}
-                                </div>
+                                ) : (
+                                  <div className="relative flex h-14 w-full sm:h-auto sm:w-20 shrink-0 flex-row sm:flex-col items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-2 text-center gap-2">
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#DC143C] text-[10px] font-bold text-white shadow-md shrink-0">
+                                      {String(index + 1).padStart(2, '0')}
+                                    </span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-300 truncate">
+                                      {formatMealType(slot)}
+                                    </span>
+                                  </div>
+                                )}
 
-                                <div className="mt-2.5 flex items-center justify-between gap-2 text-xs border-t border-white/5 pt-2">
-                                  <a
-                                    href={mapsUrl(slot, areaName)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#ff6b7e] hover:underline"
-                                  >
-                                    Directions <Navigation size={12} />
-                                  </a>
-                                  {venueUrl(slot) && (
+                                {/* Place Content */}
+                                <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
+                                  <div>
+                                    <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                                      <span className="text-[#ff6b7e]">
+                                        {slot.arrivalTime || 'Flexible'} · {formatMealType(slot)}
+                                      </span>
+                                      <span className="text-neutral-300 font-normal">
+                                        ₹{slot.estimatedCostPerHead || 0} / person
+                                      </span>
+                                    </div>
+                                    <h4 className="mt-1 truncate text-sm font-semibold text-white group-hover:text-[#ff6b7e] transition-colors">
+                                      {slot.name || slot.venueName}
+                                    </h4>
+                                    {slot.note && (
+                                      <p className="mt-1 text-xs leading-4 text-neutral-400 line-clamp-2 font-sans">
+                                        {slot.note}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-2.5 flex items-center justify-between gap-2 text-xs border-t border-white/5 pt-2">
                                     <a
-                                      href={venueUrl(slot)}
+                                      href={mapsUrl(slot, areaName)}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="text-[11px] font-medium text-neutral-400 hover:text-white transition"
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#ff6b7e] hover:underline"
                                     >
-                                      Venue page
+                                      Directions <Navigation size={12} />
                                     </a>
-                                  )}
+                                    {venueUrl(slot) && (
+                                      <a
+                                        href={venueUrl(slot)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] font-medium text-neutral-400 hover:text-white transition"
+                                      >
+                                        Venue page
+                                      </a>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                       </div>
                     </div>
 

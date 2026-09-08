@@ -564,6 +564,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-09-07T16:52:40.751Z"
+    },
+    {
+      "id": "6b6ea256-ba33-4482-b6dd-f92f2cb5f637",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "heh",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"src/app/(app)/quick-plan/page.tsx\",\"src/lib/services/planner.service.ts\",\"src/lib/services/quickPlan.service.ts\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-09-08T10:49:40.069Z"
     }
   ]
 }
