@@ -27,6 +27,7 @@ export interface QuickPlanInput {
   tags: string[];
   outingDate?: string; // "YYYY-MM-DD"
   outingTime?: string; // "18:00"
+  seed?: number;
 }
 
 export interface QuickPlanResult {
@@ -356,6 +357,7 @@ export const quickPlanService = {
       [], // options
       area,
       resolved.requiredVenueId,
+      input.seed,
     );
 
     if (!plans || plans.length === 0) {

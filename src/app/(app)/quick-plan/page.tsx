@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import PageContainer from '@/components/shared/PageContainer';
 import { generateQuickPlanAction, saveQuickPlanAction } from '@/actions/quickPlan';
 import type { QuickPlanInput, QuickPlanMode } from '@/lib/services/quickPlan.service';
@@ -8,12 +8,16 @@ import {
   Bookmark,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Coins,
   Compass,
   Loader2,
   MapPin,
   Navigation,
+  RefreshCw,
+  SlidersHorizontal,
   Sparkles,
   Users,
   WalletCards,
@@ -31,6 +35,34 @@ const VIBES = [
   ['adventure', 'Something active'], ['creative', 'Make something'], ['culture', 'Art & culture'],
   ['comedy', 'Live comedy'], ['music', 'Live music'], ['nightlife', 'After dark'], ['outdoors', 'Outside'],
 ];
+
+const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
+  CAFE: 'https://images.unsplash.com/photo-1498804103079-a6351b050096?w=500&auto=format&fit=crop&q=80',
+  RESTAURANT: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=500&auto=format&fit=crop&q=80',
+  DESSERT: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80',
+  PARK: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=500&auto=format&fit=crop&q=80',
+  MUSEUM: 'https://images.unsplash.com/photo-1536924940846-227afb31e2a5?w=500&auto=format&fit=crop&q=80',
+  ART_GALLERY: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&auto=format&fit=crop&q=80',
+  ARCADE: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=80',
+  BOWLING: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=80',
+  ESCAPE_ROOM: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=80',
+  LIVE_MUSIC: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+  COMEDY: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+  NIGHTLIFE: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=500&auto=format&fit=crop&q=80',
+  DEFAULT: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=500&auto=format&fit=crop&q=80',
+};
+
+function getSlotImageUrl(slot: any): string {
+  const url = slot.imageUrl;
+  if (url && !url.includes('mumbai_map.webp') && !url.includes('placehold.co')) {
+    return url;
+  }
+  const cat = String(slot.category || slot.mealType || '').toUpperCase();
+  for (const [key, fallbackUrl] of Object.entries(CATEGORY_FALLBACK_IMAGES)) {
+    if (cat.includes(key)) return fallbackUrl;
+  }
+  return CATEGORY_FALLBACK_IMAGES.DEFAULT;
+}
 
 function formatDuration(value: number) {
   const hours = Math.floor((value || 0) / 60);
@@ -53,7 +85,13 @@ function formatMealType(slot: any) {
 }
 
 function PlanSkeleton() {
-  return <div className="space-y-4" aria-label="Loading plans">{[0, 1].map((item) => <div key={item} className="h-72 animate-pulse rounded-2xl bg-white/5" />)}</div>;
+  return (
+    <div className="grid gap-5 xl:grid-cols-2" aria-label="Loading plans">
+      {[0, 1].map((item) => (
+        <div key={item} className="h-96 animate-pulse rounded-2xl border border-white/10 bg-white/5" />
+      ))}
+    </div>
+  );
 }
 
 export default function QuickPlanPage() {
@@ -70,24 +108,28 @@ export default function QuickPlanPage() {
   const [areaName, setAreaName] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [showFormOnMobile, setShowFormOnMobile] = useState(true);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const toggleTag = (tag: string) => setTags((current) => current.includes(tag)
     ? current.filter((item) => item !== tag)
     : [...current, tag]);
 
-  const buildInput = (): QuickPlanInput => ({
+  const buildInput = (currentSeed?: number): QuickPlanInput => ({
     mode, location: location.trim(), headcount, budget, perPerson, tags,
     outingDate: outingDate || undefined, outingTime: outingTime || undefined,
+    seed: currentSeed ?? Math.floor(Math.random() * 1000000),
   });
 
-  async function generate() {
+  async function generate(isReRoll = false) {
     if (!location.trim()) {
       toast.error('Add a neighbourhood, landmark, or place first.');
       return;
     }
     setLoading(true);
+    const runSeed = isReRoll ? Math.floor(Math.random() * 1000000) : Date.now();
     try {
-      const result = await generateQuickPlanAction(buildInput());
+      const result = await generateQuickPlanAction(buildInput(runSeed));
       if (!result.success) {
         toast.error(result.error?.message || 'Could not build plans.');
         return;
@@ -97,6 +139,14 @@ export default function QuickPlanPage() {
       setSavedIds(new Set());
       if (result.data.requiredVenueMatched === false) toast.info('Could not match that place exactly. Plans still use its neighbourhood.');
       if (!(result.data.plans || []).length) toast.error('No good-fit plans found. Try a wider area or more budget.');
+      
+      // Auto collapse form on mobile after generating results to save scroll space
+      if ((result.data.plans || []).length > 0) {
+        setShowFormOnMobile(false);
+        setTimeout(() => {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
     } catch {
       toast.error('Could not build plans. Try again.');
     } finally {
@@ -123,24 +173,375 @@ export default function QuickPlanPage() {
 
   return (
     <PageContainer title="Make a plan" subtitle="One place to start. A full outing to follow.">
-      <div className="grid gap-7 lg:grid-cols-[minmax(300px,380px)_1fr]">
-        <section className="h-fit rounded-2xl border border-white/10 bg-[#131315] p-5 shadow-[0_8px_28px_rgba(0,0,0,0.28)] sm:p-6 lg:sticky lg:top-24">
-          <div className="mb-6 flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#DC143C]">Quick plan</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">What sounds good?</h2></div><div className="rounded-xl bg-[#DC143C]/10 p-2 text-[#DC143C]"><Compass size={20} /></div></div>
-          <div className="space-y-6">
-            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Start from</label><div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">{(Object.keys(MODES) as QuickPlanMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-lg px-2 py-2.5 text-[11px] font-semibold transition ${mode === item ? 'bg-[#DC143C]/15 text-[#ff6b7e] shadow-sm' : 'text-neutral-500 hover:text-white'}`}>{MODES[item].label}</button>)}</div><input value={location} onChange={(event) => setLocation(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && generate()} placeholder={MODES[mode].placeholder} className="mt-3 w-full rounded-xl border border-white/15 bg-transparent px-3.5 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-[#DC143C] focus:outline-none" /><p className="mt-2 text-xs text-neutral-500">{MODES[mode].hint}</p></div>
-            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Who is coming?</label><div className="flex items-center gap-3 rounded-xl border border-white/15 px-3.5 py-3"><Users size={17} className="text-[#DC143C]" /><input type="number" min={1} max={20} value={headcount} onChange={(event) => setHeadcount(Math.max(1, Math.min(20, Number(event.target.value) || 1)))} className="w-full bg-transparent text-sm text-white focus:outline-none" /><span className="text-xs text-neutral-500">people</span></div></div>
-            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Your spend</label><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setPerPerson(true)} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${perPerson ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500'}`}>Per person</button><button type="button" onClick={() => setPerPerson(false)} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${!perPerson ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500'}`}>Total group</button></div><div className="relative mt-2"><WalletCards size={16} className="absolute left-3.5 top-3.5 text-[#DC143C]" /><input type="number" min={50} step={100} value={budget} onChange={(event) => setBudget(Math.max(50, Number(event.target.value) || 50))} className="w-full rounded-xl border border-white/15 bg-transparent py-3 pl-10 pr-3 text-sm text-white focus:border-[#DC143C] focus:outline-none" /><span className="absolute right-3.5 top-3 text-xs text-neutral-500">₹</span></div></div>
-            <div><label className="mb-2 block text-sm font-semibold text-neutral-200">Set the mood <span className="font-normal text-neutral-500">optional</span></label><div className="flex flex-wrap gap-2">{VIBES.map(([value, label]) => <button key={value} type="button" onClick={() => toggleTag(value)} className={`rounded-full border px-3 py-2 text-xs font-medium transition ${tags.includes(value) ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]' : 'border-white/15 text-neutral-500 hover:border-white/30'}`}>{label}</button>)}</div></div>
-            <div className="grid grid-cols-2 gap-2"><label className="text-xs font-semibold text-neutral-500">Date<input type="date" value={outingDate} onChange={(event) => setOutingDate(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/15 bg-transparent px-3 py-2.5 text-xs font-normal text-white focus:outline-none" /></label><label className="text-xs font-semibold text-neutral-500">Start time<input type="time" value={outingTime} onChange={(event) => setOutingTime(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/15 bg-transparent px-3 py-2.5 text-xs font-normal text-white focus:outline-none" /></label></div>
-            <p className="-mt-3 text-[11px] leading-4 text-neutral-500">Leave date or time blank to use Mumbai local system time when generating.</p>
-            <button type="button" onClick={generate} disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#DC143C] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(220,20,60,0.22)] transition hover:-translate-y-0.5 hover:bg-[#B80F2E] active:translate-y-0 disabled:cursor-wait disabled:opacity-60">{loading ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}{loading ? 'Finding a good route…' : plans.length ? 'Try another mix' : 'Build my outing'}<ChevronRight size={16} /></button>
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_1fr] items-start">
+        {/* Input Controls Panel */}
+        <section className="rounded-2xl border border-white/10 bg-[#131315] shadow-[0_8px_28px_rgba(0,0,0,0.28)] lg:sticky lg:top-24">
+          {/* Mobile Collapsible Header Bar when plans exist */}
+          {plans.length > 0 && (
+            <div className="flex items-center justify-between p-4 lg:hidden border-b border-white/10">
+              <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
+                <MapPin size={15} className="text-[#DC143C] shrink-0" />
+                <span className="truncate">{areaName || location}</span>
+                <span className="text-neutral-500">·</span>
+                <span>{headcount}p</span>
+                <span className="text-neutral-500">·</span>
+                <span>₹{budget}{perPerson ? '/head' : ' total'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFormOnMobile(!showFormOnMobile)}
+                className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-[#ff6b7e] hover:bg-white/10 transition"
+              >
+                <SlidersHorizontal size={13} />
+                {showFormOnMobile ? 'Hide filters' : 'Edit criteria'}
+                {showFormOnMobile ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+          )}
+
+          <div className={`p-5 sm:p-6 ${plans.length > 0 && !showFormOnMobile ? 'hidden lg:block' : 'block'}`}>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#DC143C]">Quick plan</p>
+                <h2 className="mt-0.5 text-xl font-semibold tracking-[-0.03em] text-white">What sounds good?</h2>
+              </div>
+              <div className="rounded-xl bg-[#DC143C]/10 p-2 text-[#DC143C]">
+                <Compass size={18} />
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-neutral-200">Start from</label>
+                <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
+                  {(Object.keys(MODES) as QuickPlanMode[]).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setMode(item)}
+                      className={`rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
+                        mode === item ? 'bg-[#DC143C]/15 text-[#ff6b7e] shadow-sm' : 'text-neutral-500 hover:text-white'
+                      }`}
+                    >
+                      {MODES[item].label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && generate(false)}
+                  placeholder={MODES[mode].placeholder}
+                  className="mt-2.5 w-full rounded-xl border border-white/15 bg-transparent px-3 py-2.5 text-xs text-white placeholder:text-neutral-600 focus:border-[#DC143C] focus:outline-none"
+                />
+                <p className="mt-1.5 text-[11px] text-neutral-500">{MODES[mode].hint}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-neutral-200">Who is coming?</label>
+                  <div className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2">
+                    <Users size={15} className="text-[#DC143C] shrink-0" />
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={headcount}
+                      onChange={(event) => setHeadcount(Math.max(1, Math.min(20, Number(event.target.value) || 1)))}
+                      className="w-full bg-transparent text-xs text-white focus:outline-none"
+                    />
+                    <span className="text-[11px] text-neutral-500">ppl</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-neutral-200">Spend mode</label>
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setPerPerson(true)}
+                      className={`rounded-lg py-1.5 text-[10px] font-semibold transition ${
+                        perPerson ? 'bg-[#DC143C]/15 text-[#ff6b7e]' : 'text-neutral-500 hover:text-white'
+                      }`}
+                    >
+                      /head
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPerPerson(false)}
+                      className={`rounded-lg py-1.5 text-[10px] font-semibold transition ${
+                        !perPerson ? 'bg-[#DC143C]/15 text-[#ff6b7e]' : 'text-neutral-500 hover:text-white'
+                      }`}
+                    >
+                      Total
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-neutral-200">Your budget (₹)</label>
+                <div className="relative">
+                  <WalletCards size={15} className="absolute left-3 top-2.5 text-[#DC143C]" />
+                  <input
+                    type="number"
+                    min={50}
+                    step={100}
+                    value={budget}
+                    onChange={(event) => setBudget(Math.max(50, Number(event.target.value) || 50))}
+                    className="w-full rounded-xl border border-white/15 bg-transparent py-2 pl-9 pr-3 text-xs text-white focus:border-[#DC143C] focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-2 text-xs text-neutral-500">₹</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-neutral-200">
+                  Set the mood <span className="font-normal text-neutral-500">optional</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {VIBES.map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleTag(value)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                        tags.includes(value)
+                          ? 'border-[#DC143C] bg-[#DC143C]/10 text-[#ff6b7e]'
+                          : 'border-white/15 text-neutral-400 hover:border-white/30'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[11px] font-semibold text-neutral-400">
+                  Date
+                  <input
+                    type="date"
+                    value={outingDate}
+                    onChange={(event) => setOutingDate(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/15 bg-transparent px-2.5 py-2 text-xs font-normal text-white focus:outline-none"
+                  />
+                </label>
+                <label className="text-[11px] font-semibold text-neutral-400">
+                  Start time
+                  <input
+                    type="time"
+                    value={outingTime}
+                    onChange={(event) => setOutingTime(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-white/15 bg-transparent px-2.5 py-2 text-xs font-normal text-white focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => generate(false)}
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#DC143C] px-4 py-3 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(220,20,60,0.22)] transition hover:bg-[#B80F2E] active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {loading ? 'Finding a good route…' : plans.length ? 'Re-generate plans' : 'Build my outing'}
+                <ChevronRight size={15} />
+              </button>
+            </div>
           </div>
         </section>
 
-        <section aria-live="polite" className="min-w-0">
+        {/* Results Container */}
+        <section aria-live="polite" className="min-w-0" ref={resultsRef}>
           {loading && <PlanSkeleton />}
-          {!loading && !plans.length && <div className="flex min-h-[560px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#111316] px-8 text-center"><div className="mb-5 rounded-2xl bg-[#DC143C]/10 p-4 text-[#DC143C]"><MapPin size={27} /></div><h2 className="text-2xl font-semibold tracking-[-0.04em] text-white">Good plans start with one detail</h2><p className="mt-3 max-w-md text-sm leading-6 text-neutral-400">Choose a place, tell us who is coming, and we’ll line up a realistic mix of things to do, eat, and linger over.</p><div className="mt-7 grid w-full max-w-lg grid-cols-3 gap-2 text-left text-xs text-neutral-400"><div className="rounded-xl bg-white/5 p-3"><MapPin size={15} className="mb-2 text-[#DC143C]" />Stay local</div><div className="rounded-xl bg-white/5 p-3"><Coins size={15} className="mb-2 text-[#DC143C]" />Respect budget</div><div className="rounded-xl bg-white/5 p-3"><CalendarDays size={15} className="mb-2 text-[#DC143C]" />Fit the day</div></div></div>}
-          {!loading && plans.length > 0 && <><div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#DC143C]">Made for {areaName}</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">Pick your kind of day</h2></div><p className="text-xs text-neutral-500">{plans.length} routes · stops kept nearby</p></div><div className="space-y-5">{plans.map((plan, planIndex) => <article key={plan.id} className="overflow-hidden rounded-2xl border border-white/10 bg-[#131315] shadow-[0_8px_28px_rgba(0,0,0,0.28)]"><div className="border-b border-white/10 px-5 py-5 sm:px-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="mb-2 flex items-center gap-2"><span className="rounded-md bg-[#DC143C]/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ff6b7e]">Route {String(planIndex + 1).padStart(2, '0')}</span>{plan.budgetTier && <span className="text-xs text-neutral-500">{String(plan.budgetTier).replaceAll('_', ' ')}</span>}</div><h3 className="text-xl font-semibold tracking-[-0.03em] text-white">{plan.name}</h3>{plan.tagline && <p className="mt-1 max-w-xl text-sm text-neutral-400">{plan.tagline}</p>}</div><div className="flex gap-4 text-xs text-neutral-400"><span className="inline-flex items-center gap-1.5"><CalendarDays size={14} className="text-[#DC143C]" />{formatDuration(plan.totalDurationMinutes)}</span><span className="inline-flex items-center gap-1.5"><Coins size={14} className="text-[#DC143C]" />₹{plan.totalEstimatedCostPerHead}/head</span></div></div></div><div className="divide-y divide-white/10 px-5 sm:px-6">{(plan.slots || []).slice().sort((a: any, b: any) => (a.slotOrder ?? a.order ?? 0) - (b.slotOrder ?? b.order ?? 0)).map((slot: any, index: number) => <div key={slot.id || index} className="group flex items-start gap-3 py-4"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#DC143C]/10 text-xs font-bold text-[#ff6b7e]">{String(index + 1).padStart(2, '0')}</div><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-neutral-500">{slot.arrivalTime || 'Flexible'} · {formatMealType(slot)}</p><p className="mt-1 truncate text-base font-semibold text-white">{slot.name || slot.venueName}</p>{slot.note && <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-400">{slot.note}</p>}<p className="mt-1 text-xs text-neutral-500">₹{slot.estimatedCostPerHead || 0} per person</p></div><div className="mt-1 flex shrink-0 items-center gap-3"><a href={mapsUrl(slot, areaName)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#ff6b7e] opacity-80 transition group-hover:opacity-100">Directions <Navigation size={13} /></a>{venueUrl(slot) && <a href={venueUrl(slot)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-neutral-400 transition hover:text-white">Venue page</a>}</div></div>)}</div><div className="flex items-center justify-between gap-3 bg-[#111316] px-5 py-4 sm:px-6"><p className="text-xs text-neutral-500">Meals and breaks follow your start time.</p><button type="button" onClick={() => save(plan)} disabled={savingId === plan.id || savedIds.has(plan.id)} className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition ${savedIds.has(plan.id) ? 'bg-[#DC143C]/15 text-[#ff6b7e]' : 'bg-[#24272d] text-white hover:bg-[#30353d]'}`}>{savingId === plan.id ? <Loader2 size={14} className="animate-spin" /> : savedIds.has(plan.id) ? <Check size={14} /> : <Bookmark size={14} />}{savedIds.has(plan.id) ? 'Saved' : 'Save route'}</button></div></article>)}</div></>}
+
+          {!loading && !plans.length && (
+            <div className="flex min-h-[460px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#111316] p-6 text-center">
+              <div className="mb-4 rounded-2xl bg-[#DC143C]/10 p-3.5 text-[#DC143C]">
+                <MapPin size={24} />
+              </div>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-white">Good plans start with one detail</h2>
+              <p className="mt-2 max-w-sm text-xs leading-5 text-neutral-400">
+                Choose a neighbourhood or landmark, tell us who is coming, and we’ll line up a realistic mix of things to do, eat, and linger over.
+              </p>
+              <div className="mt-6 grid w-full max-w-md grid-cols-3 gap-2 text-left text-[11px] text-neutral-400">
+                <div className="rounded-xl bg-white/5 p-2.5">
+                  <MapPin size={14} className="mb-1.5 text-[#DC143C]" />Stay local
+                </div>
+                <div className="rounded-xl bg-white/5 p-2.5">
+                  <Coins size={14} className="mb-1.5 text-[#DC143C]" />Respect budget
+                </div>
+                <div className="rounded-xl bg-white/5 p-2.5">
+                  <CalendarDays size={14} className="mb-1.5 text-[#DC143C]" />Fit the day
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!loading && plans.length > 0 && (
+            <>
+              {/* Header with quick re-roll action */}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#131315] px-4 py-3 sm:px-5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#DC143C]">Made for {areaName}</p>
+                  <h2 className="text-lg font-semibold tracking-[-0.03em] text-white">Pick your kind of day</h2>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="hidden sm:inline text-xs text-neutral-400">{plans.length} routes</span>
+                  <button
+                    type="button"
+                    onClick={() => generate(true)}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#DC143C] px-3.5 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-[#B80F2E] active:scale-95 disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                    Try another mix
+                  </button>
+                </div>
+              </div>
+
+              {/* Routes Grid: 2 columns on XL screens, 1 column on mobile/tablet */}
+              <div className="grid gap-5 xl:grid-cols-2">
+                {plans.map((plan, planIndex) => (
+                  <article
+                    key={plan.id}
+                    className="flex flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-[#131315] shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition hover:border-white/20"
+                  >
+                    <div>
+                      {/* Plan Header */}
+                      <div className="border-b border-white/10 px-4 py-4 sm:px-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="rounded-md bg-[#DC143C]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#ff6b7e]">
+                                Route {String(planIndex + 1).padStart(2, '0')}
+                              </span>
+                              {plan.budgetTier && (
+                                <span className="text-[11px] text-neutral-400">
+                                  {String(plan.budgetTier).replaceAll('_', ' ')}
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="text-lg font-semibold tracking-[-0.03em] text-white">{plan.name}</h3>
+                            {plan.tagline && <p className="mt-0.5 text-xs text-neutral-400 line-clamp-2">{plan.tagline}</p>}
+                          </div>
+                          <div className="flex gap-3 text-xs text-neutral-300 font-medium">
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays size={13} className="text-[#DC143C]" />
+                              {formatDuration(plan.totalDurationMinutes)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Coins size={13} className="text-[#DC143C]" />
+                              ₹{plan.totalEstimatedCostPerHead}/head
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Places List with Visible Pictures */}
+                      <div className="space-y-3 p-4 sm:p-5">
+                        {(plan.slots || [])
+                          .slice()
+                          .sort((a: any, b: any) => (a.slotOrder ?? a.order ?? 0) - (b.slotOrder ?? b.order ?? 0))
+                          .map((slot: any, index: number) => (
+                            <div
+                              key={slot.id || index}
+                              className="group flex flex-col sm:flex-row items-stretch gap-3 overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-3 transition hover:border-white/15 hover:bg-white/[0.04]"
+                            >
+                              {/* Visible Place Image Thumbnail */}
+                              <div className="relative w-full sm:w-36 h-32 sm:h-auto shrink-0 overflow-hidden rounded-lg bg-neutral-900">
+                                <img
+                                  src={getSlotImageUrl(slot)}
+                                  alt={slot.name || slot.venueName}
+                                  loading="lazy"
+                                  decoding="async"
+                                  onError={(e) => {
+                                    const cat = String(slot.category || slot.mealType || '').toUpperCase();
+                                    (e.target as HTMLImageElement).src = CATEGORY_FALLBACK_IMAGES[cat] || CATEGORY_FALLBACK_IMAGES.DEFAULT;
+                                  }}
+                                  className="h-full w-full object-cover opacity-90 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
+                                />
+                                <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-[#DC143C] text-[10px] font-bold text-white shadow-md">
+                                  {String(index + 1).padStart(2, '0')}
+                                </span>
+                              </div>
+
+                              {/* Place Content */}
+                              <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
+                                <div>
+                                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+                                    <span className="text-[#ff6b7e]">
+                                      {slot.arrivalTime || 'Flexible'} · {formatMealType(slot)}
+                                    </span>
+                                    <span className="text-neutral-300 font-normal">
+                                      ₹{slot.estimatedCostPerHead || 0} / person
+                                    </span>
+                                  </div>
+                                  <h4 className="mt-1 truncate text-sm font-semibold text-white group-hover:text-[#ff6b7e] transition-colors">
+                                    {slot.name || slot.venueName}
+                                  </h4>
+                                  {slot.note && (
+                                    <p className="mt-1 text-xs leading-4 text-neutral-400 line-clamp-2 font-sans">
+                                      {slot.note}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="mt-2.5 flex items-center justify-between gap-2 text-xs border-t border-white/5 pt-2">
+                                  <a
+                                    href={mapsUrl(slot, areaName)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#ff6b7e] hover:underline"
+                                  >
+                                    Directions <Navigation size={12} />
+                                  </a>
+                                  {venueUrl(slot) && (
+                                    <a
+                                      href={venueUrl(slot)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] font-medium text-neutral-400 hover:text-white transition"
+                                    >
+                                      Venue page
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+
+                    {/* Card Footer: Save Action */}
+                    <div className="flex items-center justify-between gap-3 bg-[#111316] px-4 py-3 sm:px-5 border-t border-white/10">
+                      <p className="text-[11px] text-neutral-500">Meals and breaks fit your start time.</p>
+                      <button
+                        type="button"
+                        onClick={() => save(plan)}
+                        disabled={savingId === plan.id || savedIds.has(plan.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                          savedIds.has(plan.id)
+                            ? 'bg-[#DC143C]/15 text-[#ff6b7e]'
+                            : 'bg-[#24272d] text-white hover:bg-[#30353d]'
+                        }`}
+                      >
+                        {savingId === plan.id ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : savedIds.has(plan.id) ? (
+                          <Check size={13} />
+                        ) : (
+                          <Bookmark size={13} />
+                        )}
+                        {savedIds.has(plan.id) ? 'Saved' : 'Save route'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
         </section>
       </div>
     </PageContainer>

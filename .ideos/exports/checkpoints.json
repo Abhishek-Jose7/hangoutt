@@ -552,6 +552,18 @@
       "next_steps": "[]",
       "source": "git_hook",
       "created_at": "2026-09-07T12:07:13.878Z"
+    },
+    {
+      "id": "c91b5210-611b-4c94-9b2c-4e54a13ea39e",
+      "feature_id": "unclassified-work",
+      "worker_id": null,
+      "summary": "heh",
+      "progress": 0,
+      "files_touched": "[\".ideos/context.md\",\".ideos/db.sqlite\",\".ideos/exports/checkpoints.json\",\".ideos/exports/features.json\",\"public/images/antique_map.png\",\"public/images/antique_map.webp\",\"public/images/cafe_1.png\",\"public/images/cafe_1.webp\",\"public/images/cafe_2.png\",\"public/images/cafe_2.webp\",\"public/images/cafe_active.png\",\"public/images/cafe_active.webp\"]",
+      "blockers": "[]",
+      "next_steps": "[]",
+      "source": "git_hook",
+      "created_at": "2026-09-07T16:52:40.751Z"
     }
   ]
 }

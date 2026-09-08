@@ -3628,7 +3628,7 @@ function experienceDistance(a: any, b: any): number {
  * representative from each cluster, then greedy-select `count` most-distinct
  * representatives. Falls back to plain top-score if clustering yields <count.
  */
-function clusterAndPickRepresentatives(candidates: any[], count = 2): any[] {
+function clusterAndPickRepresentatives(candidates: any[], count = 2, seed?: number): any[] {
   if (candidates.length === 0) return [];
 
   const clusters = new Map<string, any[]>();
@@ -3657,11 +3657,13 @@ function clusterAndPickRepresentatives(candidates: any[], count = 2): any[] {
     return picked.slice(0, count);
   }
 
-  // Greedy: seed with top-scored representative, then repeatedly pick the
+  // Greedy: seed with representative, then repeatedly pick the
   // representative that MAXIMISES minimum experience-distance to the picked
   // set. This is "farthest-point sampling" applied to the itinerary space.
-  const picked: any[] = [representatives[0]];
-  const remaining = representatives.slice(1);
+  // When seed is provided, rotate starting pick among top candidates so re-rolls produce a fresh mix.
+  const startIdx = seed !== undefined ? Math.abs(seed) % Math.min(3, representatives.length) : 0;
+  const picked: any[] = [representatives[startIdx]];
+  const remaining = representatives.filter((_, idx) => idx !== startIdx);
   while (picked.length < count && remaining.length > 0) {
     let bestIdx = 0;
     let bestScore = -Infinity;
@@ -3874,9 +3876,9 @@ export async function executePlanningEngineForEval(
   groupData: any, presentMembers: any[], budgetSummary: any,
   presentLocations: any[], preferredCategories: string[], vibes: string[],
   historyEntries: any[], lowestBudget: number, options: string[] = [],
-  planningArea?: PlanningArea, requiredVenueId?: string
+  planningArea?: PlanningArea, requiredVenueId?: string, seed?: number
 ): Promise<any[]> {
-  return executePlanningEngine(groupData, presentMembers, budgetSummary, presentLocations, preferredCategories, vibes, historyEntries, lowestBudget, options, planningArea, requiredVenueId);
+  return executePlanningEngine(groupData, presentMembers, budgetSummary, presentLocations, preferredCategories, vibes, historyEntries, lowestBudget, options, planningArea, requiredVenueId, seed);
 }
 
 /**
@@ -3899,7 +3901,8 @@ async function executePlanningEngine(
   lowestBudget: number,
   options: string[] = [],
   planningArea?: PlanningArea,
-  requiredVenueId?: string
+  requiredVenueId?: string,
+  seed?: number
 ): Promise<any[]> {
   groupData = {
     ...groupData,
@@ -5247,7 +5250,7 @@ async function executePlanningEngine(
   // group flow would violate the locality guarantee, so pick 4 representatives
   // straight from the clustered candidates instead of 2 + pads.
   const representativeCount = planningArea ? 4 : 2;
-  const finalPlans = clusterAndPickRepresentatives(validCandidates, representativeCount);
+  const finalPlans = clusterAndPickRepresentatives(validCandidates, representativeCount, seed);
   finalPlans.forEach((it, idx) => { it.planIndex = idx + 1; });
 
   console.log(`[PLANNER] candidates ${draftItineraries.length} → valid ${validCandidates.length} → clustered → returning ${finalPlans.length}`,
